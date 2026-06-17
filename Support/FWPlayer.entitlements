@@ -6,6 +6,12 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Allow hosting the remote-control Bonjour service so FWPlayerRemote
+         controllers on the local network can connect (matters for the sandboxed
+         Mac Catalyst build; ignored on iPhone/iPad). -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
     <!-- The keys below apply to the Mac Catalyst (Mac desktop) build, which
          runs sandboxed. They are ignored on iPhone/iPad. -->
     <key>com.apple.security.app-sandbox</key>

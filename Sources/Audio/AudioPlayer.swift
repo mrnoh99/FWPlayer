@@ -45,6 +45,13 @@ final class AudioPlayer: NSObject, ObservableObject {
         loadAndPlay(index: index)
     }
 
+    /// Jumps to and plays the track at `index` within the current queue. Used by
+    /// the remote-control server to honor "play this track" taps from a remote.
+    func playQueueIndex(_ index: Int) {
+        guard queue.indices.contains(index) else { return }
+        loadAndPlay(index: index)
+    }
+
     func togglePlayPause() {
         guard let player else {
             if let i = currentIndex { loadAndPlay(index: i) }

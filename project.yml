@@ -41,7 +41,9 @@ targets:
           - audio
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
-        NSLocalNetworkUsageDescription: "FWPlayer connects to SMB shared drives on your local network to browse and play your music."
+        NSLocalNetworkUsageDescription: "FWPlayer connects to SMB shared drives on your local network and lets the FWPlayerRemote app discover and control playback on this device."
+        NSBonjourServices:
+          - _fwplayer._tcp
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
