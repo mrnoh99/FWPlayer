@@ -221,7 +221,8 @@ final class RemoteControlServer: ObservableObject {
             queue: player.queue.map {
                 RemoteTrack(id: $0.id, title: $0.title, artist: $0.artist, album: $0.album, duration: $0.duration)
             },
-            errorMessage: player.errorMessage
+            errorMessage: player.errorMessage,
+            audioFormat: player.audioFormatDescription
         )
     }
 

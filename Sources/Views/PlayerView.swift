@@ -36,6 +36,12 @@ struct PlayerView: View {
                 if let album = player.currentTrack?.album {
                     Text(album).font(.subheadline).foregroundStyle(.secondary)
                 }
+                if let format = player.audioFormatDescription {
+                    Label(format, systemImage: "waveform")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .padding(.top, 2)
+                }
             }
             .padding(.horizontal)
 

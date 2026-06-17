@@ -36,6 +36,8 @@ struct PlaybackState: Codable, Hashable {
     var currentIndex: Int?
     var queue: [RemoteTrack]
     var errorMessage: String?
+    /// Current output format, e.g. "96 kHz · 24-bit · Stereo".
+    var audioFormat: String?
 }
 
 /// A minimal description of a track the remote wants to enqueue. Carries exactly

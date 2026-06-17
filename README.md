@@ -11,8 +11,13 @@ from an **SMB network share** (NAS, PC share) over Wi‑Fi.
 - 🎵 Plays the common audio formats the system audio stack (`AVAudioPlayer` /
   Core Audio) decodes on iOS 17+ / macOS 14+ — **FLAC, WAV/WAVE, AIFF, Apple
   Lossless (ALAC), CAF, AU** (lossless) and **MP3, AAC / M4A / M4B** (compressed).
-  The full extension list lives in `FileItem.audioExtensions`. Formats outside
-  Core Audio's reach (e.g. Ogg Vorbis, Opus, WMA) are not supported.
+  The native extension list lives in `FileItem.nativeAudioExtensions`.
+- 🧩 **Ogg Vorbis / Opus** via a pluggable decoder. Files Core Audio can't read
+  are decoded to PCM through bundled third-party libraries and then played by the
+  normal pipeline (so seeking, duration and queueing all work). The decoder is
+  compiled in only when the codec libraries are linked — see
+  [Extra formats](#extra-formats-ogg--opus).
+- 🎚️ **Bit-perfect output for a USB DAC** — see [Audio quality](#audio-quality-usb-dac).
 - 📂 **Local folders** — browse the app's on‑device folder (files added via
   Finder file sharing, AirDrop, or *Save to Files*) and any folder you pick
   through the Files app, including network shares you've connected there.
@@ -70,6 +75,45 @@ Then select the **FWPlayer** scheme and run on an iPhone/iPad simulator or
 device, or choose **My Mac (Mac Catalyst)** for the desktop app. Set your
 signing team in Xcode (or `DEVELOPMENT_TEAM` in `project.yml`) before running
 on a device.
+
+## Audio quality (USB DAC)
+
+FWPlayer is built to feed an external **USB DAC → amp** chain as cleanly as
+possible:
+
+- **No sample-rate conversion.** Before each track, the player reads the file's
+  native sample rate and asks the audio hardware to run at exactly that rate
+  (`AVAudioSession.setPreferredSampleRate`), plus its channel count. When the DAC
+  honors the rate, the bits reach it without OS resampling.
+- **Unity gain.** Playback volume is fixed at `1.0` — no software attenuation or
+  DSP in the path. Use the DAC/amp for level. (The lock-screen volume slider
+  still controls the system, but FWPlayer never scales the samples itself.)
+- **Native-rate decode for Ogg/Opus.** Decoded streams are written as PCM at
+  their source rate (48 kHz for Opus) and played at that rate.
+
+The current output format is shown on the Now Playing screen (e.g.
+`96 kHz · 24-bit · Stereo`) and is also reported to the FWPlayerRemote app.
+
+> On iOS / iPadOS the OS drives the USB DAC at the requested rate automatically.
+> On the Mac (Catalyst) desktop, also confirm the device's rate in **Audio MIDI
+> Setup** matches the track for a guaranteed bit-perfect path.
+
+## Extra formats (Ogg / Opus)
+
+Formats outside Core Audio's reach are handled by a small pluggable decoder
+layer (`Sources/Audio/AudioDecoder.swift` + `OggAudioDecoder.swift`) that decodes
+to PCM and hands the result to the normal playback pipeline. Following the same
+pattern as SMB, the decoder is compiled in only when its C libraries are present
+(`#if canImport(COpus) || canImport(CVorbis)`), so the app builds with or without
+them; the extra extensions appear as playable only when a decoder is linked.
+
+To enable **Ogg Vorbis** and **Opus**, add a SwiftPM package that vends the Xiph
+libraries as modules named `CVorbis` (libvorbisfile, `<vorbis/vorbisfile.h>`) and
+`COpus` (libopusfile, `<opus/opusfile.h>`), then declare it under the FWPlayer
+target's `dependencies` in `project.yml` (see the commented example there). No
+source changes are needed — `OggAudioDecoder` targets the stable `ov_*` /
+`op_*` C APIs. To support more formats, add another `AudioDecoder` and register
+it in `AudioDecoderRegistry`.
 
 ## SMB support
 

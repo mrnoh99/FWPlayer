@@ -13,6 +13,22 @@ packages:
     url: https://github.com/kishikawakatsumi/SMBClient
     from: 0.6.0
 
+  # OPTIONAL — third-party decoders for formats Core Audio can't play natively
+  # (Ogg Vorbis / Opus). The decoder code in Sources/Audio/OggAudioDecoder.swift
+  # is compiled in only when the C library modules `CVorbis` and/or `COpus` are
+  # available (`#if canImport(...)`), so the app builds fine without them.
+  #
+  # To enable Ogg/Opus playback, add a SwiftPM package that vends those modules
+  # (libvorbisfile / libopusfile from Xiph), then list it under `dependencies`
+  # for the FWPlayer target. For example:
+  #
+  #   XiphCodecs:
+  #     url: https://github.com/<your-org>/swift-xiph-codecs
+  #     from: 1.0.0
+  #
+  # The package must expose system-library targets named `CVorbis` (headers
+  # <vorbis/vorbisfile.h>) and `COpus` (headers <opus/opusfile.h>).
+
 settings:
   base:
     MARKETING_VERSION: "1.0"
