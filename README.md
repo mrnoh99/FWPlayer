@@ -17,6 +17,9 @@ over Wi‑Fi.
   files are downloaded on demand for gapless local playback.
 - ⏯️ Full transport: play/pause, next/previous, scrub/seek, auto‑advance
   through a folder queue.
+- 📝 **Playlists** — create named playlists, add tracks from any folder or SMB
+  share, reorder and remove entries, rename or delete the playlist, and play it
+  as a queue. Playlists persist across launches.
 - 🔒 Lock‑screen / Control Center **Now Playing** integration and remote
   commands; background audio on iOS.
 - 🗂️ Sidebar library with multiple sources; SMB passwords stored in the
@@ -90,3 +93,12 @@ preserved through a security‑scoped bookmark.
 - **Any folder / network drive:** tap **＋ → Add Folder…** and select it.
 - **SMB server:** tap **＋ → Add SMB Server…**, enter host/share/credentials,
   optionally *Test Connection*, then *Save*.
+
+## Playlists
+
+- Create one with **＋ → New Playlist…** (or *New Playlist…* from the *Add to
+  Playlist* sheet).
+- While browsing a folder/share, swipe a track or long‑press it and choose
+  **Add to Playlist**; tap a playlist to toggle the track in or out.
+- Open a playlist from the sidebar to play it, tap **Edit** to reorder/remove
+  entries, or use the ••• menu to *Play*, *Rename*, or *Delete Playlist*.

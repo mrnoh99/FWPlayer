@@ -4,6 +4,7 @@ import SwiftUI
 struct FWPlayerApp: App {
     @StateObject private var registry: SourceRegistry
     @StateObject private var player: AudioPlayer
+    @StateObject private var playlists = PlaylistManager()
 
     init() {
         let registry = SourceRegistry()
@@ -16,7 +17,11 @@ struct FWPlayerApp: App {
             ContentView()
                 .environmentObject(registry)
                 .environmentObject(player)
-                .onAppear { registry.loadPersisted() }
+                .environmentObject(playlists)
+                .onAppear {
+                    registry.loadPersisted()
+                    playlists.load()
+                }
         }
     }
 }

@@ -13,6 +13,7 @@ struct FolderBrowserView: View {
     @State private var items: [FileItem] = []
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var trackToAdd: Track?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
 
@@ -35,6 +36,9 @@ struct FolderBrowserView: View {
         }
         .navigationTitle(title)
         .task(id: path) { await reload() }
+        .sheet(item: $trackToAdd) { track in
+            AddToPlaylistView(track: track)
+        }
     }
 
     private var list: some View {
@@ -55,6 +59,21 @@ struct FolderBrowserView: View {
                         TrackRow(item: item, isCurrent: isCurrent(item))
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button {
+                            trackToAdd = Track(sourceID: source.id, item: item)
+                        } label: {
+                            Label("Add", systemImage: "text.badge.plus")
+                        }
+                        .tint(.accentColor)
+                    }
+                    .contextMenu {
+                        Button {
+                            trackToAdd = Track(sourceID: source.id, item: item)
+                        } label: {
+                            Label("Add to Playlist", systemImage: "text.badge.plus")
+                        }
+                    }
                 case .other:
                     EmptyView()
                 }

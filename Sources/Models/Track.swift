@@ -19,4 +19,14 @@ struct Track: Identifiable, Hashable {
         // Use the file name without extension as a reasonable default title.
         self.title = (item.name as NSString).deletingPathExtension
     }
+
+    init(sourceID: String, path: String, title: String) {
+        self.sourceID = sourceID
+        self.path = path
+        self.title = title
+    }
+
+    init(entry: PlaylistEntry) {
+        self.init(sourceID: entry.sourceID, path: entry.path, title: entry.title)
+    }
 }
