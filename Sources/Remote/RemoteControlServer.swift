@@ -21,13 +21,17 @@ final class RemoteControlServer: ObservableObject {
     @Published private(set) var connectedClients = 0
 
     private unowned let player: AudioPlayer
+    private unowned let registry: SourceRegistry
+    private unowned let playlists: PlaylistManager
     private var listener: NWListener?
     private var links: [ObjectIdentifier: RemoteLink] = [:]
     private var cancellable: AnyCancellable?
     private let listenerQueue = DispatchQueue(label: "com.fwplayer.remote.listener")
 
-    init(player: AudioPlayer) {
+    init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager) {
         self.player = player
+        self.registry = registry
+        self.playlists = playlists
     }
 
     // MARK: - Lifecycle
@@ -134,9 +138,66 @@ final class RemoteControlServer: ObservableObject {
             player.playQueueIndex(index)
         case .stop:
             player.stop()
+        case .requestLibrary:
+            link.send(.library(makeLibrary()))
+            return
+        case .browse(let sourceID, let path):
+            sendListing(sourceID: sourceID, path: path, to: link)
+            return
+        case .setQueue(let tracks, let startAt):
+            player.play(tracks: tracks.map(Self.track(from:)), startAt: startAt)
+        case .enqueue(let tracks):
+            player.enqueue(tracks.map(Self.track(from:)))
         }
         // Reflect the resulting state back to everyone promptly.
         broadcastState()
+    }
+
+    // MARK: - Library browsing
+
+    private func makeLibrary() -> RemoteLibrary {
+        let sources = registry.sources.map {
+            RemoteSource(id: $0.id, displayName: $0.displayName, symbolName: $0.symbolName)
+        }
+        let lists = playlists.playlists.map { playlist in
+            RemotePlaylist(
+                id: playlist.id.uuidString,
+                name: playlist.name,
+                tracks: playlist.entries.map {
+                    RemoteQueueTrack(sourceID: $0.sourceID, path: $0.path, title: $0.title)
+                }
+            )
+        }
+        return RemoteLibrary(sources: sources, playlists: lists)
+    }
+
+    /// Lists `path` within `sourceID` asynchronously and sends the result back.
+    private func sendListing(sourceID: String, path: String, to link: RemoteLink) {
+        guard let source = registry.source(for: sourceID) else {
+            link.send(.listing(RemoteListing(sourceID: sourceID, path: path, items: [], error: "Source unavailable.")))
+            return
+        }
+        Task { [weak link] in
+            let listing: RemoteListing
+            do {
+                let items = try await source.list(path: path).compactMap { item -> RemoteFileItem? in
+                    switch item.kind {
+                    case .directory: return RemoteFileItem(path: item.path, name: item.name, kind: .directory, size: item.size)
+                    case .audio: return RemoteFileItem(path: item.path, name: item.name, kind: .audio, size: item.size)
+                    case .other: return nil
+                    }
+                }
+                listing = RemoteListing(sourceID: sourceID, path: path, items: items, error: nil)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                listing = RemoteListing(sourceID: sourceID, path: path, items: [], error: message)
+            }
+            link?.send(.listing(listing))
+        }
+    }
+
+    private static func track(from queueTrack: RemoteQueueTrack) -> Track {
+        Track(sourceID: queueTrack.sourceID, path: queueTrack.path, title: queueTrack.title)
     }
 
     // MARK: - State

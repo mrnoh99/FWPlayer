@@ -52,6 +52,19 @@ final class AudioPlayer: NSObject, ObservableObject {
         loadAndPlay(index: index)
     }
 
+    /// Appends `tracks` to the end of the queue. If nothing is currently loaded,
+    /// playback starts from the first appended track. Used by the remote to add
+    /// to the queue without interrupting the current track.
+    func enqueue(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        let shouldStart = currentIndex == nil
+        let startIndex = queue.count
+        queue.append(contentsOf: tracks)
+        if shouldStart {
+            loadAndPlay(index: startIndex)
+        }
+    }
+
     func togglePlayPause() {
         guard let player else {
             if let i = currentIndex { loadAndPlay(index: i) }

@@ -38,8 +38,60 @@ struct PlaybackState: Codable, Hashable {
     var errorMessage: String?
 }
 
-/// A transport command sent from the remote to the player.
+/// A minimal description of a track the remote wants to enqueue. Carries exactly
+/// the fields the player needs to rebuild an internal `Track` and resolve it back
+/// to a playable file.
+struct RemoteQueueTrack: Codable, Hashable {
+    var sourceID: String
+    var path: String
+    var title: String
+}
+
+/// A browsable file location on the player (its on-device folder, an added
+/// folder, or an SMB share).
+struct RemoteSource: Codable, Hashable, Identifiable {
+    var id: String
+    var displayName: String
+    var symbolName: String
+}
+
+/// A playlist on the player, with its full ordered track list so the remote can
+/// queue it directly.
+struct RemotePlaylist: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var tracks: [RemoteQueueTrack]
+}
+
+/// The player's library: the sources you can browse and the playlists you can
+/// queue. Sent in response to `requestLibrary`.
+struct RemoteLibrary: Codable, Hashable {
+    var sources: [RemoteSource]
+    var playlists: [RemotePlaylist]
+}
+
+/// A single entry inside a browsed folder.
+struct RemoteFileItem: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable { case directory, audio }
+    var path: String
+    var name: String
+    var kind: Kind
+    var size: Int64?
+
+    var id: String { path }
+}
+
+/// The contents of one folder within a source. Sent in response to `browse`.
+struct RemoteListing: Codable, Hashable {
+    var sourceID: String
+    var path: String
+    var items: [RemoteFileItem]
+    var error: String?
+}
+
+/// A command sent from the remote to the player.
 enum RemoteCommand: Codable, Hashable {
+    // Transport.
     case requestState
     case togglePlayPause
     case play
@@ -49,11 +101,20 @@ enum RemoteCommand: Codable, Hashable {
     case seek(time: TimeInterval)
     case playIndex(index: Int)
     case stop
+    // Library browsing & queue construction.
+    case requestLibrary
+    case browse(sourceID: String, path: String)
+    /// Replace the queue with `tracks` and start playing at `startAt`.
+    case setQueue(tracks: [RemoteQueueTrack], startAt: Int)
+    /// Append `tracks` to the end of the current queue.
+    case enqueue(tracks: [RemoteQueueTrack])
 }
 
-/// The envelope exchanged over the wire. Commands flow remote → player; state
-/// flows player → remote.
+/// The envelope exchanged over the wire. Commands flow remote → player; state,
+/// library, and folder listings flow player → remote.
 enum RemoteMessage: Codable {
     case command(RemoteCommand)
     case state(PlaybackState)
+    case library(RemoteLibrary)
+    case listing(RemoteListing)
 }
