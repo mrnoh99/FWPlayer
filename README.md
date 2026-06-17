@@ -88,8 +88,16 @@ possible:
 - **Unity gain.** Playback volume is fixed at `1.0` — no software attenuation or
   DSP in the path. Use the DAC/amp for level. (The lock-screen volume slider
   still controls the system, but FWPlayer never scales the samples itself.)
-- **Native-rate decode for Ogg/Opus.** Decoded streams are written as PCM at
-  their source rate (48 kHz for Opus) and played at that rate.
+- **Native-rate, float decode for Ogg/Opus.** Decoded streams are written as
+  **32-bit float** PCM at their source rate (48 kHz for Opus) — the decoders'
+  native output, with no 16-bit quantization step — and played at that rate.
+- **No time-stretch.** `AVAudioPlayer.enableRate` is left off, so playback never
+  goes through the rate/pitch resampler.
+
+With the hardware running at the source rate and unity gain, the system mixer
+performs neither sample-rate conversion nor gain scaling, so the PCM reaches the
+DAC unaltered. (The internal render path is 32-bit float, whose 24-bit mantissa
+is lossless for 16/24-bit source material — the common lossless case.)
 
 The current output format is shown on the Now Playing screen (e.g.
 `96 kHz · 24-bit · Stereo`) and is also reported to the FWPlayerRemote app.

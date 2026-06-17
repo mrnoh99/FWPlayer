@@ -20,7 +20,9 @@ import CVorbis
 import COpus
 #endif
 
-/// Decodes Ogg Vorbis and Opus files to 16-bit PCM WAV for system playback.
+/// Decodes Ogg Vorbis and Opus files to 32-bit float PCM WAV for system playback.
+/// Float is the decoders' native output, so there is no quantization on the way
+/// to the audio device.
 struct OggAudioDecoder: AudioDecoder {
     static var supportedExtensions: Set<String> {
         var exts = Set<String>()
@@ -58,19 +60,31 @@ struct OggAudioDecoder: AudioDecoder {
         guard channels > 0, sampleRate > 0 else { throw AudioDecoderError.decodeFailed }
 
         var pcm = Data()
-        let chunk = 4096
-        var buffer = [Int8](repeating: 0, count: chunk)
         var bitstream: Int32 = 0
+        var interleaved = [Float]()
         while true {
-            // 16-bit, little-endian, signed, interleaved.
-            let read = buffer.withUnsafeMutableBufferPointer { ptr in
-                ov_read(&vf, ptr.baseAddress, Int32(chunk), 0, 2, 1, &bitstream)
+            // Native float output (per-channel planar); we interleave it ourselves.
+            var channelPointers: UnsafeMutablePointer<UnsafeMutablePointer<Float>?>? = nil
+            let frames = ov_read_float(&vf, &channelPointers, 4096, &bitstream)
+            if frames < 0 { throw AudioDecoderError.decodeFailed }
+            if frames == 0 { break }
+            guard let channelPointers else { continue }
+
+            let frameCount = Int(frames)
+            if interleaved.count < frameCount * channels {
+                interleaved = [Float](repeating: 0, count: frameCount * channels)
             }
-            if read < 0 { throw AudioDecoderError.decodeFailed }
-            if read == 0 { break }
-            buffer.withUnsafeBytes { pcm.append($0.baseAddress!.assumingMemoryBound(to: UInt8.self), count: Int(read)) }
+            for ch in 0..<channels {
+                guard let samples = channelPointers[ch] else { continue }
+                for f in 0..<frameCount {
+                    interleaved[f * channels + ch] = samples[f]
+                }
+            }
+            interleaved.withUnsafeBytes { raw in
+                pcm.append(raw.baseAddress!.assumingMemoryBound(to: UInt8.self), count: frameCount * channels * MemoryLayout<Float>.size)
+            }
         }
-        return try WAVWriter.write(pcm16: pcm, sampleRate: sampleRate, channels: channels)
+        return try WAVWriter.write(pcm: pcm, sampleRate: sampleRate, channels: channels, bitsPerSample: 32, isFloat: true)
     }
     #endif
 
@@ -90,18 +104,19 @@ struct OggAudioDecoder: AudioDecoder {
         guard channels > 0 else { throw AudioDecoderError.decodeFailed }
 
         var pcm = Data()
-        let frameCapacity = 5760                 // max samples/channel per op_read call
-        var buffer = [Int16](repeating: 0, count: frameCapacity * channels)
+        let frameCapacity = 5760                 // max frames/channel per op_read call
+        var buffer = [Float](repeating: 0, count: frameCapacity * channels)
         while true {
-            let samples = buffer.withUnsafeMutableBufferPointer { ptr in
-                op_read(file, ptr.baseAddress, Int32(ptr.count), nil)
+            // Native float output, already interleaved.
+            let frames = buffer.withUnsafeMutableBufferPointer { ptr in
+                op_read_float(file, ptr.baseAddress, Int32(ptr.count), nil)
             }
-            if samples < 0 { throw AudioDecoderError.decodeFailed }
-            if samples == 0 { break }
-            let byteCount = Int(samples) * channels * MemoryLayout<Int16>.size
+            if frames < 0 { throw AudioDecoderError.decodeFailed }
+            if frames == 0 { break }
+            let byteCount = Int(frames) * channels * MemoryLayout<Float>.size
             buffer.withUnsafeBytes { pcm.append($0.baseAddress!.assumingMemoryBound(to: UInt8.self), count: byteCount) }
         }
-        return try WAVWriter.write(pcm16: pcm, sampleRate: sampleRate, channels: channels)
+        return try WAVWriter.write(pcm: pcm, sampleRate: sampleRate, channels: channels, bitsPerSample: 32, isFloat: true)
     }
     #endif
 }

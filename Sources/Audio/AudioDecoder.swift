@@ -9,6 +9,9 @@ import AVFoundation
 // PCM (WAV) file that the system can then play through the normal pipeline. This
 // preserves seeking, duration, gapless queueing and Now Playing.
 //
+// Quality first: decoding is done in 32-bit float (the decoders' native output)
+// and written as IEEE-float WAV, so there is no intermediate 16-bit quantization.
+//
 // External decoders are integrated exactly like the SMB client: the code is
 // compiled in only when the underlying C library modules are present
 // (`#if canImport(...)`), so the app still builds — with these formats reported
@@ -98,31 +101,45 @@ enum ExternalAudioFormats {
     }()
 }
 
-// MARK: - Minimal canonical 16-bit PCM WAV writer
+// MARK: - Canonical WAV writer (32-bit float or integer PCM)
 
 enum WAVWriter {
-    /// Writes interleaved little-endian signed 16-bit PCM to a temporary WAV file.
-    static func write(pcm16: Data, sampleRate: Int, channels: Int) throws -> URL {
+    /// Writes interleaved little-endian PCM to a temporary WAV file. `isFloat`
+    /// selects IEEE-float (`WAVE_FORMAT_IEEE_FLOAT`, with the required `fact`
+    /// chunk) vs. integer PCM. The decoders use 32-bit float to avoid any
+    /// quantization step.
+    static func write(pcm: Data, sampleRate: Int, channels: Int, bitsPerSample: Int, isFloat: Bool) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("fwdecode-\(UUID().uuidString).wav")
 
-        let blockAlign = channels * 2
+        let bytesPerSample = bitsPerSample / 8
+        let blockAlign = channels * bytesPerSample
         let byteRate = sampleRate * blockAlign
-        let dataSize = pcm16.count
+        let dataSize = pcm.count
+        let frames = blockAlign > 0 ? dataSize / blockAlign : 0
+        let formatTag: UInt16 = isFloat ? 3 : 1          // 3 = IEEE float, 1 = PCM
+        let fmtChunkSize = isFloat ? 18 : 16             // non-PCM needs cbSize
 
         var header = Data()
         func ascii(_ s: String) { header.append(contentsOf: Array(s.utf8)) }
         func u32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { header.append(contentsOf: $0) } }
         func u16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { header.append(contentsOf: $0) } }
 
-        ascii("RIFF"); u32(UInt32(36 + dataSize)); ascii("WAVE")
-        ascii("fmt "); u32(16); u16(1)              // PCM
-        u16(UInt16(channels)); u32(UInt32(sampleRate)); u32(UInt32(byteRate))
-        u16(UInt16(blockAlign)); u16(16)            // bits per sample
+        var riffSize = 4 + (8 + fmtChunkSize) + (8 + dataSize)
+        if isFloat { riffSize += 12 }                    // fact chunk (8 header + 4 data)
+
+        ascii("RIFF"); u32(UInt32(riffSize)); ascii("WAVE")
+        ascii("fmt "); u32(UInt32(fmtChunkSize))
+        u16(formatTag); u16(UInt16(channels)); u32(UInt32(sampleRate)); u32(UInt32(byteRate))
+        u16(UInt16(blockAlign)); u16(UInt16(bitsPerSample))
+        if isFloat {
+            u16(0)                                       // cbSize
+            ascii("fact"); u32(4); u32(UInt32(frames))
+        }
         ascii("data"); u32(UInt32(dataSize))
 
         var file = header
-        file.append(pcm16)
+        file.append(pcm)
         try file.write(to: url)
         return url
     }

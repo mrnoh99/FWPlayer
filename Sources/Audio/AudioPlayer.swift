@@ -180,7 +180,8 @@ final class AudioPlayer: NSObject, ObservableObject {
 
             let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             newPlayer.delegate = self
-            newPlayer.volume = 1.0   // unity gain; leave level control to the DAC/amp
+            newPlayer.volume = 1.0      // unity gain; leave level control to the DAC/amp
+            newPlayer.enableRate = false // no time-stretch/rate resampling in the path
             newPlayer.prepareToPlay()
             player = newPlayer
             duration = newPlayer.duration
@@ -225,7 +226,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         let rate = kHz == kHz.rounded() ? String(format: "%.0f kHz", kHz) : String(format: "%.1f kHz", kHz)
         var parts = [rate]
         if let bits = format.settings[AVLinearPCMBitDepthKey] as? Int, bits > 0 {
-            parts.append("\(bits)-bit")
+            let isFloat = (format.settings[AVLinearPCMIsFloatKey] as? Bool) ?? false
+            parts.append(isFloat ? "\(bits)-bit float" : "\(bits)-bit")
         }
         switch format.channelCount {
         case 1: parts.append("Mono")
