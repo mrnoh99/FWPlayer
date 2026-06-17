@@ -20,7 +20,7 @@ struct PlaylistDetailView: View {
                     EmptyStateView(
                         title: "Empty Playlist",
                         systemImage: "music.note.list",
-                        message: "Browse a folder or SMB share and use “Add to Playlist” to add FLAC or WAV files here."
+                        message: "Browse a folder or SMB share and use “Add to Playlist” to add audio files here."
                     )
                 } else {
                     content(for: playlist)

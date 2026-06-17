@@ -29,7 +29,7 @@ struct FolderBrowserView: View {
             } else if items.isEmpty {
                 EmptyStateView(title: "No Audio Here",
                                systemImage: "music.note",
-                               message: "This folder has no FLAC or WAV files.")
+                               message: "This folder has no playable audio files.")
             } else {
                 list
             }

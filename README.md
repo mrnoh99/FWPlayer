@@ -1,14 +1,18 @@
 # FWPlayer
 
-A lossless **FLAC / WAV** audio player for **iPhone, iPad, and Mac desktop**
-(Apple Silicon & Intel, via Mac Catalyst). Play tracks from a local file folder
-on the device or stream them from an **SMB network share** (NAS, PC share)
-over Wi‑Fi.
+A multi-format audio player for **iPhone, iPad, and Mac desktop**
+(Apple Silicon & Intel, via Mac Catalyst). Plays lossless **FLAC / WAV / AIFF /
+Apple Lossless** as well as common compressed formats like **MP3** and
+**AAC / M4A**. Play tracks from a local file folder on the device or stream them
+from an **SMB network share** (NAS, PC share) over Wi‑Fi.
 
 ## Features
 
-- 🎵 Plays **FLAC** and **WAV / WAVE** using the system audio stack
-  (`AVAudioPlayer`), which supports FLAC natively on iOS 16+ / macOS 13+.
+- 🎵 Plays the common audio formats the system audio stack (`AVAudioPlayer` /
+  Core Audio) decodes on iOS 17+ / macOS 14+ — **FLAC, WAV/WAVE, AIFF, Apple
+  Lossless (ALAC), CAF, AU** (lossless) and **MP3, AAC / M4A / M4B** (compressed).
+  The full extension list lives in `FileItem.audioExtensions`. Formats outside
+  Core Audio's reach (e.g. Ogg Vorbis, Opus, WMA) are not supported.
 - 📂 **Local folders** — browse the app's on‑device folder (files added via
   Finder file sharing, AirDrop, or *Save to Files*) and any folder you pick
   through the Files app, including network shares you've connected there.

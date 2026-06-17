@@ -3,7 +3,8 @@ import AVFoundation
 import MediaPlayer
 import Combine
 
-/// Drives playback of FLAC/WAV tracks using `AVAudioPlayer`. Maintains a queue,
+/// Drives playback of audio tracks (FLAC, WAV, AIFF, ALAC, MP3, AAC/M4A, …)
+/// using `AVAudioPlayer`. Maintains a queue,
 /// resolves tracks to local files through the `SourceRegistry` (downloading
 /// from SMB when needed), and integrates with the system Now Playing UI and
 /// remote (lock-screen / control-center) commands.
