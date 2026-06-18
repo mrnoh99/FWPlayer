@@ -76,6 +76,31 @@ final class AudioPlayer: NSObject {
         }
     }
 
+    /// Reorders queued tracks (Queue editor), keeping the current track current.
+    func moveQueueItems(fromOffsets source: IndexSet, toOffset destination: Int) {
+        let playing = currentTrack
+        queue.move(fromOffsets: source, toOffset: destination)
+        if let playing { currentIndex = queue.firstIndex(of: playing) }
+    }
+
+    /// Removes queued tracks (Queue editor). If the playing track is removed,
+    /// playback advances to the track that takes its place, or stops if the queue
+    /// empties.
+    func removeQueueItems(atOffsets offsets: IndexSet) {
+        let removingCurrent = currentIndex.map { offsets.contains($0) } ?? false
+        let playing = currentTrack
+        queue.remove(atOffsets: offsets)
+        if removingCurrent {
+            if queue.isEmpty {
+                stop()
+            } else {
+                loadAndPlay(index: min(currentIndex ?? 0, queue.count - 1))
+            }
+        } else if let playing {
+            currentIndex = queue.firstIndex(of: playing)
+        }
+    }
+
     func togglePlayPause() {
         guard let player else {
             if let i = currentIndex { loadAndPlay(index: i) }

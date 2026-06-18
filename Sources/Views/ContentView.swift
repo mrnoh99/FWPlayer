@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Identifies what the sidebar has selected: a file source or a playlist.
 enum SidebarSelection: Hashable {
+    case queue
     case source(String)
     case playlist(UUID)
 }
@@ -63,6 +64,11 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $selection) {
+            Section("Playback") {
+                Label("Queue", systemImage: "list.bullet")
+                    .tag(SidebarSelection.queue)
+            }
+
             Section("Library") {
                 ForEach(registry.sources, id: \.id) { source in
                     Label(source.displayName, systemImage: source.symbolName)
@@ -142,6 +148,8 @@ struct ContentView: View {
     private var detail: some View {
         NavigationStack {
             switch selection {
+            case .queue:
+                QueueView()
             case .source(let id):
                 if let source = registry.source(for: id) {
                     FolderBrowserView(source: source, path: "", title: source.displayName)
