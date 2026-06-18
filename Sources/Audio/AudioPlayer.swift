@@ -42,8 +42,9 @@ final class AudioPlayer: NSObject, ObservableObject {
     private unowned let playlists: PlaylistManager
     private var player: AVAudioPlayer?
     private var ticker: AnyCancellable?
-    /// Temporary download (e.g. from SMB) currently in use, to be cleaned up.
-    private var activeTempURL: (sourceID: String, url: URL)?
+    /// Resources backing the current track: the source file (an SMB download, to
+    /// be released) and any decoder-produced temp file (to be deleted).
+    private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
     private var loadTask: Task<Void, Never>?
 
     init(registry: SourceRegistry, playlists: PlaylistManager) {
@@ -269,10 +270,23 @@ final class AudioPlayer: NSObject, ObservableObject {
                 guard let source = self.registry.source(for: track.sourceID) else {
                     throw FileSourceError.notConnected
                 }
-                let url = try await source.fileURL(forPath: track.path)
+                let sourceURL = try await source.fileURL(forPath: track.path)
                 try Task.checkCancellation()
-                if Task.isCancelled { source.releaseTemporaryURL(url); return }
-                self.startPlayback(url: url, track: track, sourceID: source.id, autoPlay: true)
+                if Task.isCancelled { source.releaseTemporaryURL(sourceURL); return }
+
+                // Decode formats Core Audio can't play natively (e.g. Ogg/Opus)
+                // to a temporary PCM file off the main thread.
+                let ext = (track.path as NSString).pathExtension.lowercased()
+                let playable: PlayableAudio
+                do {
+                    playable = try await AudioDecoderRegistry.shared.prepare(sourceURL: sourceURL, fileExtension: ext)
+                } catch {
+                    source.releaseTemporaryURL(sourceURL)
+                    throw error
+                }
+                try Task.checkCancellation()
+                if Task.isCancelled { playable.cleanup(); source.releaseTemporaryURL(sourceURL); return }
+                self.startPlayback(playable: playable, sourceURL: sourceURL, track: track, sourceID: source.id, autoPlay: true)
             } catch is CancellationError {
                 // ignored
             } catch {
@@ -309,17 +323,23 @@ final class AudioPlayer: NSObject, ObservableObject {
         updateNowPlaying()
     }
 
-    private func startPlayback(url: URL, track: Track, sourceID: String, autoPlay: Bool = true) {
+    private func startPlayback(playable: PlayableAudio, sourceURL: URL, track: Track, sourceID: String, autoPlay: Bool = true) {
         cleanupTemp()
         do {
-            let newPlayer = try AVAudioPlayer(contentsOf: url)
+            // Match the hardware (USB DAC) to the file's native sample rate so the
+            // system performs no resampling — bit-perfect output for the amp.
+            applyPreferredHardwareFormat(for: playable.url)
+
+            let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             newPlayer.delegate = self
+            newPlayer.volume = 1.0       // unity gain; leave level control to the DAC/amp
+            newPlayer.enableRate = false // no time-stretch/rate resampling in the path
             newPlayer.prepareToPlay()
             player = newPlayer
             duration = newPlayer.duration
             currentTime = 0
             isLoading = false
-            activeTempURL = (sourceID, url)
+            activeResource = (sourceID, sourceURL, playable.temporaryURL)
             if autoPlay {
                 newPlayer.play()
                 isPlaying = true
@@ -329,11 +349,29 @@ final class AudioPlayer: NSObject, ObservableObject {
             }
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
-            loadMetadata(for: url, trackID: track.id)
+            loadMetadata(for: playable.url, trackID: track.id)
         } catch {
+            playable.cleanup()
+            registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
             isLoading = false
             errorMessage = "Couldn't play \(track.title): \(error.localizedDescription)"
         }
+    }
+
+    /// Requests that the audio hardware run at `url`'s native sample rate (and
+    /// channel count), avoiding sample-rate conversion on the way to a USB DAC.
+    private func applyPreferredHardwareFormat(for url: URL) {
+        #if os(iOS)
+        guard let file = try? AVAudioFile(forReading: url) else { return }
+        let format = file.fileFormat
+        let session = AVAudioSession.sharedInstance()
+        try? session.setPreferredSampleRate(format.sampleRate)
+        let channels = Int(format.channelCount)
+        if channels > 0 {
+            try? session.setPreferredOutputNumberOfChannels(min(channels, session.maximumOutputNumberOfChannels))
+        }
+        try? session.setActive(true)
+        #endif
     }
 
     private func startTicker() {
@@ -347,10 +385,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     private func cleanupTemp() {
-        if let active = activeTempURL, let source = registry.source(for: active.sourceID) {
-            source.releaseTemporaryURL(active.url)
+        if let active = activeResource {
+            registry.source(for: active.sourceID)?.releaseTemporaryURL(active.sourceURL)
+            if let decoded = active.decodedTempURL {
+                try? FileManager.default.removeItem(at: decoded)
+            }
         }
-        activeTempURL = nil
+        activeResource = nil
     }
 
     // MARK: - Metadata

@@ -25,8 +25,26 @@ struct FileItem: Identifiable, Hashable {
         (name as NSString).pathExtension.lowercased()
     }
 
-    /// File extensions FWPlayer treats as playable audio.
-    static let audioExtensions: Set<String> = ["flac", "wav", "wave"]
+    /// Formats the system audio stack (`AVAudioPlayer` / Core Audio) decodes
+    /// natively on iOS 17+ / macOS 14+: lossless (FLAC, WAV, AIFF, Apple Lossless,
+    /// CAF, AU) and lossy (MP3, AAC / MPEG-4 audio).
+    static let nativeAudioExtensions: Set<String> = [
+        // Lossless / uncompressed
+        "flac", "wav", "wave",
+        "aif", "aiff", "aifc",
+        "caf", "alac",
+        "au", "snd",
+        // Lossy / compressed
+        "mp3",
+        "m4a", "m4b",
+        "aac", "adts",
+    ]
+
+    /// Every extension FWPlayer treats as playable: the native formats plus any
+    /// (e.g. Ogg Vorbis / Opus) handled by a bundled third-party decoder.
+    static var audioExtensions: Set<String> {
+        nativeAudioExtensions.union(ExternalAudioFormats.extensions)
+    }
 
     static func kind(forName name: String, isDirectory: Bool) -> Kind {
         if isDirectory { return .directory }
