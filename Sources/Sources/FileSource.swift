@@ -29,11 +29,16 @@ protocol FileSource: AnyObject, Identifiable {
 
     /// Releases any temporary resource created by `fileURL(forPath:)`.
     func releaseTemporaryURL(_ url: URL)
+
+    /// Re-lists `path`, bypassing any cached results (used for pull-to-refresh).
+    func refresh(path: String) async throws -> [FileItem]
 }
 
 extension FileSource {
     func releaseTemporaryURL(_ url: URL) {}
     func directURL(forPath path: String) -> URL? { nil }
+    /// By default there is no cache, so a refresh is just a list.
+    func refresh(path: String) async throws -> [FileItem] { try await list(path: path) }
 
     /// Collects playable audio under `path`, optionally including subfolders.
     func audioItems(in path: String, recursive: Bool = true) async throws -> [FileItem] {
@@ -55,6 +60,7 @@ enum FileSourceError: LocalizedError {
     case smbUnavailable
     case fileNotFound(String)
     case accessDenied
+    case timedOut
 
     var errorDescription: String? {
         switch self {
@@ -62,6 +68,7 @@ enum FileSourceError: LocalizedError {
         case .smbUnavailable: return "SMB support is not available in this build."
         case .fileNotFound(let path): return "File not found: \(path)"
         case .accessDenied: return "Access to this location was denied."
+        case .timedOut: return "The server didn't respond in time. Check the host/IP, share, and that the server is reachable on this network."
         }
     }
 }

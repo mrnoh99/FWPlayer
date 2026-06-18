@@ -34,7 +34,27 @@ final class SMBFileSource: FileSource {
 
     func list(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
+        // Uses the connection's cache when available, so revisiting a folder
+        // (or navigating back) is instant instead of re-listing over the network.
         let files = try await connection.listDirectory(path: path)
+        return Self.items(from: files, parent: path)
+        #else
+        throw FileSourceError.smbUnavailable
+        #endif
+    }
+
+    func refresh(path: String) async throws -> [FileItem] {
+        #if canImport(SMBClient)
+        let files = try await connection.listDirectory(path: path, forceRefresh: true)
+        return Self.items(from: files, parent: path)
+        #else
+        throw FileSourceError.smbUnavailable
+        #endif
+    }
+
+    #if canImport(SMBClient)
+    /// Maps raw SMB entries to browsable `FileItem`s (folders + playable audio).
+    private static func items(from files: [File], parent path: String) -> [FileItem] {
         var items: [FileItem] = []
         for file in files {
             let name = file.name
@@ -51,10 +71,8 @@ final class SMBFileSource: FileSource {
             ))
         }
         return items.sortedForBrowsing()
-        #else
-        throw FileSourceError.smbUnavailable
-        #endif
     }
+    #endif
 
     func fileURL(forPath path: String) async throws -> URL {
         #if canImport(SMBClient)
@@ -88,12 +106,73 @@ final class SMBFileSource: FileSource {
 }
 
 #if canImport(SMBClient)
+/// Runs `operation`, throwing `FileSourceError.timedOut` if it doesn't finish
+/// within `seconds`. Prevents a stalled SMB call from hanging the UI forever
+/// (the browser would otherwise spin on "Loading…" with no error). Real errors
+/// thrown by `operation` propagate unchanged.
+///
+/// The operation runs in an *unstructured* task that is abandoned on timeout, so
+/// the caller is freed even if the underlying SMB call doesn't observe
+/// cancellation — exactly the case that caused the endless spinner.
+func withTimeout<T>(_ seconds: TimeInterval,
+                    _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    // `@unchecked Sendable` holders let us carry a non-Sendable result (SMBClient's
+    // `File` isn't Sendable) and resume the continuation exactly once. The result
+    // is written before its task finishes and read only after, so access is ordered.
+    final class Box: @unchecked Sendable { var result: Result<T, Error>? }
+    final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var finished = false
+        func enter() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if finished { return false }
+            finished = true
+            return true
+        }
+    }
+    let box = Box()
+    let gate = Gate()
+    let opTask = Task {
+        do { box.result = .success(try await operation()) }
+        catch { box.result = .failure(error) }
+    }
+    let timerTask = Task { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+
+    return try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+            Task {
+                await opTask.value
+                guard gate.enter() else { return }
+                timerTask.cancel()
+                continuation.resume(with: box.result ?? .failure(FileSourceError.timedOut))
+            }
+            Task {
+                await timerTask.value
+                guard gate.enter() else { return }
+                opTask.cancel()
+                continuation.resume(throwing: FileSourceError.timedOut)
+            }
+        }
+    } onCancel: {
+        opTask.cancel()
+        timerTask.cancel()
+    }
+}
+
 /// Owns a single `SMBClient`, connecting lazily on first use and serializing
 /// every call so the underlying session is never used concurrently.
 private actor SMBConnection {
+    /// Timeouts (seconds). Connecting and listing must respond promptly; a file
+    /// download may legitimately take longer.
+    private let connectTimeout: TimeInterval = 20
+    private let listTimeout: TimeInterval = 30
+    private let downloadTimeout: TimeInterval = 300
+
     private let config: SMBServerConfig
     private let password: String
     private var client: SMBClient?
+    /// Cached directory listings, keyed by path. Cleared per-path on refresh.
+    private var listingCache: [String: [File]] = [:]
 
     init(config: SMBServerConfig, password: String) {
         self.config = config
@@ -102,25 +181,35 @@ private actor SMBConnection {
 
     private func connectedClient() async throws -> SMBClient {
         if let client { return client }
-        let client = SMBClient(host: config.host, port: config.port)
-        if config.isGuest {
-            try await client.login(username: "Guest", password: "")
-        } else {
-            try await client.login(username: config.username, password: password)
+        let host = config.host, port = config.port
+        let username = config.isGuest ? "Guest" : config.username
+        let secret = config.isGuest ? "" : password
+        let share = config.share
+
+        let client = SMBClient(host: host, port: port)
+        try await withTimeout(connectTimeout) {
+            try await client.login(username: username, password: secret)
+            try await client.connectShare(share)
         }
-        try await client.connectShare(config.share)
         self.client = client
         return client
     }
 
-    func listDirectory(path: String) async throws -> [File] {
+    func listDirectory(path: String, forceRefresh: Bool = false) async throws -> [File] {
+        if !forceRefresh, let cached = listingCache[path] { return cached }
         let client = try await connectedClient()
-        return try await client.listDirectory(path: path)
+        let files = try await withTimeout(listTimeout) {
+            try await client.listDirectory(path: path)
+        }
+        listingCache[path] = files
+        return files
     }
 
     func download(path: String) async throws -> Data {
         let client = try await connectedClient()
-        return try await client.download(path: path)
+        return try await withTimeout(downloadTimeout) {
+            try await client.download(path: path)
+        }
     }
 }
 #endif
