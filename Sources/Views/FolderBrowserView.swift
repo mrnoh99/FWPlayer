@@ -14,6 +14,9 @@ struct FolderBrowserView: View {
     let title: String
 
     @EnvironmentObject private var player: AudioPlayer
+    #if targetEnvironment(macCatalyst)
+    @Environment(\.dismiss) private var dismiss
+    #endif
 
     @State private var items: [FileItem] = []
     @State private var playableTracks: [FileItem] = []
@@ -38,9 +41,13 @@ struct FolderBrowserView: View {
                                systemImage: "exclamationmark.triangle",
                                message: loadError)
             } else if items.isEmpty {
-                EmptyStateView(title: "No Audio Here",
-                               systemImage: "music.note",
-                               message: "This folder has no FLAC or WAV files.")
+                if canGoToParent {
+                    list
+                } else {
+                    EmptyStateView(title: "No Audio Here",
+                                   systemImage: "music.note",
+                                   message: "This folder has no FLAC or WAV files.")
+                }
             } else {
                 ZStack {
                     list
@@ -54,6 +61,15 @@ struct FolderBrowserView: View {
         }
         .navigationTitle(title)
         .toolbar {
+            #if targetEnvironment(macCatalyst)
+            if canGoToParent {
+                ToolbarItem(placement: .navigation) {
+                    Button { dismiss() } label: {
+                        Label("Parent Folder", systemImage: "chevron.left")
+                    }
+                }
+            }
+            #endif
             if hasPlayableSelection {
                 ToolbarItem(placement: .primaryAction) {
                     Button { playSelection() } label: {
@@ -66,8 +82,12 @@ struct FolderBrowserView: View {
             folderToOpen = nil
             await reload()
         }
-        .onChange(of: player.currentTrack?.id) { syncFocusFromPlayer() }
-        .onChange(of: player.transportEventID) { syncFocusFromPlayer() }
+        .onChange(of: player.currentTrack?.id) {
+            Task { @MainActor in syncFocusFromPlayer() }
+        }
+        .onChange(of: player.transportEventID) {
+            Task { @MainActor in syncFocusFromPlayer() }
+        }
         .onChange(of: selectedItemPath) { _, new in
             guard let new else { return }
             scrollTarget = new
@@ -123,6 +143,14 @@ struct FolderBrowserView: View {
 
     @ViewBuilder
     private var listRows: some View {
+        #if targetEnvironment(macCatalyst)
+        if canGoToParent {
+            Button { dismiss() } label: {
+                Label(parentFolderLabel, systemImage: "arrow.turn.up.left")
+            }
+            .tag("__parent__")
+        }
+        #endif
         ForEach(items) { item in
             switch item.kind {
             case .directory:
@@ -187,14 +215,25 @@ struct FolderBrowserView: View {
                 #endif
                 .swipeActions(edge: .trailing) {
                     Button {
+                        player.enqueue(tracks: [Track(sourceID: source.id, item: item)])
+                    } label: {
+                        Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    }
+                    .tint(.blue)
+                    Button {
                         trackToAdd = Track(sourceID: source.id, item: item)
                     } label: {
-                        Label("Add", systemImage: "text.badge.plus")
+                        Label("Playlist", systemImage: "text.badge.plus")
                     }
                     .tint(.accentColor)
                 }
                 .draggable(Track(sourceID: source.id, item: item))
                 .contextMenu {
+                    Button {
+                        player.enqueue(tracks: [Track(sourceID: source.id, item: item)])
+                    } label: {
+                        Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    }
                     Button {
                         trackToAdd = Track(sourceID: source.id, item: item)
                     } label: {
@@ -209,6 +248,16 @@ struct FolderBrowserView: View {
 
     private func folderName(for path: String) -> String {
         (path as NSString).lastPathComponent
+    }
+
+    private var canGoToParent: Bool { !path.isEmpty }
+
+    private var parentPath: String {
+        (path as NSString).deletingLastPathComponent
+    }
+
+    private var parentFolderLabel: String {
+        parentPath.isEmpty ? source.displayName : folderName(for: parentPath)
     }
 
     #if targetEnvironment(macCatalyst)

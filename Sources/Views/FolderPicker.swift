@@ -24,8 +24,13 @@ struct FolderPicker: UIViewControllerRepresentable {
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
-            // Document-picker delegate callbacks are delivered on the main thread.
-            MainActor.assumeIsolated { onPick(url) }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { onPick(url) }
+            } else {
+                DispatchQueue.main.sync {
+                    MainActor.assumeIsolated { onPick(url) }
+                }
+            }
         }
     }
 }

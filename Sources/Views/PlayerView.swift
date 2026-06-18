@@ -4,6 +4,18 @@ import SwiftUI
 struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.dismiss) private var dismiss
+    var onShowQueue: (() -> Void)? = nil
+
+    @State private var isLoading = false
+    @State private var title = "Not Playing"
+    @State private var artist: String?
+    @State private var album: String?
+    @State private var sampleRate: Double?
+    @State private var isPlaying = false
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 0
+    @State private var canGoPrevious = false
+    @State private var canGoNext = false
 
     /// Local scrub position while the user is dragging the slider.
     @State private var scrubTime: Double = 0
@@ -26,21 +38,21 @@ struct PlayerView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20))
 
             VStack(spacing: 6) {
-                if player.isLoading {
+                if isLoading {
                     ProgressView()
                 } else {
-                    Text(player.currentTrack?.title ?? "Not Playing")
+                    Text(title)
                         .font(.title2.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                 }
-                if let artist = player.currentTrack?.artist {
+                if let artist {
                     Text(artist).foregroundStyle(.secondary)
                 }
-                if let album = player.currentTrack?.album {
+                if let album {
                     Text(album).font(.subheadline).foregroundStyle(.secondary)
                 }
-                if let sampleRate = player.currentTrack?.sampleRate {
+                if let sampleRate {
                     Text(AudioFormatReader.formatSampleRate(sampleRate))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -48,22 +60,40 @@ struct PlayerView: View {
             }
             .padding(.horizontal)
 
+            Spacer()
+
             scrubber
 
             transportControls
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding()
         .presentationDragIndicator(.hidden)
+        .toolbar {
+            if let onShowQueue, !player.queue.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        dismiss()
+                        onShowQueue()
+                    } label: {
+                        Label("Queue", systemImage: "list.bullet")
+                    }
+                }
+            }
+        }
+        .onAppear { refreshFromPlayer() }
+        .onReceive(player.objectWillChange) { _ in
+            Task { @MainActor in refreshFromPlayer() }
+        }
     }
 
     private var scrubberMax: Double {
-        max(player.duration.isFinite ? player.duration : 0, 0.1)
+        max(duration.isFinite ? duration : 0, 0.1)
     }
 
     private var displayedTime: Double {
-        let time = isScrubbing ? scrubTime : player.currentTime
+        let time = isScrubbing ? scrubTime : currentTime
         guard time.isFinite else { return 0 }
         return min(max(time, 0), scrubberMax)
     }
@@ -78,13 +108,17 @@ struct PlayerView: View {
                 in: 0...scrubberMax,
                 onEditingChanged: { editing in
                     isScrubbing = editing
-                    if !editing { player.seek(to: scrubTime) }
+                    if !editing {
+                        Task { @MainActor in
+                            player.seek(to: scrubTime)
+                        }
+                    }
                 }
             )
             HStack {
                 Text(timeString(displayedTime))
                 Spacer()
-                Text(timeString(player.duration))
+                Text(timeString(duration))
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
@@ -94,20 +128,39 @@ struct PlayerView: View {
 
     private var transportControls: some View {
         HStack(spacing: 48) {
-            Button { player.previous() } label: {
+            Button {
+                Task { @MainActor in player.previous() }
+            } label: {
                 Image(systemName: "backward.fill").font(.title)
             }
-            .disabled(!player.canGoPrevious)
-            Button { player.togglePlayPause() } label: {
-                Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+            .disabled(!canGoPrevious)
+            Button {
+                Task { @MainActor in player.togglePlayPause() }
+            } label: {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 64))
             }
-            Button { player.next() } label: {
+            Button {
+                Task { @MainActor in player.next() }
+            } label: {
                 Image(systemName: "forward.fill").font(.title)
             }
-            .disabled(!player.canGoNext)
+            .disabled(!canGoNext)
         }
         .buttonStyle(.plain)
+    }
+
+    private func refreshFromPlayer() {
+        isLoading = player.isLoading
+        title = player.currentTrack?.title ?? "Not Playing"
+        artist = player.currentTrack?.artist
+        album = player.currentTrack?.album
+        sampleRate = player.currentTrack?.sampleRate
+        isPlaying = player.isPlaying
+        currentTime = player.currentTime
+        duration = player.duration
+        canGoPrevious = player.canGoPrevious
+        canGoNext = player.canGoNext
     }
 
     private func timeString(_ time: TimeInterval) -> String {

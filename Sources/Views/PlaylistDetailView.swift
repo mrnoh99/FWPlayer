@@ -43,8 +43,12 @@ struct PlaylistDetailView: View {
         .navigationTitle(playlist?.name ?? "Playlist")
         .environment(\.editMode, $editMode)
         .toolbar { toolbar }
-        .onChange(of: player.currentTrack?.id) { syncFocusFromPlayer() }
-        .onChange(of: player.transportEventID) { syncFocusFromPlayer() }
+        .onChange(of: player.currentTrack?.id) {
+            Task { @MainActor in syncFocusFromPlayer() }
+        }
+        .onChange(of: player.transportEventID) {
+            Task { @MainActor in syncFocusFromPlayer() }
+        }
         .onChange(of: selectedEntryID) { _, new in
             guard let new else { return }
             scrollTarget = new
@@ -100,7 +104,22 @@ struct PlaylistDetailView: View {
                     onDoubleClick: { play(playlist, startAt: index) }
                 )
             }
+            .contextMenu {
+                Button {
+                    player.enqueue(tracks: [Track(sourceID: entry.sourceID, path: entry.path, title: entry.title)])
+                } label: {
+                    Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+            }
             #endif
+            .swipeActions(edge: .trailing) {
+                Button {
+                    player.enqueue(tracks: [Track(sourceID: entry.sourceID, path: entry.path, title: entry.title)])
+                } label: {
+                    Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .tint(.blue)
+            }
         }
         .onDelete { playlists.removeEntries(at: $0, from: playlistID) }
         .onMove { playlists.moveEntries(from: $0, to: $1, in: playlistID) }

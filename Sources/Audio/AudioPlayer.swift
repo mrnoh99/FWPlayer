@@ -72,13 +72,87 @@ final class AudioPlayer: NSObject, ObservableObject {
             return
         }
         if player.isPlaying {
-            player.pause()
-            isPlaying = false
+            pausePlayback()
         } else {
-            player.play()
-            isPlaying = true
+            resumePlayback()
         }
+    }
+
+    func resumePlayback() {
+        guard let player else {
+            if let i = currentIndex { loadAndPlay(index: i) }
+            noteTransportEvent()
+            return
+        }
+        guard !player.isPlaying else { return }
+        player.play()
+        isPlaying = true
+        startTicker()
         updateNowPlaying()
+        noteTransportEvent()
+    }
+
+    func pausePlayback() {
+        guard let player, player.isPlaying else { return }
+        player.pause()
+        isPlaying = false
+        updateNowPlaying()
+        noteTransportEvent()
+    }
+
+    /// Starts playback at an existing queue index.
+    func play(at index: Int) {
+        guard queue.indices.contains(index) else { return }
+        loadAndPlay(index: index)
+        noteTransportEvent()
+    }
+
+    /// Appends tracks to the current queue without interrupting playback.
+    func enqueue(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        if queue.isEmpty {
+            play(tracks: tracks, startAt: 0, fromPlaylist: nil)
+            return
+        }
+        activePlaylistID = nil
+        queue.append(contentsOf: tracks)
+    }
+
+    /// Removes tracks at the given indices. Stops playback if the queue becomes empty.
+    func removeFromQueue(at offsets: IndexSet) {
+        guard !offsets.isEmpty, !queue.isEmpty else { return }
+        activePlaylistID = nil
+
+        let oldIndex = currentIndex ?? 0
+        let removingCurrent = offsets.contains(oldIndex)
+
+        var updated = queue
+        for index in offsets.sorted(by: >) where updated.indices.contains(index) {
+            updated.remove(at: index)
+        }
+
+        guard !updated.isEmpty else {
+            stop()
+            return
+        }
+
+        let removedBefore = offsets.filter { $0 < oldIndex }.count
+        let newIndex = removingCurrent
+            ? min(oldIndex, updated.count - 1)
+            : oldIndex - removedBefore
+
+        queue = updated
+
+        if removingCurrent {
+            if isPlaying {
+                loadAndPlay(index: newIndex)
+            } else {
+                selectTrack(at: newIndex)
+            }
+        } else {
+            currentIndex = newIndex
+            updateNowPlaying()
+        }
         noteTransportEvent()
     }
 
@@ -160,7 +234,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
         let tracks = playlist.tracks
         guard !tracks.isEmpty else {
-            stop()
+            Task { @MainActor [weak self] in self?.stop() }
             return nil
         }
 
@@ -335,24 +409,26 @@ final class AudioPlayer: NSObject, ObservableObject {
     // MARK: - Remote commands & Now Playing
 
     private func configureRemoteCommands() {
-        // Remote command handlers are delivered on the main thread, so it is
-        // safe to assume main-actor isolation when calling our @MainActor API.
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlayPause() }; return .success
+            Self.runOnMainActor { self?.togglePlayPause() }
+            return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlayPause() }; return .success
+            Self.runOnMainActor { self?.togglePlayPause() }
+            return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlayPause() }; return .success
+            Self.runOnMainActor { self?.togglePlayPause() }
+            return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.next() }; return .success
+            Self.runOnMainActor { self?.next() }
+            return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
             var result = MPRemoteCommandHandlerStatus.commandFailed
-            MainActor.assumeIsolated {
+            Self.runOnMainActor { [weak self] in
                 guard let self, self.canGoPrevious else { return }
                 self.previous()
                 result = .success
@@ -361,8 +437,19 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
+            Self.runOnMainActor { self?.seek(to: event.positionTime) }
             return .success
+        }
+    }
+
+    /// Runs work on the main actor without trapping when callbacks arrive off the main thread.
+    private nonisolated static func runOnMainActor(_ action: @escaping @MainActor () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { action() }
+        } else {
+            DispatchQueue.main.sync {
+                MainActor.assumeIsolated { action() }
+            }
         }
     }
 

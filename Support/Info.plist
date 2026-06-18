@@ -23,7 +23,11 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>FWPlayer connects to SMB shared drives on your local network to browse and play your music.</string>
+	<string>FWPlayer connects to SMB shares and advertises itself on your local network so FWPlayer Remote can control playback.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_fwplayer._tcp</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

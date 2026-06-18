@@ -4,6 +4,7 @@ import SwiftUI
 enum SidebarSelection: Hashable {
     case source(String)
     case playlist(UUID)
+    case queue
 }
 
 /// Root layout: a sidebar listing sources and playlists, a detail browser, and
@@ -12,6 +13,7 @@ struct ContentView: View {
     @EnvironmentObject private var registry: SourceRegistry
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
+    @EnvironmentObject private var remoteServer: RemoteControlServer
 
     @State private var selection: SidebarSelection?
     @State private var showingFolderPicker = false
@@ -21,10 +23,15 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
+        VStack(spacing: 0) {
+            RemotePairingBanner()
+                .environmentObject(remoteServer)
+
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                detail
+            }
         }
         .sheet(isPresented: $showingFolderPicker) {
             FolderPicker { url in
@@ -36,7 +43,8 @@ struct ContentView: View {
             AddSMBServerView()
         }
         .sheet(isPresented: $showingPlayer) {
-            PlayerView()
+            PlayerView(onShowQueue: showQueue)
+                .environmentObject(player)
         }
         .alert("New Playlist", isPresented: $showingNewPlaylist) {
             TextField("Playlist name", text: $newPlaylistName)
@@ -51,13 +59,36 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             if player.currentTrack != nil {
-                NowPlayingBar { showingPlayer = true }
+                NowPlayingBar(
+                    onTap: { showingPlayer = true },
+                    onShowQueue: showQueue
+                )
             }
         }
     }
 
+    private func showQueue() {
+        showingPlayer = false
+        selection = .queue
+    }
+
     private var sidebar: some View {
         List(selection: $selection) {
+            Section("Playback") {
+                Label {
+                    HStack {
+                        Text("Queue")
+                        if !player.queue.isEmpty {
+                            Text("\(player.queue.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "list.bullet")
+                }
+                .tag(SidebarSelection.queue)
+            }
+
             Section("Library") {
                 ForEach(registry.sources, id: \.id) { source in
                     Label(source.displayName, systemImage: source.symbolName)
@@ -117,6 +148,9 @@ struct ContentView: View {
     private var detail: some View {
         NavigationStack {
             switch selection {
+            case .queue:
+                QueueView()
+                    .environmentObject(player)
             case .source(let id):
                 if let source = registry.source(for: id) {
                     FolderBrowserView(source: source, path: "", title: source.displayName)
