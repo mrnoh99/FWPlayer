@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// Holds every active `FileSource` (the built-in Documents folder, user-added
-/// local folders, and SMB servers) and owns their persistence.
+/// Holds every active `FileSource` (the built-in Documents folder on iOS,
+/// user-added local folders, and SMB servers) and owns their persistence.
 @MainActor
 final class SourceRegistry: ObservableObject {
     @Published private(set) var sources: [any FileSource] = []
@@ -16,7 +16,8 @@ final class SourceRegistry: ObservableObject {
     func loadPersisted() {
         var loaded: [any FileSource] = []
 
-        // Always expose the app's own Documents directory.
+        #if !targetEnvironment(macCatalyst)
+        // iOS/iPadOS: expose the app's Documents directory for AirDrop / Files.
         if let documents = try? FileManager.default.url(
             for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             loaded.append(LocalFileSource(
@@ -27,6 +28,7 @@ final class SourceRegistry: ObservableObject {
                 isSecurityScoped: false
             ))
         }
+        #endif
 
         // User-selected folders (security-scoped bookmarks).
         for entry in bookmarkStore.load() {

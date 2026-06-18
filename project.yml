@@ -11,7 +11,7 @@ packages:
   # compiled out via `#if canImport(SMBClient)` and reports as unavailable.
   SMBClient:
     url: https://github.com/kishikawakatsumi/SMBClient
-    from: 0.6.0
+    from: 0.3.1
 
 settings:
   base:

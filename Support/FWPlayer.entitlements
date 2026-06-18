@@ -1,18 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <!-- Allow outbound connections to SMB servers on the local network. -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-
-    <!-- The keys below apply to the Mac Catalyst (Mac desktop) build, which
-         runs sandboxed. They are ignored on iPhone/iPad. -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-</dict>
+<dict/>
 </plist>

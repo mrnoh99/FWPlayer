@@ -3,13 +3,15 @@ import SwiftUI
 @main
 struct FWPlayerApp: App {
     @StateObject private var registry: SourceRegistry
+    @StateObject private var playlists: PlaylistManager
     @StateObject private var player: AudioPlayer
-    @StateObject private var playlists = PlaylistManager()
 
     init() {
         let registry = SourceRegistry()
+        let playlists = PlaylistManager()
         _registry = StateObject(wrappedValue: registry)
-        _player = StateObject(wrappedValue: AudioPlayer(registry: registry))
+        _playlists = StateObject(wrappedValue: playlists)
+        _player = StateObject(wrappedValue: AudioPlayer(registry: registry, playlists: playlists))
     }
 
     var body: some Scene {

@@ -81,6 +81,11 @@ final class LocalFileSource: FileSource {
         }
         return url
     }
+
+    func directURL(forPath path: String) -> URL? {
+        let url = url(forPath: path)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 extension Array where Element == FileItem {

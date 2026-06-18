@@ -81,21 +81,8 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(playlists.playlists) { playlist in
-                    Label {
-                        Text(playlist.name)
-                        Text("\(playlist.entries.count)")
-                            .foregroundStyle(.secondary)
-                    } icon: {
-                        Image(systemName: "music.note.list")
-                    }
-                    .tag(SidebarSelection.playlist(playlist.id))
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            playlists.delete(playlist.id)
-                        } label: {
-                            Label("Delete Playlist", systemImage: "trash")
-                        }
-                    }
+                    PlaylistSidebarRow(playlist: playlist)
+                        .tag(SidebarSelection.playlist(playlist.id))
                 }
             }
         }
@@ -150,5 +137,36 @@ struct ContentView: View {
             systemImage: "music.note.list",
             message: "Choose a folder, SMB server, or playlist to start listening."
         )
+    }
+}
+
+private struct PlaylistSidebarRow: View {
+    let playlist: Playlist
+
+    @EnvironmentObject private var playlists: PlaylistManager
+    @State private var isDropTarget = false
+
+    var body: some View {
+        Label {
+            Text(playlist.name)
+            Text("\(playlist.entries.count)")
+                .foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: "music.note.list")
+        }
+        .listRowBackground(isDropTarget ? Color.accentColor.opacity(0.15) : nil)
+        .dropDestination(for: Track.self) { tracks, _ in
+            for track in tracks {
+                playlists.add(track, to: playlist.id)
+            }
+            return true
+        } isTargeted: { isDropTarget = $0 }
+        .contextMenu {
+            Button(role: .destructive) {
+                playlists.delete(playlist.id)
+            } label: {
+                Label("Delete Playlist", systemImage: "trash")
+            }
+        }
     }
 }

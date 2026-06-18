@@ -24,12 +24,30 @@ protocol FileSource: AnyObject, Identifiable {
     /// this downloads the file to a temporary location.
     func fileURL(forPath path: String) async throws -> URL
 
+    /// When the file is already on disk, returns its URL without downloading.
+    func directURL(forPath path: String) -> URL?
+
     /// Releases any temporary resource created by `fileURL(forPath:)`.
     func releaseTemporaryURL(_ url: URL)
 }
 
 extension FileSource {
     func releaseTemporaryURL(_ url: URL) {}
+    func directURL(forPath path: String) -> URL? { nil }
+
+    /// Collects playable audio under `path`, optionally including subfolders.
+    func audioItems(in path: String, recursive: Bool = true) async throws -> [FileItem] {
+        let entries = try await list(path: path)
+        var audio = entries.filter { $0.kind == .audio }
+        if recursive {
+            for directory in entries where directory.kind == .directory {
+                audio.append(contentsOf: try await audioItems(in: directory.path, recursive: true))
+            }
+        }
+        return audio.sorted {
+            $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending
+        }
+    }
 }
 
 enum FileSourceError: LocalizedError {

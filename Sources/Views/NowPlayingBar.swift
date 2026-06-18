@@ -20,6 +20,11 @@ struct NowPlayingBar: View {
                     .lineLimit(1)
                 if let artist = player.currentTrack?.artist {
                     Text(artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if let sampleRate = player.currentTrack?.sampleRate {
+                    Text(AudioFormatReader.formatSampleRate(sampleRate))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
             Spacer()
@@ -27,6 +32,13 @@ struct NowPlayingBar: View {
             if player.isLoading {
                 ProgressView()
             } else {
+                Button {
+                    player.previous()
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.title3)
+                }
+                .disabled(!player.canGoPrevious)
                 Button {
                     player.togglePlayPause()
                 } label: {
@@ -39,6 +51,7 @@ struct NowPlayingBar: View {
                     Image(systemName: "forward.fill")
                         .font(.title3)
                 }
+                .disabled(!player.canGoNext)
             }
         }
         .padding(.horizontal)

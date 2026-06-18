@@ -1,15 +1,22 @@
+import CoreTransferable
 import Foundation
+import UniformTypeIdentifiers
+
+extension UTType {
+    static let fwplayerTrack = UTType(exportedAs: "com.fwplayer.track")
+}
 
 /// A playable audio track. Identified by the source it came from plus its
 /// source-relative path, so the player can resolve it back to a local URL
 /// (downloading from SMB if necessary) at playback time.
-struct Track: Identifiable, Hashable {
+struct Track: Identifiable, Hashable, Codable, Transferable {
     let sourceID: String
     let path: String
     let title: String
     var artist: String?
     var album: String?
     var duration: TimeInterval?
+    var sampleRate: Double?
 
     var id: String { sourceID + "::" + path }
 
@@ -28,5 +35,9 @@ struct Track: Identifiable, Hashable {
 
     init(entry: PlaylistEntry) {
         self.init(sourceID: entry.sourceID, path: entry.path, title: entry.title)
+    }
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .fwplayerTrack)
     }
 }

@@ -26,15 +26,24 @@ struct PlayerView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20))
 
             VStack(spacing: 6) {
-                Text(player.currentTrack?.title ?? "Not Playing")
-                    .font(.title2.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                if player.isLoading {
+                    ProgressView()
+                } else {
+                    Text(player.currentTrack?.title ?? "Not Playing")
+                        .font(.title2.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
                 if let artist = player.currentTrack?.artist {
                     Text(artist).foregroundStyle(.secondary)
                 }
                 if let album = player.currentTrack?.album {
                     Text(album).font(.subheadline).foregroundStyle(.secondary)
+                }
+                if let sampleRate = player.currentTrack?.sampleRate {
+                    Text(AudioFormatReader.formatSampleRate(sampleRate))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal)
@@ -49,21 +58,31 @@ struct PlayerView: View {
         .presentationDragIndicator(.hidden)
     }
 
+    private var scrubberMax: Double {
+        max(player.duration.isFinite ? player.duration : 0, 0.1)
+    }
+
+    private var displayedTime: Double {
+        let time = isScrubbing ? scrubTime : player.currentTime
+        guard time.isFinite else { return 0 }
+        return min(max(time, 0), scrubberMax)
+    }
+
     private var scrubber: some View {
         VStack(spacing: 4) {
             Slider(
                 value: Binding(
-                    get: { isScrubbing ? scrubTime : player.currentTime },
+                    get: { displayedTime },
                     set: { scrubTime = $0 }
                 ),
-                in: 0...max(player.duration, 0.1),
+                in: 0...scrubberMax,
                 onEditingChanged: { editing in
                     isScrubbing = editing
                     if !editing { player.seek(to: scrubTime) }
                 }
             )
             HStack {
-                Text(timeString(isScrubbing ? scrubTime : player.currentTime))
+                Text(timeString(displayedTime))
                 Spacer()
                 Text(timeString(player.duration))
             }
@@ -78,6 +97,7 @@ struct PlayerView: View {
             Button { player.previous() } label: {
                 Image(systemName: "backward.fill").font(.title)
             }
+            .disabled(!player.canGoPrevious)
             Button { player.togglePlayPause() } label: {
                 Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 64))
@@ -85,6 +105,7 @@ struct PlayerView: View {
             Button { player.next() } label: {
                 Image(systemName: "forward.fill").font(.title)
             }
+            .disabled(!player.canGoNext)
         }
         .buttonStyle(.plain)
     }

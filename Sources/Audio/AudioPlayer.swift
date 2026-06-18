@@ -16,21 +16,39 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    /// Bumped on play/pause, skip, seek, and stop so list views can snap focus back to the playing row.
+    @Published private(set) var transportEventID = 0
 
     var currentTrack: Track? {
         guard let i = currentIndex, queue.indices.contains(i) else { return nil }
         return queue[i]
     }
 
+    /// When set, next/previous follow the live playlist order.
+    @Published private(set) var activePlaylistID: UUID?
+
+    var canGoNext: Bool {
+        guard let i = currentIndex, queue.indices.contains(i) else { return false }
+        return queue.count > 1
+    }
+
+    var canGoPrevious: Bool {
+        guard let i = currentIndex, queue.indices.contains(i) else { return false }
+        if queue.count > 1 { return true }
+        return currentTime > 3
+    }
+
     private unowned let registry: SourceRegistry
+    private unowned let playlists: PlaylistManager
     private var player: AVAudioPlayer?
     private var ticker: AnyCancellable?
     /// Temporary download (e.g. from SMB) currently in use, to be cleaned up.
     private var activeTempURL: (sourceID: String, url: URL)?
     private var loadTask: Task<Void, Never>?
 
-    init(registry: SourceRegistry) {
+    init(registry: SourceRegistry, playlists: PlaylistManager) {
         self.registry = registry
+        self.playlists = playlists
         super.init()
         configureAudioSession()
         configureRemoteCommands()
@@ -39,8 +57,10 @@ final class AudioPlayer: NSObject, ObservableObject {
     // MARK: - Public transport
 
     /// Replaces the queue with `tracks` and starts playback at `index`.
-    func play(tracks: [Track], startAt index: Int) {
+    /// Pass `fromPlaylist` when starting from a playlist so next/previous stay in sync.
+    func play(tracks: [Track], startAt index: Int, fromPlaylist playlistID: UUID? = nil) {
         guard tracks.indices.contains(index) else { return }
+        activePlaylistID = playlistID
         queue = tracks
         loadAndPlay(index: index)
     }
@@ -48,6 +68,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     func togglePlayPause() {
         guard let player else {
             if let i = currentIndex { loadAndPlay(index: i) }
+            noteTransportEvent()
             return
         }
         if player.isPlaying {
@@ -58,54 +79,111 @@ final class AudioPlayer: NSObject, ObservableObject {
             isPlaying = true
         }
         updateNowPlaying()
+        noteTransportEvent()
     }
 
     func next() {
-        guard let i = currentIndex, i + 1 < queue.count else {
-            stop()
-            return
+        guard let i = resolvedCurrentIndex() ?? currentIndex,
+              queue.indices.contains(i),
+              queue.count > 1 else { return }
+
+        let nextIndex = i + 1 < queue.count ? i + 1 : 0
+        if isPlaying {
+            loadAndPlay(index: nextIndex)
+        } else {
+            selectTrack(at: nextIndex)
         }
-        loadAndPlay(index: i + 1)
+        noteTransportEvent()
     }
 
     func previous() {
-        // Restart current track if more than 3s in, otherwise go to previous.
-        if currentTime > 3, currentIndex != nil {
-            seek(to: 0)
-            return
+        guard let i = resolvedCurrentIndex() ?? currentIndex,
+              queue.indices.contains(i) else { return }
+
+        if isPlaying {
+            if i == 0 {
+                guard queue.count > 1 else {
+                    if currentTime > 3 { seek(to: 0) }
+                    return
+                }
+                loadAndPlay(index: queue.count - 1)
+            } else if currentTime > 3 {
+                seek(to: 0)
+            } else {
+                loadAndPlay(index: i - 1)
+            }
+        } else {
+            guard queue.count > 1 else { return }
+            let previousIndex = i == 0 ? queue.count - 1 : i - 1
+            selectTrack(at: previousIndex)
         }
-        guard let i = currentIndex, i > 0 else {
-            seek(to: 0)
-            return
-        }
-        loadAndPlay(index: i - 1)
+        noteTransportEvent()
     }
 
     func seek(to time: TimeInterval) {
         guard let player else { return }
-        player.currentTime = max(0, min(time, player.duration))
+        let duration = player.duration
+        guard duration.isFinite, duration > 0 else {
+            player.currentTime = 0
+            currentTime = 0
+            updateNowPlaying()
+            return
+        }
+        let clamped = max(0, min(time, duration))
+        guard clamped.isFinite else { return }
+        player.currentTime = clamped
         currentTime = player.currentTime
         updateNowPlaying()
+        noteTransportEvent()
     }
 
     func stop() {
         loadTask?.cancel()
-        player?.stop()
-        player = nil
-        isPlaying = false
-        currentTime = 0
-        duration = 0
-        currentIndex = nil
-        ticker?.cancel()
-        cleanupTemp()
+        tearDownPlayback(keepQueue: false)
+        isLoading = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        noteTransportEvent()
+    }
+
+    private func noteTransportEvent() {
+        transportEventID += 1
     }
 
     // MARK: - Loading
 
+    /// Keeps the queue aligned with the active playlist and returns the current index.
+    private func resolvedCurrentIndex() -> Int? {
+        guard let playlistID = activePlaylistID,
+              let playlist = playlists.playlist(for: playlistID) else {
+            return currentIndex
+        }
+
+        let tracks = playlist.tracks
+        guard !tracks.isEmpty else {
+            stop()
+            return nil
+        }
+
+        let playingID = currentTrack?.id
+        queue = tracks
+
+        let resolved: Int
+        if let playingID, let index = tracks.firstIndex(where: { $0.id == playingID }) {
+            resolved = index
+        } else if let i = currentIndex, tracks.indices.contains(i) {
+            resolved = i
+        } else {
+            resolved = 0
+        }
+
+        currentIndex = resolved
+        return resolved
+    }
+
     private func loadAndPlay(index: Int) {
         guard queue.indices.contains(index) else { return }
         loadTask?.cancel()
+        tearDownPlayback(keepQueue: true)
         currentIndex = index
         let track = queue[index]
         isLoading = true
@@ -118,8 +196,9 @@ final class AudioPlayer: NSObject, ObservableObject {
                     throw FileSourceError.notConnected
                 }
                 let url = try await source.fileURL(forPath: track.path)
+                try Task.checkCancellation()
                 if Task.isCancelled { source.releaseTemporaryURL(url); return }
-                self.startPlayback(url: url, track: track, sourceID: source.id)
+                self.startPlayback(url: url, track: track, sourceID: source.id, autoPlay: true)
             } catch is CancellationError {
                 // ignored
             } catch {
@@ -129,7 +208,34 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
 
-    private func startPlayback(url: URL, track: Track, sourceID: String) {
+    /// Stops the active player without clearing the queue or current index.
+    private func tearDownPlayback(keepQueue: Bool) {
+        player?.stop()
+        player?.delegate = nil
+        player = nil
+        ticker?.cancel()
+        cleanupTemp()
+        isPlaying = false
+        currentTime = 0
+        duration = 0
+        if !keepQueue {
+            currentIndex = nil
+            activePlaylistID = nil
+            queue = []
+        }
+    }
+
+    /// Moves the playhead to another queue entry without starting playback.
+    private func selectTrack(at index: Int) {
+        guard queue.indices.contains(index) else { return }
+        loadTask?.cancel()
+        tearDownPlayback(keepQueue: true)
+        currentIndex = index
+        isLoading = false
+        updateNowPlaying()
+    }
+
+    private func startPlayback(url: URL, track: Track, sourceID: String, autoPlay: Bool = true) {
         cleanupTemp()
         do {
             let newPlayer = try AVAudioPlayer(contentsOf: url)
@@ -139,11 +245,15 @@ final class AudioPlayer: NSObject, ObservableObject {
             duration = newPlayer.duration
             currentTime = 0
             isLoading = false
-            // Track the temp file so we can delete it when we move on.
             activeTempURL = (sourceID, url)
-            newPlayer.play()
-            isPlaying = true
-            startTicker()
+            if autoPlay {
+                newPlayer.play()
+                isPlaying = true
+                startTicker()
+            } else {
+                isPlaying = false
+            }
+            updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
             loadMetadata(for: url, trackID: track.id)
         } catch {
@@ -187,17 +297,29 @@ final class AudioPlayer: NSObject, ObservableObject {
                 default: break
                 }
             }
+            let sampleRate = await AudioFormatReader.readSampleRate(from: url)
             await MainActor.run {
                 guard let self,
                       let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
                 var track = self.queue[idx]
                 if let artist { track.artist = artist }
                 if let album { track.album = album }
+                if let sampleRate, track.sampleRate == nil { track.sampleRate = sampleRate }
                 // The file-name-derived title is kept; embedded title is only a fallback.
-                self.queue[idx] = track
+                var updated = self.queue
+                updated[idx] = track
+                self.queue = updated
                 if self.currentIndex == idx { self.updateNowPlaying() }
             }
         }
+    }
+
+    private func updateTrackSampleRate(trackID: String, sampleRate: Double) {
+        guard sampleRate > 0,
+              let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+        var updated = queue
+        updated[idx].sampleRate = sampleRate
+        queue = updated
     }
 
     // MARK: - Audio session
@@ -229,7 +351,13 @@ final class AudioPlayer: NSObject, ObservableObject {
             MainActor.assumeIsolated { self?.next() }; return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.previous() }; return .success
+            var result = MPRemoteCommandHandlerStatus.commandFailed
+            MainActor.assumeIsolated {
+                guard let self, self.canGoPrevious else { return }
+                self.previous()
+                result = .success
+            }
+            return result
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
