@@ -26,10 +26,15 @@ protocol FileSource: AnyObject, Identifiable {
 
     /// Releases any temporary resource created by `fileURL(forPath:)`.
     func releaseTemporaryURL(_ url: URL)
+
+    /// Re-lists `path`, bypassing any cached results (used for pull-to-refresh).
+    func refresh(path: String) async throws -> [FileItem]
 }
 
 extension FileSource {
     func releaseTemporaryURL(_ url: URL) {}
+    /// By default there is no cache, so a refresh is just a list.
+    func refresh(path: String) async throws -> [FileItem] { try await list(path: path) }
 }
 
 enum FileSourceError: LocalizedError {

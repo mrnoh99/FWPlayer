@@ -81,7 +81,7 @@ struct FolderBrowserView: View {
                 }
             }
         }
-        .refreshable { await reload() }
+        .refreshable { await reload(force: true) }
     }
 
     private func isCurrent(_ item: FileItem) -> Bool {
@@ -95,11 +95,13 @@ struct FolderBrowserView: View {
         player.play(tracks: tracks, startAt: index)
     }
 
-    private func reload() async {
-        isLoading = true
+    private func reload(force: Bool = false) async {
+        // Only show the full-screen loader when there's nothing on screen yet;
+        // a pull-to-refresh keeps the current list visible with its own spinner.
+        if items.isEmpty { isLoading = true }
         loadError = nil
         do {
-            items = try await source.list(path: path)
+            items = force ? try await source.refresh(path: path) : try await source.list(path: path)
         } catch {
             loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }

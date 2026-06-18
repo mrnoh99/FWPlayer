@@ -34,7 +34,27 @@ final class SMBFileSource: FileSource {
 
     func list(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
+        // Uses the connection's cache when available, so revisiting a folder
+        // (or navigating back) is instant instead of re-listing over the network.
         let files = try await connection.listDirectory(path: path)
+        return Self.items(from: files, parent: path)
+        #else
+        throw FileSourceError.smbUnavailable
+        #endif
+    }
+
+    func refresh(path: String) async throws -> [FileItem] {
+        #if canImport(SMBClient)
+        let files = try await connection.listDirectory(path: path, forceRefresh: true)
+        return Self.items(from: files, parent: path)
+        #else
+        throw FileSourceError.smbUnavailable
+        #endif
+    }
+
+    #if canImport(SMBClient)
+    /// Maps raw SMB entries to browsable `FileItem`s (folders + playable audio).
+    private static func items(from files: [File], parent path: String) -> [FileItem] {
         var items: [FileItem] = []
         for file in files {
             let name = file.name
@@ -51,10 +71,8 @@ final class SMBFileSource: FileSource {
             ))
         }
         return items.sortedForBrowsing()
-        #else
-        throw FileSourceError.smbUnavailable
-        #endif
     }
+    #endif
 
     func fileURL(forPath path: String) async throws -> URL {
         #if canImport(SMBClient)
@@ -153,6 +171,8 @@ private actor SMBConnection {
     private let config: SMBServerConfig
     private let password: String
     private var client: SMBClient?
+    /// Cached directory listings, keyed by path. Cleared per-path on refresh.
+    private var listingCache: [String: [File]] = [:]
 
     init(config: SMBServerConfig, password: String) {
         self.config = config
@@ -175,11 +195,14 @@ private actor SMBConnection {
         return client
     }
 
-    func listDirectory(path: String) async throws -> [File] {
+    func listDirectory(path: String, forceRefresh: Bool = false) async throws -> [File] {
+        if !forceRefresh, let cached = listingCache[path] { return cached }
         let client = try await connectedClient()
-        return try await withTimeout(listTimeout) {
+        let files = try await withTimeout(listTimeout) {
             try await client.listDirectory(path: path)
         }
+        listingCache[path] = files
+        return files
     }
 
     func download(path: String) async throws -> Data {
