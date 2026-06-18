@@ -1,21 +1,37 @@
 import SwiftUI
 
-/// Form for adding an SMB server. Optionally tests the connection before saving.
+/// Form for adding *or editing* an SMB server. Optionally tests the connection
+/// before saving.
 struct AddSMBServerView: View {
     @EnvironmentObject private var registry: SourceRegistry
     @Environment(\.dismiss) private var dismiss
 
-    @State private var displayName = ""
-    @State private var host = ""
-    @State private var port = "445"
-    @State private var share = ""
-    @State private var isGuest = false
-    @State private var username = ""
-    @State private var password = ""
+    /// When non-nil, the form edits this existing server instead of adding one.
+    private let editing: SMBServerConfig?
+
+    @State private var displayName: String
+    @State private var host: String
+    @State private var port: String
+    @State private var share: String
+    @State private var isGuest: Bool
+    @State private var username: String
+    @State private var password: String
 
     @State private var isTesting = false
     @State private var statusMessage: String?
     @State private var statusIsError = false
+
+    init(editing: SMBServerConfig? = nil) {
+        self.editing = editing
+        _displayName = State(initialValue: editing?.displayName ?? "")
+        _host = State(initialValue: editing?.host ?? "")
+        _port = State(initialValue: editing.map { String($0.port) } ?? "445")
+        _share = State(initialValue: editing?.share ?? "")
+        _isGuest = State(initialValue: editing?.isGuest ?? false)
+        _username = State(initialValue: editing?.username ?? "")
+        // The password lives in the Keychain; it's loaded in `.onAppear`.
+        _password = State(initialValue: "")
+    }
 
     private var canSave: Bool {
         !host.trimmed.isEmpty && !share.trimmed.isEmpty
@@ -65,7 +81,7 @@ struct AddSMBServerView: View {
                     .disabled(!canSave || isTesting)
                 }
             }
-            .navigationTitle("Add SMB Server")
+            .navigationTitle(editing == nil ? "Add SMB Server" : "Edit SMB Server")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -75,11 +91,18 @@ struct AddSMBServerView: View {
                         .disabled(!canSave)
                 }
             }
+            .onAppear {
+                // Pre-fill the stored password when editing an existing server.
+                if let editing, password.isEmpty {
+                    password = registry.smbPassword(for: editing)
+                }
+            }
         }
     }
 
     private func makeConfig() -> SMBServerConfig {
         SMBServerConfig(
+            id: editing?.id ?? UUID(),   // keep the same identity when editing
             displayName: displayName.trimmed.isEmpty ? host.trimmed : displayName.trimmed,
             host: host.trimmed,
             port: Int(port.trimmed) ?? 445,
@@ -105,7 +128,12 @@ struct AddSMBServerView: View {
     }
 
     private func save() {
-        registry.addSMBServer(makeConfig(), password: password)
+        let config = makeConfig()
+        if editing == nil {
+            registry.addSMBServer(config, password: password)
+        } else {
+            registry.updateSMBServer(config, password: password)
+        }
         dismiss()
     }
 }

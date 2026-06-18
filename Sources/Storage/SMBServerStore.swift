@@ -20,11 +20,16 @@ struct SMBServerStore {
         }
     }
 
+    /// Adds a new server or, if one with the same `id` already exists, replaces
+    /// it (used for editing). The password moves to/from the Keychain to match
+    /// the guest setting.
     func add(_ config: SMBServerConfig, password: String) {
         var configs = load().filter { $0.id != config.id }
         configs.append(config)
         save(configs)
-        if !config.isGuest {
+        if config.isGuest {
+            Keychain.delete(account: config.id.uuidString)
+        } else {
             Keychain.setPassword(password, for: config.id.uuidString)
         }
     }

@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var showingPlayer = false
     @State private var showingNewPlaylist = false
     @State private var newPlaylistName = ""
+    /// The SMB server currently being edited (presents the edit sheet).
+    @State private var editingSMB: SMBServerConfig?
 
     var body: some View {
         NavigationSplitView {
@@ -34,6 +36,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingAddSMB) {
             AddSMBServerView()
+        }
+        .sheet(item: $editingSMB) { config in
+            AddSMBServerView(editing: config)
         }
         .sheet(isPresented: $showingPlayer) {
             PlayerView()
@@ -63,6 +68,13 @@ struct ContentView: View {
                     Label(source.displayName, systemImage: source.symbolName)
                         .tag(SidebarSelection.source(source.id))
                         .contextMenu {
+                            if let smb = source as? SMBFileSource {
+                                Button {
+                                    editingSMB = smb.config
+                                } label: {
+                                    Label("Edit…", systemImage: "pencil")
+                                }
+                            }
                             if source.kind != .localDocuments {
                                 Button(role: .destructive) {
                                     registry.remove(source)

@@ -35,7 +35,9 @@ struct FolderBrowserView: View {
             }
         }
         .navigationTitle(title)
-        .task(id: path) { await reload() }
+        // Reload when the path changes or the source instance is swapped (e.g.
+        // after editing an SMB server, which rebuilds its connection).
+        .task(id: "\(ObjectIdentifier(source))-\(path)") { await reload() }
         .sheet(item: $trackToAdd) { track in
             AddToPlaylistView(track: track)
         }

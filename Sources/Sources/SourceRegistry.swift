@@ -76,6 +76,23 @@ final class SourceRegistry: ObservableObject {
         sources.append(SMBFileSource(config: config, password: password))
     }
 
+    /// Updates an existing SMB server's settings and rebuilds its live source so
+    /// the new host/share/credentials take effect (the old connection is dropped).
+    func updateSMBServer(_ config: SMBServerConfig, password: String) {
+        smbStore.add(config, password: password)   // upsert by id
+        let updated = SMBFileSource(config: config, password: password)
+        if let index = sources.firstIndex(where: { $0.id == config.sourceID }) {
+            sources[index] = updated
+        } else {
+            sources.append(updated)
+        }
+    }
+
+    /// The stored password for an SMB server, for pre-filling the edit form.
+    func smbPassword(for config: SMBServerConfig) -> String {
+        smbStore.password(for: config)
+    }
+
     // MARK: - Removal
 
     func remove(_ source: any FileSource) {
