@@ -6,7 +6,7 @@ struct PlaylistDetailView: View {
     let playlistID: UUID
 
     @EnvironmentObject private var playlists: PlaylistManager
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
 
     @State private var showingRename = false
     @State private var renameText = ""

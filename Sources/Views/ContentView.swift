@@ -10,7 +10,7 @@ enum SidebarSelection: Hashable {
 /// a persistent Now Playing bar pinned to the bottom.
 struct ContentView: View {
     @EnvironmentObject private var registry: SourceRegistry
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     @EnvironmentObject private var playlists: PlaylistManager
 
     @State private var selection: SidebarSelection?

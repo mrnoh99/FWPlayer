@@ -2,37 +2,43 @@ import Foundation
 import AVFoundation
 import MediaPlayer
 import Combine
+import Observation
 
 /// Drives playback of audio tracks (FLAC, WAV, AIFF, ALAC, MP3, AAC/M4A, …)
 /// using `AVAudioPlayer`. Maintains a queue,
 /// resolves tracks to local files through the `SourceRegistry` (downloading
 /// from SMB when needed), and integrates with the system Now Playing UI and
 /// remote (lock-screen / control-center) commands.
+///
+/// Uses the Observation framework (`@Observable`, iOS 17+) so views only update
+/// for the exact properties they read — e.g. the folder browser, which reads
+/// `currentTrack`, no longer re-renders on every `currentTime` tick.
 @MainActor
-final class AudioPlayer: NSObject, ObservableObject {
-    @Published private(set) var queue: [Track] = []
-    @Published private(set) var currentIndex: Int?
-    @Published private(set) var isPlaying = false
-    @Published private(set) var currentTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
-    @Published private(set) var isLoading = false
-    @Published var errorMessage: String?
+@Observable
+final class AudioPlayer: NSObject {
+    private(set) var queue: [Track] = []
+    private(set) var currentIndex: Int?
+    private(set) var isPlaying = false
+    private(set) var currentTime: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
+    private(set) var isLoading = false
+    var errorMessage: String?
     /// Human-readable description of the current output format, e.g.
     /// "96 kHz · 24-bit · Stereo". Reflects the rate the hardware (USB DAC) runs at.
-    @Published private(set) var audioFormatDescription: String?
+    private(set) var audioFormatDescription: String?
 
     var currentTrack: Track? {
         guard let i = currentIndex, queue.indices.contains(i) else { return nil }
         return queue[i]
     }
 
-    private unowned let registry: SourceRegistry
-    private var player: AVAudioPlayer?
-    private var ticker: AnyCancellable?
+    @ObservationIgnored private unowned let registry: SourceRegistry
+    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private var ticker: AnyCancellable?
     /// Resources backing the current track: the source file (an SMB download, to
     /// be released) and any decoder-produced temp file (to be deleted).
-    private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
-    private var loadTask: Task<Void, Never>?
+    @ObservationIgnored private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     init(registry: SourceRegistry) {
         self.registry = registry

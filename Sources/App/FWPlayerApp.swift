@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct FWPlayerApp: App {
     @StateObject private var registry: SourceRegistry
-    @StateObject private var player: AudioPlayer
+    @State private var player: AudioPlayer
     @StateObject private var playlists: PlaylistManager
     @StateObject private var remoteServer: RemoteControlServer
 
@@ -12,7 +12,7 @@ struct FWPlayerApp: App {
         let player = AudioPlayer(registry: registry)
         let playlists = PlaylistManager()
         _registry = StateObject(wrappedValue: registry)
-        _player = StateObject(wrappedValue: player)
+        _player = State(initialValue: player)
         _playlists = StateObject(wrappedValue: playlists)
         _remoteServer = StateObject(wrappedValue: RemoteControlServer(
             player: player, registry: registry, playlists: playlists))
@@ -22,7 +22,7 @@ struct FWPlayerApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(registry)
-                .environmentObject(player)
+                .environment(player)
                 .environmentObject(playlists)
                 .environmentObject(remoteServer)
                 .onAppear {

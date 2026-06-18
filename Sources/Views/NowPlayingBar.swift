@@ -3,7 +3,7 @@ import SwiftUI
 /// Compact transport bar pinned to the bottom of the app. Tapping it opens the
 /// full `PlayerView`.
 struct NowPlayingBar: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     var onTap: () -> Void
 
     var body: some View {

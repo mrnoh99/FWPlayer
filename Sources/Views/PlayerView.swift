@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Full-screen player with artwork placeholder, scrubber, and transport controls.
 struct PlayerView: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.dismiss) private var dismiss
 
     /// Local scrub position while the user is dragging the slider.

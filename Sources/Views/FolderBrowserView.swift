@@ -8,7 +8,7 @@ struct FolderBrowserView: View {
     let path: String
     let title: String
 
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
 
     @State private var items: [FileItem] = []
     @State private var isLoading = true
@@ -50,7 +50,7 @@ struct FolderBrowserView: View {
                 case .directory:
                     NavigationLink {
                         FolderBrowserView(source: source, path: item.path, title: item.name)
-                            .environmentObject(player)
+                            .environment(player)
                     } label: {
                         Label(item.name, systemImage: "folder")
                     }

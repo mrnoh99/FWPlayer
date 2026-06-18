@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Combine
+import Observation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -25,7 +26,6 @@ final class RemoteControlServer: ObservableObject {
     private unowned let playlists: PlaylistManager
     private var listener: NWListener?
     private var links: [ObjectIdentifier: RemoteLink] = [:]
-    private var cancellable: AnyCancellable?
     private let listenerQueue = DispatchQueue(label: "com.fwplayer.remote.listener")
 
     init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager) {
@@ -61,19 +61,37 @@ final class RemoteControlServer: ObservableObject {
             self.listener = listener
 
             // Push a fresh snapshot to all clients whenever playback changes.
-            cancellable = player.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] in
-                    MainActor.assumeIsolated { self?.broadcastState() }
-                }
+            observePlayerChanges()
         } catch {
             isRunning = false
         }
     }
 
+    /// Observes the playback state via the Observation framework and broadcasts a
+    /// snapshot on every change, re-arming for the next one. Replaces the old
+    /// Combine `objectWillChange` subscription now that `AudioPlayer` is
+    /// `@Observable`.
+    private func observePlayerChanges() {
+        withObservationTracking {
+            // Touch every property included in a snapshot so any of them re-fires.
+            _ = player.isPlaying
+            _ = player.isLoading
+            _ = player.currentTime
+            _ = player.duration
+            _ = player.currentIndex
+            _ = player.queue
+            _ = player.errorMessage
+            _ = player.audioFormatDescription
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.listener != nil else { return }
+                self.broadcastState()
+                self.observePlayerChanges()   // re-arm for the next change
+            }
+        }
+    }
+
     func stop() {
-        cancellable?.cancel()
-        cancellable = nil
         links.values.forEach { $0.cancel() }
         links.removeAll()
         connectedClients = 0
