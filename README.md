@@ -7,14 +7,21 @@ over Wi‑Fi.
 
 ## Features
 
-- 🎵 Plays **FLAC** and **WAV / WAVE** using the system audio stack
-  (`AVAudioPlayer`), which supports FLAC natively on iOS 16+ / macOS 13+.
+- 🎵 Plays the common audio formats the system audio stack (`AVAudioPlayer` /
+  Core Audio) decodes — **FLAC, WAV/WAVE, AIFF, Apple Lossless, CAF, AU, MP3,
+  AAC / M4A** — plus **Ogg Vorbis / Opus** through a pluggable decoder
+  (`Sources/Audio/OggAudioDecoder.swift`, compiled in when the Xiph C libraries
+  are linked — see `project.yml`).
+- 🎚️ **Bit-perfect output for a USB DAC** — matches the audio hardware to each
+  track's native sample rate (no resampling), unity gain, no time-stretch.
+- 📡 **Remote control** — advertises a Bonjour `_fwplayer._tcp` service so the
+  FWPlayer Remote app can discover and control playback on the local network.
 - 📂 **Local folders** — browse the app's on‑device folder (files added via
   Finder file sharing, AirDrop, or *Save to Files*) and any folder you pick
   through the Files app, including network shares you've connected there.
 - 🌐 **SMB network share** — connect directly to an SMB server by host/IP,
-  share name, and credentials (or as Guest). Folders are browsed remotely and
-  files are downloaded on demand for gapless local playback.
+  share name, and credentials (or as Guest); **edit** a saved server, browse
+  with cached listings, and time-limited connects (no endless “Loading…”).
 - ⏯️ Full transport: play/pause, next/previous, scrub/seek, auto‑advance
   through a folder queue.
 - 📝 **Playlists** — create named playlists, add tracks from any folder or SMB
