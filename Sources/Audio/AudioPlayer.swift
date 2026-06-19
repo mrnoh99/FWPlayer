@@ -38,6 +38,9 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// The pre-shuffle (sequential) order, so shuffle can be turned back off.
     private var unshuffledQueue: [Track] = []
 
+    /// Recently played tracks, most recent first (session history).
+    @Published private(set) var history: [Track] = []
+
     var canGoNext: Bool {
         guard let i = currentIndex, queue.indices.contains(i) else { return false }
         return queue.count > 1
@@ -200,6 +203,23 @@ final class AudioPlayer: NSObject, ObservableObject {
         stop()
         unshuffledQueue = []
         isShuffled = false
+    }
+
+    // MARK: - Play history
+
+    /// Records a track as just-played at the top of the history (deduped, capped).
+    private func recordHistory(_ track: Track) {
+        history.removeAll { $0.id == track.id }
+        history.insert(track, at: 0)
+        if history.count > 100 { history.removeLast(history.count - 100) }
+    }
+
+    func removeFromHistory(at offsets: IndexSet) {
+        history.remove(atOffsets: offsets)
+    }
+
+    func clearHistory() {
+        history.removeAll()
     }
 
     /// Removes tracks at the given indices. Stops playback if the queue becomes empty.
@@ -459,6 +479,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             } else {
                 isPlaying = false
             }
+            recordHistory(track)
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
             loadMetadata(for: playable.url, trackID: track.id)

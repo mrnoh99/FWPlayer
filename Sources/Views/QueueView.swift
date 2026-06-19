@@ -1,40 +1,26 @@
 import SwiftUI
 
-/// The playback queue, shown as a collapsible "Queue" section: tap the header to
-/// open/close the list, and use the ••• menu on the header for Edit (reorder /
-/// remove) and Clear.
+/// Playback queue and history, each shown as a collapsible section. Tap a section
+/// header to open/close it. The Queue header's ••• menu has Edit (reorder/remove)
+/// and Clear; each row's ••• menu has Locate File, Add to Playlist, and Remove.
+/// History lists recently played tracks, most recent first.
 struct QueueView: View {
     @EnvironmentObject private var player: AudioPlayer
     /// Reveals a track's file in the browser (jumps to its source).
     var onLocate: ((Track) -> Void)? = nil
 
-    @State private var isExpanded = true
+    @State private var queueExpanded = true
+    @State private var historyExpanded = false
     @State private var editMode: EditMode = .inactive
     @State private var trackToAdd: Track?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if isExpanded {
-                if player.queue.isEmpty {
-                    EmptyStateView(
-                        title: "Queue is Empty",
-                        systemImage: "list.bullet",
-                        message: "Browse a folder or playlist to add music, or use Play Next / Add to Queue while browsing."
-                    )
-                } else {
-                    List {
-                        queueRows
-                    }
-                    .listStyle(.plain)
-                    .environment(\.editMode, $editMode)
-                }
-            } else {
-                Spacer(minLength: 0)
-            }
+        List {
+            queueSection
+            historySection
         }
+        .listStyle(.plain)
+        .environment(\.editMode, $editMode)
         .navigationTitle("Queue")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: player.queue.isEmpty) { _, isEmpty in
@@ -45,89 +31,137 @@ struct QueueView: View {
         }
     }
 
-    // MARK: - Collapsible header (the "Queue" row)
+    // MARK: - Queue section
 
-    private var header: some View {
+    private var queueSection: some View {
+        Section {
+            if queueExpanded {
+                if player.queue.isEmpty {
+                    Text("Queue is empty")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, track in
+                        row(track: track, index: index, isCurrent: player.currentIndex == index,
+                            onPlay: { player.play(at: index) },
+                            onRemove: { player.removeFromQueue(at: IndexSet(integer: index)) })
+                    }
+                    .onMove { offsets, destination in
+                        Task { @MainActor in player.moveQueue(fromOffsets: offsets, toOffset: destination) }
+                    }
+                    .onDelete { offsets in
+                        Task { @MainActor in player.removeFromQueue(at: offsets) }
+                    }
+                }
+            }
+        } header: {
+            sectionHeader(title: "Queue", count: player.queue.count, isExpanded: $queueExpanded) {
+                Menu {
+                    Button {
+                        queueExpanded = true
+                        withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                    } label: {
+                        Label(editMode.isEditing ? "Done" : "Edit", systemImage: "arrow.up.arrow.down")
+                    }
+                    Button(role: .destructive) { player.clearQueue() } label: {
+                        Label("Clear", systemImage: "trash")
+                    }
+                } label: { ellipsisLabel }
+                .disabled(player.queue.isEmpty)
+            }
+        }
+    }
+
+    // MARK: - History section
+
+    private var historySection: some View {
+        Section {
+            if historyExpanded {
+                if player.history.isEmpty {
+                    Text("No history yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(player.history.enumerated()), id: \.element.id) { index, track in
+                        row(track: track, index: index, isCurrent: false,
+                            onPlay: { player.playNext(track) },
+                            onRemove: { player.removeFromHistory(at: IndexSet(integer: index)) })
+                    }
+                }
+            }
+        } header: {
+            sectionHeader(title: "History", count: player.history.count, isExpanded: $historyExpanded) {
+                Menu {
+                    Button(role: .destructive) { player.clearHistory() } label: {
+                        Label("Clear History", systemImage: "trash")
+                    }
+                } label: { ellipsisLabel }
+                .disabled(player.history.isEmpty)
+            }
+        }
+    }
+
+    // MARK: - Shared row
+
+    @ViewBuilder
+    private func row(track: Track, index: Int, isCurrent: Bool,
+                     onPlay: @escaping () -> Void, onRemove: @escaping () -> Void) -> some View {
+        PlaybackRowInteraction(
+            isHighlighted: isCurrent,
+            onSelect: {},
+            onPlay: { Task { @MainActor in onPlay() } }
+        ) {
+            QueueRow(
+                index: index,
+                track: track,
+                isCurrent: isCurrent,
+                isPlaying: player.isPlaying,
+                onLocate: onLocate.map { locate in { locate(track) } },
+                onAddToPlaylist: { trackToAdd = track },
+                onRemove: { Task { @MainActor in onRemove() } }
+            )
+        }
+        #if targetEnvironment(macCatalyst)
+        .overlay {
+            DoubleClickDetector(onSingleClick: {}, onDoubleClick: { Task { @MainActor in onPlay() } })
+        }
+        #endif
+    }
+
+    // MARK: - Header
+
+    private var ellipsisLabel: some View {
+        Image(systemName: "ellipsis")
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .frame(width: 36, height: 36)
+            .contentShape(Rectangle())
+    }
+
+    private func sectionHeader<MenuContent: View>(
+        title: String, count: Int, isExpanded: Binding<Bool>,
+        @ViewBuilder menu: () -> MenuContent
+    ) -> some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text("Queue").font(.headline)
-                    if !player.queue.isEmpty {
-                        Text("\(player.queue.count)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.bold))
+                    Text(title).font(.headline)
+                    if count > 0 {
+                        Text("\(count)").font(.subheadline).foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-
-            Menu {
-                Button {
-                    isExpanded = true
-                    withAnimation { editMode = editMode.isEditing ? .inactive : .active }
-                } label: {
-                    Label(editMode.isEditing ? "Done" : "Edit", systemImage: "arrow.up.arrow.down")
-                }
-                Button(role: .destructive) {
-                    player.clearQueue()
-                } label: {
-                    Label("Clear", systemImage: "trash")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 40, height: 40)
-                    .contentShape(Rectangle())
-            }
-            .disabled(player.queue.isEmpty)
+            menu()
         }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: - Rows
-
-    @ViewBuilder
-    private var queueRows: some View {
-        ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, track in
-            PlaybackRowInteraction(
-                isHighlighted: player.currentIndex == index,
-                onSelect: {},
-                onPlay: { Task { @MainActor in player.play(at: index) } }
-            ) {
-                QueueRow(
-                    index: index,
-                    track: track,
-                    isCurrent: player.currentIndex == index,
-                    isPlaying: player.isPlaying,
-                    onLocate: onLocate.map { locate in { locate(track) } },
-                    onAddToPlaylist: { trackToAdd = track },
-                    onRemove: { Task { @MainActor in player.removeFromQueue(at: IndexSet(integer: index)) } }
-                )
-            }
-            #if targetEnvironment(macCatalyst)
-            .overlay {
-                DoubleClickDetector(
-                    onSingleClick: {},
-                    onDoubleClick: { Task { @MainActor in player.play(at: index) } }
-                )
-            }
-            #endif
-        }
-        .onMove { offsets, destination in
-            Task { @MainActor in player.moveQueue(fromOffsets: offsets, toOffset: destination) }
-        }
-        .onDelete { offsets in
-            Task { @MainActor in player.removeFromQueue(at: offsets) }
-        }
+        .textCase(nil)
+        .padding(.vertical, 2)
     }
 }
 
@@ -152,7 +186,7 @@ private struct QueueRow: View {
                 }
             }
             .font(.caption)
-            .frame(width: 24, alignment: .center)
+            .frame(width: 26, alignment: .center)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
