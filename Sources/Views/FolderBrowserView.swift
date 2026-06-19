@@ -1,8 +1,11 @@
 import SwiftUI
 
-private struct FolderNavigationTarget: Identifiable, Hashable {
+/// A folder location pushed onto a source's navigation stack. Hashable so it can
+/// drive a value-based `NavigationStack` path (and be restored later).
+struct FolderRoute: Hashable {
+    let sourceID: String
     let path: String
-    var id: String { path }
+    let title: String
 }
 
 /// Lists the contents of one directory within a `FileSource`. Tapping a folder
@@ -12,6 +15,12 @@ struct FolderBrowserView: View {
     let source: any FileSource
     let path: String
     let title: String
+    /// When this folder is the one containing `focusFilePath`, that file is
+    /// highlighted and scrolled into view on load (used by "Locate File").
+    var focusFilePath: String? = nil
+    /// Pushes a sub-folder onto the navigation stack (Catalyst's programmatic
+    /// open; iOS uses value-based `NavigationLink`s instead).
+    var pushFolder: ((FolderRoute) -> Void)? = nil
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
@@ -26,8 +35,6 @@ struct FolderBrowserView: View {
     @State private var trackToAdd: Track?
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
-    @State private var folderToOpen: FolderNavigationTarget?
-    @State private var openingFolderPath: String?
     @State private var focusRevertTask: Task<Void, Never>?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
@@ -58,14 +65,7 @@ struct FolderBrowserView: View {
                                    message: "This folder has no FLAC or WAV files.")
                 }
             } else {
-                ZStack {
-                    list
-                    if openingFolderPath != nil {
-                        ProgressView("Opening…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(.ultraThinMaterial)
-                    }
-                }
+                list
             }
         }
         .navigationTitle(title)
@@ -89,7 +89,6 @@ struct FolderBrowserView: View {
             }
         }
         .task(id: path) {
-            folderToOpen = nil
             await reload()
         }
         .onChange(of: player.currentTrack?.id) {
@@ -108,18 +107,6 @@ struct FolderBrowserView: View {
             }
         }
         #if targetEnvironment(macCatalyst)
-        .navigationDestination(item: $folderToOpen) { target in
-            FolderBrowserView(
-                source: source,
-                path: target.path,
-                title: folderName(for: target.path)
-            )
-            .environmentObject(player)
-            .onAppear { openingFolderPath = nil }
-        }
-        .onChange(of: folderToOpen) { _, new in
-            if new == nil { openingFolderPath = nil }
-        }
         .onKeyPress(.return) {
             openSelectedFolderIfNeeded()
         }
@@ -168,15 +155,15 @@ struct FolderBrowserView: View {
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
                     onSelect: { focus(on: item, transient: false) },
-                    onPlay: { openFolder(at: item.path) }
+                    onPlay: { openFolder(at: item.path, name: item.name) }
                 ) {
-                    FolderRow(name: item.name, isOpening: openingFolderPath == item.path)
+                    FolderRow(name: item.name)
                 }
                 .tag(item.path)
                 .overlay {
                     DoubleClickDetector(
                         onSingleClick: { focus(on: item, transient: false) },
-                        onDoubleClick: { openFolder(at: item.path) }
+                        onDoubleClick: { openFolder(at: item.path, name: item.name) }
                     )
                 }
                 .contextMenu {
@@ -187,10 +174,7 @@ struct FolderBrowserView: View {
                     }
                 }
                 #else
-                NavigationLink {
-                    FolderBrowserView(source: source, path: item.path, title: item.name)
-                        .environmentObject(player)
-                } label: {
+                NavigationLink(value: FolderRoute(sourceID: source.id, path: item.path, title: item.name)) {
                     Label(item.name, systemImage: "folder")
                 }
                 .contextMenu {
@@ -283,14 +267,13 @@ struct FolderBrowserView: View {
               item.kind == .directory else {
             return .ignored
         }
-        openFolder(at: item.path)
+        openFolder(at: item.path, name: item.name)
         return .handled
     }
 
-    private func openFolder(at path: String) {
+    private func openFolder(at path: String, name: String) {
         ListFocusBehavior.cancelRevert(task: &focusRevertTask)
-        openingFolderPath = path
-        folderToOpen = FolderNavigationTarget(path: path)
+        pushFolder?(FolderRoute(sourceID: source.id, path: path, title: name))
     }
     #endif
 
@@ -377,23 +360,26 @@ struct FolderBrowserView: View {
         }
         isLoading = false
         syncFocusFromPlayer()
+        applyLocateFocusIfNeeded()
+    }
+
+    /// If this folder holds the "Locate File" target, highlight and scroll to it.
+    private func applyLocateFocusIfNeeded() {
+        guard let focusFilePath,
+              (focusFilePath as NSString).deletingLastPathComponent == path,
+              items.contains(where: { $0.path == focusFilePath }) else { return }
+        ListFocusBehavior.cancelRevert(task: &focusRevertTask)
+        selectedItemPath = focusFilePath
+        scrollTarget = focusFilePath
     }
 }
 
 #if targetEnvironment(macCatalyst)
 private struct FolderRow: View {
     let name: String
-    let isOpening: Bool
 
     var body: some View {
-        HStack {
-            Label(name, systemImage: "folder")
-            Spacer()
-            if isOpening {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
+        Label(name, systemImage: "folder")
     }
 }
 #endif

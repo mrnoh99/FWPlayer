@@ -23,6 +23,14 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
     /// The SMB server currently being edited (presents the edit sheet).
     @State private var editingSMB: SMBServerConfig?
+    /// Each source's current folder stack, so re-selecting a library returns to
+    /// the most recent location it was left at.
+    @State private var sourcePaths: [String: [FolderRoute]] = [:]
+    /// The file "Locate File" should scroll to, once its folder is open.
+    @State private var locateFilePath: String?
+    /// Set briefly while a "Locate File" action drives the selection change so we
+    /// don't clear `locateFilePath` in the resulting `onChange`.
+    @State private var pendingLocate = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,6 +41,16 @@ struct ContentView: View {
                 sidebar
             } detail: {
                 detail
+            }
+        }
+        .onChange(of: selection) { _, newValue in
+            if pendingLocate {
+                pendingLocate = false
+            } else {
+                locateFilePath = nil
+            }
+            if case .source(let id) = newValue {
+                validateSavedPath(for: id)
             }
         }
         .sheet(isPresented: $showingFolderPicker) {
@@ -168,26 +186,40 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
-        NavigationStack {
-            switch selection {
-            case .queue:
-                QueueView(onLocate: { track in
-                    selection = .source(track.sourceID)
-                })
+        switch selection {
+        case .queue:
+            NavigationStack {
+                QueueView(onLocate: locate)
                     .environmentObject(player)
-            case .source(let id):
-                if let source = registry.source(for: id) {
-                    FolderBrowserView(source: source, path: "", title: source.displayName)
-                } else {
-                    unavailable
-                }
-            case .playlist(let id):
-                PlaylistDetailView(playlistID: id, onLocate: { track in
-                    selection = .source(track.sourceID)
-                })
-            case nil:
-                unavailable
             }
+        case .source(let id):
+            if let source = registry.source(for: id) {
+                NavigationStack(path: pathBinding(for: id)) {
+                    FolderBrowserView(
+                        source: source, path: "", title: source.displayName,
+                        focusFilePath: locateFilePath, pushFolder: pushFolder
+                    )
+                    .navigationDestination(for: FolderRoute.self) { route in
+                        if let routeSource = registry.source(for: route.sourceID) {
+                            FolderBrowserView(
+                                source: routeSource, path: route.path, title: route.title,
+                                focusFilePath: locateFilePath, pushFolder: pushFolder
+                            )
+                            .environmentObject(player)
+                            .environmentObject(playlists)
+                        }
+                    }
+                }
+                .id(id)
+            } else {
+                NavigationStack { unavailable }
+            }
+        case .playlist(let id):
+            NavigationStack {
+                PlaylistDetailView(playlistID: id, onLocate: locate)
+            }
+        case nil:
+            NavigationStack { unavailable }
         }
     }
 
@@ -197,6 +229,58 @@ struct ContentView: View {
             systemImage: "music.note.list",
             message: "Choose a folder, SMB server, or playlist to start listening."
         )
+    }
+
+    // MARK: - Folder navigation memory & Locate File
+
+    /// Binds a source's remembered navigation stack so browsing it updates the
+    /// stored location and re-selecting the source restores it.
+    private func pathBinding(for id: String) -> Binding<[FolderRoute]> {
+        Binding(
+            get: { sourcePaths[id] ?? [] },
+            set: { sourcePaths[id] = $0 }
+        )
+    }
+
+    /// Pushes a sub-folder (used by Catalyst's programmatic open).
+    private func pushFolder(_ route: FolderRoute) {
+        sourcePaths[route.sourceID, default: []].append(route)
+    }
+
+    /// "Locate File": switch to the track's source and open the folder that holds
+    /// it, scrolling the file into view.
+    private func locate(_ track: Track) {
+        let folder = (track.path as NSString).deletingLastPathComponent
+        sourcePaths[track.sourceID] = folderRoutes(sourceID: track.sourceID, folder: folder)
+        locateFilePath = track.path
+        pendingLocate = true
+        selection = .source(track.sourceID)
+    }
+
+    /// Builds the chain of folder routes leading down to `folder`.
+    private func folderRoutes(sourceID: String, folder: String) -> [FolderRoute] {
+        guard !folder.isEmpty else { return [] }
+        var routes: [FolderRoute] = []
+        var accumulated = ""
+        for component in folder.split(separator: "/").map(String.init) {
+            accumulated = accumulated.isEmpty ? component : accumulated + "/" + component
+            routes.append(FolderRoute(sourceID: sourceID, path: accumulated, title: component))
+        }
+        return routes
+    }
+
+    /// Confirms a source's remembered folder still exists; if it's gone, resets to
+    /// the source root so re-selecting it starts from the top.
+    private func validateSavedPath(for id: String) {
+        guard let deepest = sourcePaths[id]?.last,
+              let source = registry.source(for: id) else { return }
+        Task {
+            do {
+                _ = try await source.list(path: deepest.path)
+            } catch {
+                sourcePaths[id] = []
+            }
+        }
     }
 }
 
