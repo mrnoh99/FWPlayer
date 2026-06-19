@@ -172,7 +172,9 @@ struct ContentView: View {
                     unavailable
                 }
             case .playlist(let id):
-                PlaylistDetailView(playlistID: id)
+                PlaylistDetailView(playlistID: id, onLocate: { track in
+                    selection = .source(track.sourceID)
+                })
             case nil:
                 unavailable
             }

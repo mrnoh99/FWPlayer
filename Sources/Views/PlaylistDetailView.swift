@@ -4,11 +4,14 @@ import SwiftUI
 /// entries, rename, or delete the playlist.
 struct PlaylistDetailView: View {
     let playlistID: UUID
+    /// Reveals a track's file in the browser (jumps to its source).
+    var onLocate: ((Track) -> Void)? = nil
 
     @EnvironmentObject private var playlists: PlaylistManager
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var registry: SourceRegistry
 
+    @State private var trackToAdd: Track?
     @State private var showingRename = false
     @State private var renameText = ""
     @State private var isDropTarget = false
@@ -63,6 +66,9 @@ struct PlaylistDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") { playlists.rename(playlistID, to: renameText) }
         }
+        .sheet(item: $trackToAdd) { track in
+            AddToPlaylistView(track: track)
+        }
     }
 
     private func content(for playlist: Playlist) -> some View {
@@ -87,12 +93,18 @@ struct PlaylistDetailView: View {
             PlaybackRowInteraction(
                 isHighlighted: isFocused(entry),
                 onSelect: { focus(on: entry, transient: false) },
-                onPlay: { play(playlist, startAt: index) }
+                onPlay: { player.playNext(Track(entry: entry)) }
             ) {
                 EntryRow(
                     entry: entry,
                     isCurrent: isCurrent(entry),
-                    directURL: registry.source(for: entry.sourceID)?.directURL(forPath: entry.path)
+                    directURL: registry.source(for: entry.sourceID)?.directURL(forPath: entry.path),
+                    onPlayNow: { player.play(tracks: [Track(entry: entry)], startAt: 0) },
+                    onPlayFromHere: { play(playlist, startAt: index) },
+                    onPlayNext: { player.playNext(Track(entry: entry)) },
+                    onAddToQueue: { player.enqueue(tracks: [Track(entry: entry)]) },
+                    onAddToPlaylist: { trackToAdd = Track(entry: entry) },
+                    onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } }
                 )
             }
             .id(entry.id)
@@ -164,6 +176,16 @@ struct PlaylistDetailView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if let playlist, !playlist.entries.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    play(playlist, startAt: 0)   // replace the queue with the whole playlist
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                }
+                .accessibilityLabel("Play Playlist")
+            }
+        }
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 if let playlist, !playlist.entries.isEmpty {
@@ -219,6 +241,12 @@ private struct EntryRow: View {
     let entry: PlaylistEntry
     let isCurrent: Bool
     let directURL: URL?
+    var onPlayNow: (() -> Void)? = nil
+    var onPlayFromHere: (() -> Void)? = nil
+    var onPlayNext: (() -> Void)? = nil
+    var onAddToQueue: (() -> Void)? = nil
+    var onAddToPlaylist: (() -> Void)? = nil
+    var onLocate: (() -> Void)? = nil
 
     @EnvironmentObject private var player: AudioPlayer
     @State private var loadedSampleRate: Double?
@@ -243,6 +271,33 @@ private struct EntryRow: View {
                 }
             }
             Spacer()
+
+            Menu {
+                if let onPlayNow {
+                    Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+                }
+                if let onPlayFromHere {
+                    Button(action: onPlayFromHere) { Label("Play from Here", systemImage: "play.circle") }
+                }
+                if let onPlayNext {
+                    Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                }
+                if let onAddToQueue {
+                    Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+                }
+                if let onAddToPlaylist {
+                    Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
+                }
+                if let onLocate {
+                    Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
         }
         .contentShape(Rectangle())
         .task(id: directURL?.path) {
