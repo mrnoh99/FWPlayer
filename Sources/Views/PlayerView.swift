@@ -16,6 +16,8 @@ struct PlayerView: View {
     @State private var duration: TimeInterval = 0
     @State private var canGoPrevious = false
     @State private var canGoNext = false
+    @State private var isShuffled = false
+    @State private var repeatMode: RepeatMode = .off
 
     /// Local scrub position while the user is dragging the slider.
     @State private var scrubTime: Double = 0
@@ -65,6 +67,8 @@ struct PlayerView: View {
             scrubber
 
             transportControls
+
+            shuffleRepeatControls
 
             Spacer(minLength: 0)
         }
@@ -150,6 +154,29 @@ struct PlayerView: View {
         .buttonStyle(.plain)
     }
 
+    /// Apple Music–style shuffle (left) and repeat (right) row.
+    private var shuffleRepeatControls: some View {
+        HStack {
+            Button {
+                Task { @MainActor in player.toggleShuffle() }
+            } label: {
+                Image(systemName: "shuffle")
+                    .font(.title3)
+                    .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
+            }
+            Spacer()
+            Button {
+                Task { @MainActor in player.cycleRepeatMode() }
+            } label: {
+                Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
+                    .font(.title3)
+                    .foregroundStyle(repeatMode == .off ? .secondary : Color.accentColor)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 44)
+    }
+
     private func refreshFromPlayer() {
         isLoading = player.isLoading
         title = player.currentTrack?.title ?? "Not Playing"
@@ -161,6 +188,8 @@ struct PlayerView: View {
         duration = player.duration
         canGoPrevious = player.canGoPrevious
         canGoNext = player.canGoNext
+        isShuffled = player.isShuffled
+        repeatMode = player.repeatMode
     }
 
     private func timeString(_ time: TimeInterval) -> String {

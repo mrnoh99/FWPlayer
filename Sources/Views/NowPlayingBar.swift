@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Compact transport bar pinned to the bottom of the app. Tapping it opens the
-/// full `PlayerView`.
+/// Floating "liquid glass" now-playing bar pinned near the bottom of the app,
+/// styled like Apple Music: rounded translucent card with centered transport.
+/// Tapping it opens the full `PlayerView`.
 struct NowPlayingBar: View {
     @EnvironmentObject private var player: AudioPlayer
     var onTap: () -> Void
@@ -24,84 +25,76 @@ struct NowPlayingBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Image(systemName: "music.note")
-                    .font(.title2)
-                    .frame(width: 44, height: 44)
-                    .background(Color.secondary.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .font(.title3)
+                    .frame(width: 42, height: 42)
+                    .background(Color.secondary.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.subheadline.weight(.medium))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title.isEmpty ? "Not Playing" : title)
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     if let artist {
-                        Text(artist)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        Text(artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     } else if let sampleRate {
                         Text(AudioFormatReader.formatSampleRate(sampleRate))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
-                Spacer()
+                Spacer(minLength: 8)
 
                 if let onShowQueue, !player.queue.isEmpty {
                     Button(action: onShowQueue) {
-                        Image(systemName: "list.bullet")
-                            .font(.title3)
+                        Image(systemName: "list.bullet").font(.body)
                     }
                     .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
                 }
+            }
+
+            // Centered transport, Apple Music style.
+            HStack(spacing: 40) {
+                Button { Task { @MainActor in player.previous() } } label: {
+                    Image(systemName: "backward.fill").font(.title3)
+                }
+                .disabled(!canGoPrevious)
 
                 if isLoading {
-                    ProgressView()
+                    ProgressView().frame(width: 34, height: 34)
                 } else {
-                    Button {
-                        Task { @MainActor in player.previous() }
-                    } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.title3)
-                    }
-                    .disabled(!canGoPrevious)
-                    Button {
-                        Task { @MainActor in player.togglePlayPause() }
-                    } label: {
+                    Button { Task { @MainActor in player.togglePlayPause() } } label: {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title2)
+                            .font(.title)
                     }
-                    Button {
-                        Task { @MainActor in player.next() }
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.title3)
-                    }
-                    .disabled(!canGoNext)
                 }
-            }
 
-            VStack(spacing: 4) {
-                HStack {
-                    Text(Self.timeString(currentTime))
-                    Spacer()
-                    Text(Self.timeString(duration))
+                Button { Task { @MainActor in player.next() } } label: {
+                    Image(systemName: "forward.fill").font(.title3)
                 }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .tint(.accentColor)
+                .disabled(!canGoNext)
             }
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+
+            // Thin progress line.
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+                .tint(.accentColor)
+                .scaleEffect(x: 1, y: 0.6, anchor: .center)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .contentShape(Rectangle())
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 5)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture(perform: onTap)
         .onAppear { refreshFromPlayer() }
         .onReceive(player.objectWillChange) { _ in
@@ -119,11 +112,5 @@ struct NowPlayingBar: View {
         canGoNext = player.canGoNext
         currentTime = player.currentTime
         duration = player.duration
-    }
-
-    private static func timeString(_ time: TimeInterval) -> String {
-        guard time.isFinite, time >= 0 else { return "0:00" }
-        let total = Int(time)
-        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

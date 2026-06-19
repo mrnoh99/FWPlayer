@@ -3,6 +3,11 @@ import AVFoundation
 import MediaPlayer
 import Combine
 
+/// Repeat behavior, cycled Apple Music–style: off → all (loop queue) → one (loop track).
+enum RepeatMode: Int {
+    case off, all, one
+}
+
 /// Drives playback of FLAC/WAV tracks using `AVAudioPlayer`. Maintains a queue,
 /// resolves tracks to local files through the `SourceRegistry` (downloading
 /// from SMB when needed), and integrates with the system Now Playing UI and
@@ -26,6 +31,12 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// When set, next/previous follow the live playlist order.
     @Published private(set) var activePlaylistID: UUID?
+
+    /// Apple Music–style shuffle and repeat.
+    @Published var repeatMode: RepeatMode = .off
+    @Published private(set) var isShuffled = false
+    /// The pre-shuffle (sequential) order, so shuffle can be turned back off.
+    private var unshuffledQueue: [Track] = []
 
     var canGoNext: Bool {
         guard let i = currentIndex, queue.indices.contains(i) else { return false }
@@ -61,9 +72,51 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Pass `fromPlaylist` when starting from a playlist so next/previous stay in sync.
     func play(tracks: [Track], startAt index: Int, fromPlaylist playlistID: UUID? = nil) {
         guard tracks.indices.contains(index) else { return }
-        activePlaylistID = playlistID
-        queue = tracks
-        loadAndPlay(index: index)
+        unshuffledQueue = tracks
+        if isShuffled {
+            // Shuffle stays on across new queues; play the chosen track first.
+            activePlaylistID = nil
+            let startTrack = tracks[index]
+            var rest = tracks
+            rest.remove(at: index)
+            rest.shuffle()
+            queue = [startTrack] + rest
+            loadAndPlay(index: 0)
+        } else {
+            activePlaylistID = playlistID
+            queue = tracks
+            loadAndPlay(index: index)
+        }
+    }
+
+    /// Cycles repeat off → all → one (Apple Music order).
+    func cycleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
+        updateNowPlaying()
+    }
+
+    /// Toggles shuffle, keeping the current track playing.
+    func toggleShuffle() {
+        let playing = currentTrack
+        if isShuffled {
+            if !unshuffledQueue.isEmpty { queue = unshuffledQueue }
+            isShuffled = false
+        } else {
+            activePlaylistID = nil      // detach from live playlist order
+            unshuffledQueue = queue
+            var rest = queue
+            if let playing, let idx = rest.firstIndex(of: playing) { rest.remove(at: idx) }
+            rest.shuffle()
+            queue = (playing.map { [$0] } ?? []) + rest
+            isShuffled = true
+        }
+        if let playing { currentIndex = queue.firstIndex(of: playing) }
+        updateNowPlaying()
+        noteTransportEvent()
     }
 
     func togglePlayPause() {
@@ -117,6 +170,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         activePlaylistID = nil
         queue.append(contentsOf: tracks)
+        unshuffledQueue.append(contentsOf: tracks)
     }
 
     /// Removes tracks at the given indices. Stops playback if the queue becomes empty.
@@ -128,9 +182,12 @@ final class AudioPlayer: NSObject, ObservableObject {
         let removingCurrent = offsets.contains(oldIndex)
 
         var updated = queue
+        var removedIDs = Set<String>()
         for index in offsets.sorted(by: >) where updated.indices.contains(index) {
+            removedIDs.insert(updated[index].id)
             updated.remove(at: index)
         }
+        unshuffledQueue.removeAll { removedIDs.contains($0.id) }
 
         guard !updated.isEmpty else {
             stop()
@@ -222,6 +279,32 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func noteTransportEvent() {
         transportEventID += 1
+    }
+
+    /// Advances when the current track finishes playing, honoring the repeat mode.
+    private func advanceAfterPlaybackEnded() {
+        switch repeatMode {
+        case .one:
+            if let i = currentIndex, queue.indices.contains(i) {
+                loadAndPlay(index: i)            // replay the same track
+            }
+        case .all:
+            if queue.count <= 1 {
+                if let i = currentIndex { loadAndPlay(index: i) }
+            } else {
+                next()                            // wraps to the start at the end
+            }
+        case .off:
+            let current = resolvedCurrentIndex() ?? currentIndex
+            if let current, current + 1 < queue.count {
+                loadAndPlay(index: current + 1)
+            } else {
+                // End of queue: stop advancing but keep the queue and selection.
+                isPlaying = false
+                ticker?.cancel()
+                updateNowPlaying()
+            }
+        }
     }
 
     // MARK: - Loading
@@ -511,7 +594,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 extension AudioPlayer: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
-            self?.next()
+            self?.advanceAfterPlaybackEnded()
         }
     }
 
