@@ -100,7 +100,7 @@ struct FolderBrowserView: View {
         .onChange(of: selectedItemPath) { _, new in
             guard let new else { return }
             scrollTarget = new
-            if new == currentPlayingPathInList {
+            if new == currentPlayingPathInList || new == focusFilePath {
                 ListFocusBehavior.cancelRevert(task: &focusRevertTask)
             } else {
                 scheduleFocusRevert()
