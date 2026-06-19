@@ -14,6 +14,7 @@ struct FolderBrowserView: View {
     let title: String
 
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var playlists: PlaylistManager
     #if targetEnvironment(macCatalyst)
     @Environment(\.dismiss) private var dismiss
     #endif
@@ -200,7 +201,9 @@ struct FolderBrowserView: View {
                     TrackRow(
                         item: item,
                         isCurrent: isCurrent(item),
-                        directURL: source.directURL(forPath: item.path)
+                        directURL: source.directURL(forPath: item.path),
+                        isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
+                        onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) }
                     )
                 }
                 .id(item.path)
@@ -407,6 +410,8 @@ private struct TrackRow: View {
     let item: FileItem
     let isCurrent: Bool
     let directURL: URL?
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)? = nil
 
     @State private var sampleRate: Double?
 
@@ -433,6 +438,14 @@ private struct TrackRow: View {
                 Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if let onToggleFavorite {
+                Button(action: onToggleFavorite) {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
             }
         }
         .contentShape(Rectangle())

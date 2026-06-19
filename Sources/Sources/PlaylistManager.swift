@@ -9,8 +9,42 @@ final class PlaylistManager: ObservableObject {
 
     private let store = PlaylistStore()
 
+    /// The built-in Favorites playlist: always kept first and never deletable.
+    static let favoritesID = UUID(uuidString: "FA000000-0000-0000-0000-000000000001")!
+    static let favoritesName = "Favorites"
+
     func load() {
         playlists = store.load()
+        ensureFavoritesFirst()
+    }
+
+    /// Guarantees a Favorites playlist exists and is the first entry.
+    private func ensureFavoritesFirst() {
+        if let index = playlists.firstIndex(where: { $0.id == Self.favoritesID }) {
+            if index != 0 {
+                let favorites = playlists.remove(at: index)
+                playlists.insert(favorites, at: 0)
+                persist()
+            }
+        } else {
+            playlists.insert(Playlist(id: Self.favoritesID, name: Self.favoritesName), at: 0)
+            persist()
+        }
+    }
+
+    var favorites: Playlist? { playlist(for: Self.favoritesID) }
+
+    func isFavorite(_ track: Track) -> Bool { contains(track, in: Self.favoritesID) }
+
+    /// Adds/removes the track from Favorites. Returns whether it's now a favorite.
+    @discardableResult
+    func toggleFavorite(_ track: Track) -> Bool {
+        if isFavorite(track) {
+            remove(track, from: Self.favoritesID)
+            return false
+        }
+        add(track, to: Self.favoritesID)
+        return true
     }
 
     func playlist(for id: UUID) -> Playlist? {
@@ -35,6 +69,7 @@ final class PlaylistManager: ObservableObject {
     }
 
     func delete(_ id: UUID) {
+        guard id != Self.favoritesID else { return }   // Favorites can't be deleted
         playlists.removeAll { $0.id == id }
         persist()
     }

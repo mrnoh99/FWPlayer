@@ -192,13 +192,16 @@ private struct PlaylistSidebarRow: View {
     @EnvironmentObject private var playlists: PlaylistManager
     @State private var isDropTarget = false
 
+    private var isFavorites: Bool { playlist.id == PlaylistManager.favoritesID }
+
     var body: some View {
         Label {
             Text(playlist.name)
             Text("\(playlist.entries.count)")
                 .foregroundStyle(.secondary)
         } icon: {
-            Image(systemName: "music.note.list")
+            Image(systemName: isFavorites ? "star.fill" : "music.note.list")
+                .foregroundStyle(isFavorites ? Color.yellow : Color.accentColor)
         }
         .listRowBackground(isDropTarget ? Color.accentColor.opacity(0.15) : nil)
         .dropDestination(for: Track.self) { tracks, _ in
@@ -208,10 +211,12 @@ private struct PlaylistSidebarRow: View {
             return true
         } isTargeted: { isDropTarget = $0 }
         .contextMenu {
-            Button(role: .destructive) {
-                playlists.delete(playlist.id)
-            } label: {
-                Label("Delete Playlist", systemImage: "trash")
+            if !isFavorites {
+                Button(role: .destructive) {
+                    playlists.delete(playlist.id)
+                } label: {
+                    Label("Delete Playlist", systemImage: "trash")
+                }
             }
         }
     }
