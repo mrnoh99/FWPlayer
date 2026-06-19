@@ -165,12 +165,25 @@ final class RemoteControlServer: ObservableObject {
             let queue = tracks.map { Track(sourceID: $0.sourceID, path: $0.path, title: $0.title) }
             player.enqueue(tracks: queue)
 
+        case .playNext(let tracks):
+            // Insert in reverse so the list keeps its order right after the
+            // current track.
+            for remote in tracks.reversed() {
+                player.playNext(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title))
+            }
+
         case .removeFromQueue(let indices):
             player.removeFromQueue(at: IndexSet(indices))
 
         case .playFolder(let sourceID, let path, let recursive):
             Task {
                 await playFolder(sourceID: sourceID, path: path, recursive: recursive)
+            }
+
+        case .addToPlaylist(let playlistID, let tracks):
+            guard let uuid = UUID(uuidString: playlistID) else { return }
+            for remote in tracks {
+                playlists.add(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title), to: uuid)
             }
 
         case .authenticate:

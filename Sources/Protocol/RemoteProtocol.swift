@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 2
+let fwRemoteProtocolVersion = 3
 
 /// A track as exposed to the remote. A trimmed-down, transport-friendly mirror
 /// of the player's internal `Track`.
@@ -130,10 +130,14 @@ enum RemoteCommand: Codable, Hashable {
     case setQueue(tracks: [RemoteQueueTrack], startAt: Int, playlistID: String? = nil)
     /// Append `tracks` to the end of the current queue.
     case enqueue(tracks: [RemoteQueueTrack])
+    /// Insert `tracks` right after the current track so they play next.
+    case playNext(tracks: [RemoteQueueTrack])
     /// Remove tracks at the given zero-based indices from the current queue.
     case removeFromQueue(at: [Int])
     /// Play every audio file under a folder, optionally including subfolders.
     case playFolder(sourceID: String, path: String, recursive: Bool)
+    /// Append `tracks` to the playlist with the given id.
+    case addToPlaylist(playlistID: String, tracks: [RemoteQueueTrack])
 }
 
 /// The envelope exchanged over the wire. Commands flow remote → player; state,
