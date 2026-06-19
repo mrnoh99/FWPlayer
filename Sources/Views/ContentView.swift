@@ -161,7 +161,9 @@ struct ContentView: View {
         NavigationStack {
             switch selection {
             case .queue:
-                QueueView()
+                QueueView(onLocate: { track in
+                    selection = .source(track.sourceID)
+                })
                     .environmentObject(player)
             case .source(let id):
                 if let source = registry.source(for: id) {

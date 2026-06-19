@@ -206,7 +206,8 @@ struct FolderBrowserView: View {
                         onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) },
                         onPlayNow: { playFromQueue(startingAt: item) },
                         onPlayNext: { player.playNext(Track(sourceID: source.id, item: item)) },
-                        onAddToQueue: { player.enqueue(tracks: [Track(sourceID: source.id, item: item)]) }
+                        onAddToQueue: { player.enqueue(tracks: [Track(sourceID: source.id, item: item)]) },
+                        onAddToPlaylist: { trackToAdd = Track(sourceID: source.id, item: item) }
                     )
                 }
                 .id(item.path)
@@ -418,6 +419,7 @@ private struct TrackRow: View {
     var onPlayNow: (() -> Void)? = nil
     var onPlayNext: (() -> Void)? = nil
     var onAddToQueue: (() -> Void)? = nil
+    var onAddToPlaylist: (() -> Void)? = nil
 
     @State private var sampleRate: Double?
 
@@ -463,6 +465,9 @@ private struct TrackRow: View {
                     }
                     if let onAddToQueue {
                         Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+                    }
+                    if let onAddToPlaylist {
+                        Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
                     }
                 } label: {
                     Image(systemName: "ellipsis")

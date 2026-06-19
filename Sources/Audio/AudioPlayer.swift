@@ -187,6 +187,21 @@ final class AudioPlayer: NSObject, ObservableObject {
         noteTransportEvent()
     }
 
+    /// Reorders queued tracks (Queue editor), keeping the current track current.
+    func moveQueue(fromOffsets source: IndexSet, toOffset destination: Int) {
+        let playing = currentTrack
+        queue.move(fromOffsets: source, toOffset: destination)
+        if let playing { currentIndex = queue.firstIndex(of: playing) }
+        noteTransportEvent()
+    }
+
+    /// Empties the queue and stops playback ("Clear").
+    func clearQueue() {
+        stop()
+        unshuffledQueue = []
+        isShuffled = false
+    }
+
     /// Removes tracks at the given indices. Stops playback if the queue becomes empty.
     func removeFromQueue(at offsets: IndexSet) {
         guard !offsets.isEmpty, !queue.isEmpty else { return }
