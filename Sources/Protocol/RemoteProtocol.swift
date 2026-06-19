@@ -28,6 +28,10 @@ struct RemoteTrack: Codable, Hashable, Identifiable {
     var artist: String?
     var album: String?
     var duration: TimeInterval?
+    /// Source + path the track came from, so the remote can "Locate File" it in
+    /// the player's library. Optional for compatibility with older players.
+    var sourceID: String?
+    var path: String?
 }
 
 /// A full snapshot of the player's transport state, pushed to every connected

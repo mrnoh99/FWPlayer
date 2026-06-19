@@ -230,7 +230,9 @@ final class RemoteControlServer: ObservableObject {
                     title: $0.title,
                     artist: $0.artist,
                     album: $0.album,
-                    duration: $0.duration
+                    duration: $0.duration,
+                    sourceID: $0.sourceID,
+                    path: $0.path
                 )
             },
             errorMessage: player.errorMessage,
