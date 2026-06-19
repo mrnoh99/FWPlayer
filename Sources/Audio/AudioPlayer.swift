@@ -173,6 +173,20 @@ final class AudioPlayer: NSObject, ObservableObject {
         unshuffledQueue.append(contentsOf: tracks)
     }
 
+    /// Inserts a track to play immediately after the current one ("Play Next").
+    /// If nothing is playing, starts it right away.
+    func playNext(_ track: Track) {
+        guard currentIndex != nil, !queue.isEmpty else {
+            play(tracks: [track], startAt: 0)
+            return
+        }
+        activePlaylistID = nil
+        let insertAt = min((currentIndex ?? -1) + 1, queue.count)
+        queue.insert(track, at: insertAt)
+        unshuffledQueue.append(track)
+        noteTransportEvent()
+    }
+
     /// Removes tracks at the given indices. Stops playback if the queue becomes empty.
     func removeFromQueue(at offsets: IndexSet) {
         guard !offsets.isEmpty, !queue.isEmpty else { return }

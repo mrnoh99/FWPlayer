@@ -196,14 +196,17 @@ struct FolderBrowserView: View {
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
                     onSelect: { focus(on: item, transient: false) },
-                    onPlay: { playFromQueue(startingAt: item) }
+                    onPlay: { player.playNext(Track(sourceID: source.id, item: item)) }
                 ) {
                     TrackRow(
                         item: item,
                         isCurrent: isCurrent(item),
                         directURL: source.directURL(forPath: item.path),
                         isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
-                        onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) }
+                        onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) },
+                        onPlayNow: { playFromQueue(startingAt: item) },
+                        onPlayNext: { player.playNext(Track(sourceID: source.id, item: item)) },
+                        onAddToQueue: { player.enqueue(tracks: [Track(sourceID: source.id, item: item)]) }
                     )
                 }
                 .id(item.path)
@@ -412,6 +415,9 @@ private struct TrackRow: View {
     let directURL: URL?
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
+    var onPlayNow: (() -> Void)? = nil
+    var onPlayNext: (() -> Void)? = nil
+    var onAddToQueue: (() -> Void)? = nil
 
     @State private var sampleRate: Double?
 
@@ -446,6 +452,26 @@ private struct TrackRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
+            }
+            if onPlayNow != nil || onPlayNext != nil || onAddToQueue != nil {
+                Menu {
+                    if let onPlayNow {
+                        Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+                    }
+                    if let onPlayNext {
+                        Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                    }
+                    if let onAddToQueue {
+                        Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("More")
             }
         }
         .contentShape(Rectangle())
