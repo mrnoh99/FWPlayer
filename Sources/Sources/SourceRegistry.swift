@@ -1,11 +1,19 @@
 import Foundation
 import SwiftUI
 
+/// Background pre-scan progress for an SMB server.
+struct SMBScanProgress: Equatable {
+    var isScanning: Bool
+    var foldersScanned: Int
+}
+
 /// Holds every active `FileSource` (the built-in Documents folder on iOS,
 /// user-added local folders, and SMB servers) and owns their persistence.
 @MainActor
 final class SourceRegistry: ObservableObject {
     @Published private(set) var sources: [any FileSource] = []
+    /// Pre-scan progress for SMB servers, keyed by source id.
+    @Published private(set) var smbScans: [String: SMBScanProgress] = [:]
 
     private let bookmarkStore = BookmarkStore()
     private let smbStore = SMBServerStore()
@@ -49,10 +57,39 @@ final class SourceRegistry: ObservableObject {
         }
 
         sources = loaded
+
+        // Pre-scan SMB folder structures so later browsing is instant.
+        for source in sources where source is SMBFileSource {
+            prewarm(source)
+        }
     }
 
     func source(for id: String) -> (any FileSource)? {
         sources.first { $0.id == id }
+    }
+
+    // MARK: - SMB pre-scan
+
+    /// Walks an SMB source's whole folder tree in the background to populate its
+    /// listing cache, so later browsing is instant. Publishes progress.
+    private func prewarm(_ source: any FileSource) {
+        let id = source.id
+        smbScans[id] = SMBScanProgress(isScanning: true, foldersScanned: 0)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var scanned = 0
+            var stack = [""]
+            while let path = stack.popLast() {
+                guard self.sources.contains(where: { $0.id == id }) else { break }   // source removed
+                guard let items = try? await source.list(path: path) else { continue }
+                scanned += 1
+                self.smbScans[id]?.foldersScanned = scanned
+                for item in items where item.kind == .directory {
+                    stack.append(item.path)
+                }
+            }
+            self.smbScans[id]?.isScanning = false
+        }
     }
 
     // MARK: - Local folders
@@ -75,7 +112,9 @@ final class SourceRegistry: ObservableObject {
 
     func addSMBServer(_ config: SMBServerConfig, password: String) {
         smbStore.add(config, password: password)
-        sources.append(SMBFileSource(config: config, password: password))
+        let source = SMBFileSource(config: config, password: password)
+        sources.append(source)
+        prewarm(source)   // learn the folder structure up front
     }
 
     /// Updates an existing SMB server's settings and rebuilds its live source so
@@ -88,6 +127,7 @@ final class SourceRegistry: ObservableObject {
         } else {
             sources.append(updated)
         }
+        prewarm(updated)   // re-scan with the new settings
     }
 
     /// The stored password for an SMB server, for pre-filling the edit form.
@@ -105,5 +145,6 @@ final class SourceRegistry: ObservableObject {
             bookmarkStore.remove(id: source.id)
         }
         sources.removeAll { $0.id == source.id }
+        smbScans[source.id] = nil
     }
 }

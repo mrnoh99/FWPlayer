@@ -96,7 +96,17 @@ struct ContentView: View {
 
             Section("Library") {
                 ForEach(registry.sources, id: \.id) { source in
-                    Label(source.displayName, systemImage: source.symbolName)
+                    HStack {
+                        Label(source.displayName, systemImage: source.symbolName)
+                        if let scan = registry.smbScans[source.id], scan.isScanning {
+                            Spacer()
+                            ProgressView().controlSize(.small)
+                            Text("\(scan.foldersScanned)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
                         .tag(SidebarSelection.source(source.id))
                         .contextMenu {
                             if let smb = source as? SMBFileSource {
