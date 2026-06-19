@@ -32,6 +32,14 @@ struct FolderBrowserView: View {
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
 
+    /// `playableTracks` is every audio under this folder (recursive); `audioItems`
+    /// is only the direct files. If they differ, a subfolder holds music.
+    private var subfoldersHaveAudio: Bool { playableTracks.count > audioItems.count }
+
+    /// The folder's Play button is enabled only when this folder has audio and no
+    /// subfolder holds playable music (so playing it captures everything here).
+    private var canPlayFolder: Bool { !audioItems.isEmpty && !subfoldersHaveAudio }
+
     var body: some View {
         Group {
             if isLoading {
@@ -71,11 +79,12 @@ struct FolderBrowserView: View {
                 }
             }
             #endif
-            if hasPlayableSelection {
+            if !playableTracks.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { playSelection() } label: {
+                    Button { playFolder() } label: {
                         Label("Play", systemImage: "play.fill")
                     }
+                    .disabled(!canPlayFolder)
                 }
             }
         }
@@ -285,30 +294,6 @@ struct FolderBrowserView: View {
     }
     #endif
 
-    private var hasPlayableSelection: Bool {
-        if let selectedItemPath,
-           items.contains(where: { $0.path == selectedItemPath && $0.kind != .other }) {
-            return true
-        }
-        return !playableTracks.isEmpty
-    }
-
-    private func playSelection() {
-        if let selectedItemPath,
-           let item = items.first(where: { $0.path == selectedItemPath }) {
-            switch item.kind {
-            case .directory:
-                Task { await playFolder(at: item.path) }
-            case .audio:
-                playFromQueue(startingAt: item)
-            case .other:
-                playFolder()
-            }
-            return
-        }
-        playFolder()
-    }
-
     private func syncFocusFromPlayer() {
         ListFocusBehavior.cancelRevert(task: &focusRevertTask)
         guard let path = currentPlayingPathInList else { return }
@@ -360,12 +345,15 @@ struct FolderBrowserView: View {
         player.play(tracks: tracks, startAt: index)
     }
 
+    /// Plays this folder's direct audio (used by the folder Play button, which is
+    /// only enabled when no subfolder holds music).
     private func playFolder() {
-        guard !playableTracks.isEmpty else { return }
-        let tracks = playableTracks.map { Track(sourceID: source.id, item: $0) }
+        let tracks = audioItems.map { Track(sourceID: source.id, item: $0) }
+        guard !tracks.isEmpty else { return }
         player.play(tracks: tracks, startAt: 0)
     }
 
+    /// Plays every audio under a subfolder recursively ("Play Folder" on a folder row).
     private func playFolder(at folderPath: String) async {
         do {
             let items = try await source.audioItems(in: folderPath, recursive: true)
