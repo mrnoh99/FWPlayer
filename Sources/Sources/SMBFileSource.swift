@@ -19,6 +19,9 @@ final class SMBFileSource: FileSource {
 
     let config: SMBServerConfig
 
+    /// Persistent on-disk cache of this server's folder listings.
+    private let listingCache: SMBListingCache
+
     #if canImport(SMBClient)
     private let connection: SMBConnection
     #endif
@@ -27,6 +30,7 @@ final class SMBFileSource: FileSource {
         self.id = config.sourceID
         self.displayName = config.displayName
         self.config = config
+        self.listingCache = SMBListingCache(serverID: config.id.uuidString)
         #if canImport(SMBClient)
         self.connection = SMBConnection(config: config, password: password)
         #endif
@@ -34,10 +38,13 @@ final class SMBFileSource: FileSource {
 
     func list(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
-        // Uses the connection's cache when available, so revisiting a folder
-        // (or navigating back) is instant instead of re-listing over the network.
+        // The on-disk cache makes browsing instant after the one-time pre-scan
+        // (and across app restarts).
+        if let cached = await listingCache.listing(path: path) { return cached }
         let files = try await connection.listDirectory(path: path)
-        return Self.items(from: files, parent: path)
+        let items = Self.items(from: files, parent: path)
+        await listingCache.store(path: path, items: items)
+        return items
         #else
         throw FileSourceError.smbUnavailable
         #endif
@@ -45,10 +52,33 @@ final class SMBFileSource: FileSource {
 
     func refresh(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
-        let files = try await connection.listDirectory(path: path, forceRefresh: true)
-        return Self.items(from: files, parent: path)
+        let files = try await connection.listDirectory(path: path)
+        let items = Self.items(from: files, parent: path)
+        await listingCache.store(path: path, items: items)
+        return items
         #else
         throw FileSourceError.smbUnavailable
+        #endif
+    }
+
+    /// Walks the whole tree once, caching every listing to disk, then persists.
+    /// Reports the number of folders scanned. Used after the server is added/edited.
+    func prewarm(progress: @MainActor @escaping (Int) -> Void) async {
+        #if canImport(SMBClient)
+        await listingCache.clear()
+        var scanned = 0
+        var stack = [""]
+        while let path = stack.popLast() {
+            guard let files = try? await connection.listDirectory(path: path) else { continue }
+            let items = Self.items(from: files, parent: path)
+            await listingCache.store(path: path, items: items, persist: false)
+            scanned += 1
+            await progress(scanned)
+            for item in items where item.kind == .directory {
+                stack.append(item.path)
+            }
+        }
+        await listingCache.flush()
         #endif
     }
 
@@ -171,8 +201,6 @@ private actor SMBConnection {
     private let config: SMBServerConfig
     private let password: String
     private var client: SMBClient?
-    /// Cached directory listings, keyed by path. Cleared per-path on refresh.
-    private var listingCache: [String: [File]] = [:]
 
     init(config: SMBServerConfig, password: String) {
         self.config = config
@@ -195,14 +223,11 @@ private actor SMBConnection {
         return client
     }
 
-    func listDirectory(path: String, forceRefresh: Bool = false) async throws -> [File] {
-        if !forceRefresh, let cached = listingCache[path] { return cached }
+    func listDirectory(path: String) async throws -> [File] {
         let client = try await connectedClient()
-        let files = try await withTimeout(listTimeout) {
+        return try await withTimeout(listTimeout) {
             try await client.listDirectory(path: path)
         }
-        listingCache[path] = files
-        return files
     }
 
     func download(path: String) async throws -> Data {

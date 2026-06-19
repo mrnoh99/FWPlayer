@@ -2,8 +2,8 @@ import Foundation
 
 /// A single browsable entry returned by a `FileSource`, independent of whether
 /// it lives on the local device or on a remote SMB share.
-struct FileItem: Identifiable, Hashable {
-    enum Kind: Hashable {
+struct FileItem: Identifiable, Hashable, Codable {
+    enum Kind: Hashable, Codable {
         case directory
         case audio
         case other

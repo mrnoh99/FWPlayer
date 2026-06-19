@@ -56,12 +56,9 @@ final class SourceRegistry: ObservableObject {
             loaded.append(SMBFileSource(config: config, password: password))
         }
 
+        // On launch we do NOT re-scan: each SMB source loads its persisted
+        // on-disk listing cache, so browsing is already fast.
         sources = loaded
-
-        // Pre-scan SMB folder structures so later browsing is instant.
-        for source in sources where source is SMBFileSource {
-            prewarm(source)
-        }
     }
 
     func source(for id: String) -> (any FileSource)? {
@@ -70,25 +67,17 @@ final class SourceRegistry: ObservableObject {
 
     // MARK: - SMB pre-scan
 
-    /// Walks an SMB source's whole folder tree in the background to populate its
-    /// listing cache, so later browsing is instant. Publishes progress.
+    /// Walks an SMB server's folder tree once (after add/edit), caching every
+    /// listing to disk so browsing stays instant across launches. Publishes progress.
     private func prewarm(_ source: any FileSource) {
+        guard let smb = source as? SMBFileSource else { return }
         let id = source.id
         smbScans[id] = SMBScanProgress(isScanning: true, foldersScanned: 0)
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            var scanned = 0
-            var stack = [""]
-            while let path = stack.popLast() {
-                guard self.sources.contains(where: { $0.id == id }) else { break }   // source removed
-                guard let items = try? await source.list(path: path) else { continue }
-                scanned += 1
-                self.smbScans[id]?.foldersScanned = scanned
-                for item in items where item.kind == .directory {
-                    stack.append(item.path)
-                }
+        Task { [weak self] in
+            await smb.prewarm { count in
+                self?.smbScans[id]?.foldersScanned = count
             }
-            self.smbScans[id]?.isScanning = false
+            self?.smbScans[id]?.isScanning = false
         }
     }
 
