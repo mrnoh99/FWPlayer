@@ -54,15 +54,9 @@ struct FolderBrowserView: View {
                 EmptyStateView(title: "Couldn't Load Folder",
                                systemImage: "exclamationmark.triangle",
                                message: loadError)
-            } else if items.isEmpty {
-                if canGoToParent {
-                    list
-                } else {
-                    EmptyStateView(title: "No Audio Here",
-                                   systemImage: "music.note",
-                                   message: "This folder has no FLAC or WAV files.")
-                }
             } else {
+                // Always open the folder — even with no audio — so its subfolders
+                // are browsable. An empty folder shows an inline hint in the list.
                 list
             }
         }
@@ -146,6 +140,10 @@ struct FolderBrowserView: View {
             .tag("__parent__")
         }
         #endif
+        if items.isEmpty {
+            Text("No audio files in this folder.")
+                .foregroundStyle(.secondary)
+        }
         ForEach(items) { item in
             switch item.kind {
             case .directory:
