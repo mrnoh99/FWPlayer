@@ -52,6 +52,10 @@ struct PlaybackState: Codable, Hashable {
     var errorMessage: String?
     /// Current output format, e.g. "96 kHz · 24-bit · Stereo".
     var audioFormat: String?
+    /// Whether shuffle is on.
+    var isShuffled: Bool = false
+    /// Repeat mode: 0 = off, 1 = all, 2 = one (mirrors `RepeatMode.rawValue`).
+    var repeatMode: Int = 0
 }
 
 /// Sent immediately after TCP connect; the remote must authenticate with the
@@ -131,6 +135,10 @@ enum RemoteCommand: Codable, Hashable {
     case seek(time: TimeInterval)
     case playIndex(index: Int)
     case stop
+    /// Toggle shuffle on/off.
+    case toggleShuffle
+    /// Cycle repeat: off → all → one → off.
+    case cycleRepeat
     // Library browsing & queue construction.
     case requestLibrary
     case browse(sourceID: String, path: String)

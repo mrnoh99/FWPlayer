@@ -146,6 +146,12 @@ final class RemoteControlServer: ObservableObject {
         case .stop:
             player.stop()
 
+        case .toggleShuffle:
+            player.toggleShuffle()
+
+        case .cycleRepeat:
+            player.cycleRepeatMode()
+
         case .requestLibrary:
             link.send(.library(buildLibrary()))
 
@@ -238,7 +244,9 @@ final class RemoteControlServer: ObservableObject {
             errorMessage: player.errorMessage,
             audioFormat: player.currentTrack.flatMap { track in
                 track.sampleRate.map { AudioFormatReader.formatSampleRate($0) }
-            }
+            },
+            isShuffled: player.isShuffled,
+            repeatMode: player.repeatMode.rawValue
         )
     }
 
