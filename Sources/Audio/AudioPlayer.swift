@@ -62,6 +62,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// be released) and any decoder-produced temp file (to be deleted).
     private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
     private var loadTask: Task<Void, Never>?
+    /// Pre-downloaded local copies of upcoming queue tracks (keyed by track id) so
+    /// playback starts instantly when their turn comes, instead of waiting on a
+    /// fresh SMB download. `prefetchTasks` holds the in-flight downloads.
+    private var prefetched: [String: (sourceID: String, url: URL)] = [:]
+    private var prefetchTasks: [String: Task<Void, Never>] = [:]
+    /// How many upcoming tracks to pre-download.
+    private let prefetchDepth = 2
 
     init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.registry = registry
@@ -177,6 +184,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         activePlaylistID = nil
         queue.append(contentsOf: tracks)
         unshuffledQueue.append(contentsOf: tracks)
+        prefetchUpcoming()
     }
 
     /// Inserts a track to play immediately after the current one ("Play Next").
@@ -190,6 +198,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         let insertAt = min((currentIndex ?? -1) + 1, queue.count)
         queue.insert(track, at: insertAt)
         unshuffledQueue.append(track)
+        prefetchUpcoming()
         noteTransportEvent()
     }
 
@@ -198,6 +207,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         let playing = currentTrack
         queue.move(fromOffsets: source, toOffset: destination)
         if let playing { currentIndex = queue.firstIndex(of: playing) }
+        prefetchUpcoming()
         noteTransportEvent()
     }
 
@@ -263,6 +273,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             currentIndex = newIndex
             updateNowPlaying()
         }
+        prefetchUpcoming()
         noteTransportEvent()
     }
 
@@ -323,10 +334,88 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     func stop() {
         loadTask?.cancel()
+        clearPrefetch()
         tearDownPlayback(keepQueue: false)
         isLoading = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         noteTransportEvent()
+    }
+
+    // MARK: - Prefetch
+
+    /// The next queue indices that will play after the current one (with repeat-all
+    /// wraparound), used to pre-download upcoming tracks.
+    private func upcomingIndices() -> [Int] {
+        guard let current = currentIndex, !queue.isEmpty else { return [] }
+        var result: [Int] = []
+        var idx = current
+        while result.count < prefetchDepth {
+            let nextIdx: Int
+            if idx + 1 < queue.count {
+                nextIdx = idx + 1
+            } else if repeatMode == .all {
+                nextIdx = 0
+            } else {
+                break
+            }
+            if nextIdx == current { break }   // repeat-one / single-item queue
+            result.append(nextIdx)
+            idx = nextIdx
+        }
+        return result
+    }
+
+    private func upcomingTrackIDs() -> Set<String> {
+        Set(upcomingIndices().map { queue[$0].id })
+    }
+
+    /// Pre-downloads upcoming tracks to local temp files (and releases prefetched
+    /// files no longer upcoming). Local sources are skipped — they're already instant.
+    private func prefetchUpcoming() {
+        let wanted = upcomingTrackIDs()
+
+        for (trackID, task) in prefetchTasks where !wanted.contains(trackID) {
+            task.cancel()
+            prefetchTasks[trackID] = nil
+        }
+        for (trackID, resource) in prefetched where !wanted.contains(trackID) {
+            registry.source(for: resource.sourceID)?.releaseTemporaryURL(resource.url)
+            prefetched[trackID] = nil
+        }
+
+        for index in upcomingIndices() {
+            let track = queue[index]
+            guard prefetched[track.id] == nil, prefetchTasks[track.id] == nil else { continue }
+            guard let source = registry.source(for: track.sourceID) else { continue }
+            if source.directURL(forPath: track.path) != nil { continue }   // local: no download
+
+            prefetchTasks[track.id] = Task { [weak self] in
+                let url = try? await source.fileURL(forPath: track.path)
+                await MainActor.run {
+                    guard let self else {
+                        if let url { source.releaseTemporaryURL(url) }
+                        return
+                    }
+                    self.prefetchTasks[track.id] = nil
+                    guard let url else { return }
+                    if self.upcomingTrackIDs().contains(track.id) {
+                        self.prefetched[track.id] = (source.id, url)
+                    } else {
+                        source.releaseTemporaryURL(url)   // no longer upcoming
+                    }
+                }
+            }
+        }
+    }
+
+    /// Cancels in-flight prefetches and releases every prefetched temp file.
+    private func clearPrefetch() {
+        prefetchTasks.values.forEach { $0.cancel() }
+        prefetchTasks.removeAll()
+        for resource in prefetched.values {
+            registry.source(for: resource.sourceID)?.releaseTemporaryURL(resource.url)
+        }
+        prefetched.removeAll()
     }
 
     private func noteTransportEvent() {
@@ -405,7 +494,15 @@ final class AudioPlayer: NSObject, ObservableObject {
                 guard let source = self.registry.source(for: track.sourceID) else {
                     throw FileSourceError.notConnected
                 }
-                let sourceURL = try await source.fileURL(forPath: track.path)
+                // Use a pre-downloaded copy if we prefetched this track; otherwise
+                // fetch it now (downloading from SMB).
+                let sourceURL: URL
+                if let prefetchedResource = self.prefetched[track.id] {
+                    self.prefetched[track.id] = nil   // ownership transfers to playback
+                    sourceURL = prefetchedResource.url
+                } else {
+                    sourceURL = try await source.fileURL(forPath: track.path)
+                }
                 try Task.checkCancellation()
                 if Task.isCancelled { source.releaseTemporaryURL(sourceURL); return }
 
@@ -486,6 +583,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
             loadMetadata(for: playable.url, trackID: track.id)
+            prefetchUpcoming()   // get the next track(s) ready while this one plays
         } catch {
             playable.cleanup()
             registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
