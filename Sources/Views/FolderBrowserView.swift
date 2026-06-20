@@ -136,7 +136,7 @@ struct FolderBrowserView: View {
                 .tag(item.path)
                 .overlay {
                     DoubleClickDetector(
-                        onSingleClick: { focus(on: item, transient: false) },
+                        onSingleClick: { openFolder(at: item.path, name: item.name) },
                         onDoubleClick: { openFolder(at: item.path, name: item.name) }
                     )
                 }
@@ -171,7 +171,7 @@ struct FolderBrowserView: View {
                 .tag(item.path)
                 .overlay {
                     DoubleClickDetector(
-                        onSingleClick: { focus(on: item, transient: false) },
+                        onSingleClick: { playFromQueue(startingAt: item) },
                         onDoubleClick: { playFromQueue(startingAt: item) },
                         leadingPassthrough: 34,
                         trailingPassthrough: 48

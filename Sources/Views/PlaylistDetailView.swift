@@ -119,7 +119,7 @@ struct PlaylistDetailView: View {
             .tag(entry.id)
             .overlay {
                 DoubleClickDetector(
-                    onSingleClick: { focus(on: entry, transient: false) },
+                    onSingleClick: { play(playlist, startAt: index) },
                     onDoubleClick: { play(playlist, startAt: index) },
                     leadingPassthrough: 34,
                     trailingPassthrough: 48

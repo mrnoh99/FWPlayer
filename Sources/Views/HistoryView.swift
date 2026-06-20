@@ -78,7 +78,7 @@ struct HistoryView: View {
         #if targetEnvironment(macCatalyst)
         .overlay {
             DoubleClickDetector(
-                onSingleClick: {},
+                onSingleClick: { player.play(tracks: [track], startAt: 0) },
                 onDoubleClick: { player.play(tracks: [track], startAt: 0) }
             )
         }

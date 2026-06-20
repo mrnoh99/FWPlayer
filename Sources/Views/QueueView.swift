@@ -128,7 +128,8 @@ struct QueueView: View {
         }
         #if targetEnvironment(macCatalyst)
         .overlay {
-            DoubleClickDetector(onSingleClick: {}, onDoubleClick: { Task { @MainActor in onPlay() } })
+            DoubleClickDetector(onSingleClick: { Task { @MainActor in onPlay() } },
+                                onDoubleClick: { Task { @MainActor in onPlay() } })
         }
         #endif
     }
