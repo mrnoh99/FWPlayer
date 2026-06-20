@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Playback queue and history, each shown as a collapsible section. Tap a section
-/// header to open/close it. The Queue header's ••• menu has Edit (reorder/remove)
-/// and Clear; each row's ••• menu has Locate File, Add to Playlist, and Remove.
-/// History lists recently played tracks, most recent first.
+/// The live playback queue, shown as a collapsible section. The header's
+/// controls are Edit (reorder/remove) and Clear; each row's ••• menu has
+/// Locate File, Add to Playlist, and Remove. (Recently played tracks live in
+/// the separate History destination.)
 struct QueueView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
@@ -11,14 +11,12 @@ struct QueueView: View {
     var onLocate: ((Track) -> Void)? = nil
 
     @State private var queueExpanded = true
-    @State private var historyExpanded = false
     @State private var editMode: EditMode = .inactive
     @State private var trackToAdd: Track?
 
     var body: some View {
         List {
             queueSection
-            historySection
         }
         .listStyle(.plain)
         .environment(\.editMode, $editMode)
@@ -81,35 +79,6 @@ struct QueueView: View {
         }
     }
 
-    // MARK: - History section
-
-    private var historySection: some View {
-        Section {
-            if historyExpanded {
-                if player.history.isEmpty {
-                    Text("No history yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(player.history.enumerated()), id: \.element.id) { index, track in
-                        row(track: track, index: index, isCurrent: false,
-                            onPlay: { player.playNext(track) },
-                            onRemove: { player.removeFromHistory(at: IndexSet(integer: index)) })
-                    }
-                }
-            }
-        } header: {
-            sectionHeader(title: "History", count: player.history.count, isExpanded: $historyExpanded) {
-                Menu {
-                    Button(role: .destructive) { player.clearHistory() } label: {
-                        Label("Clear History", systemImage: "trash")
-                    }
-                } label: { ellipsisLabel }
-                .disabled(player.history.isEmpty)
-            }
-        }
-    }
-
     // MARK: - Shared row
 
     @ViewBuilder
@@ -160,14 +129,6 @@ struct QueueView: View {
 
     // MARK: - Header
 
-    private var ellipsisLabel: some View {
-        Image(systemName: "ellipsis")
-            .font(.body)
-            .foregroundStyle(.secondary)
-            .frame(width: 36, height: 36)
-            .contentShape(Rectangle())
-    }
-
     private func sectionHeader<MenuContent: View>(
         title: String, count: Int, isExpanded: Binding<Bool>,
         @ViewBuilder menu: () -> MenuContent
@@ -195,7 +156,7 @@ struct QueueView: View {
     }
 }
 
-private struct QueueRow: View {
+struct QueueRow: View {
     let index: Int
     let track: Track
     let isCurrent: Bool

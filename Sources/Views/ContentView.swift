@@ -5,6 +5,7 @@ enum SidebarSelection: Hashable {
     case source(String)
     case playlist(UUID)
     case queue
+    case history
 }
 
 /// Root layout: a sidebar listing sources and playlists, a detail browser, and
@@ -112,6 +113,19 @@ struct ContentView: View {
                     Image(systemName: "list.bullet")
                 }
                 .tag(SidebarSelection.queue)
+
+                Label {
+                    HStack {
+                        Text("History")
+                        if !player.history.isEmpty {
+                            Text("\(player.history.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "clock.arrow.circlepath")
+                }
+                .tag(SidebarSelection.history)
             }
 
             Section("Library") {
@@ -193,6 +207,12 @@ struct ContentView: View {
             NavigationStack {
                 QueueView(onLocate: locate)
                     .environmentObject(player)
+            }
+        case .history:
+            NavigationStack {
+                HistoryView(onLocate: locate)
+                    .environmentObject(player)
+                    .environmentObject(playlists)
             }
         case .source(let id):
             if let source = registry.source(for: id) {
