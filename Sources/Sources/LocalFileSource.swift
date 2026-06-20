@@ -62,7 +62,7 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
         var stack = [""]
         while let path = stack.popLast() {
             do {
-                let items = try listFromDisk(path: path)
+                let items = try await listFromDisk(path: path)
                 await listingCache.store(path: path, items: items, persist: false)
                 scanned += 1
                 await progress(scanned)
@@ -85,13 +85,13 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
 
     func list(path: String) async throws -> [FileItem] {
         if let cached = await listingCache.listing(path: path) { return cached }
-        let items = try listFromDisk(path: path)
+        let items = try await listFromDisk(path: path)
         await listingCache.store(path: path, items: items)
         return items
     }
 
     func refresh(path: String) async throws -> [FileItem] {
-        let items = try listFromDisk(path: path)
+        let items = try await listFromDisk(path: path)
         await listingCache.store(path: path, items: items)
         return items
     }
@@ -141,9 +141,24 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
         }
     }
 
-    private func listFromDisk(path: String) throws -> [FileItem] {
+    /// Reads a directory from disk **off the main thread**.
+    ///
+    /// `contentsOfDirectory` can be slow for network-mounted folders — e.g. an
+    /// SMB share the user connected in the Files app and added here as a "local"
+    /// folder — because each call is a round-trip to the server. On the Mac this
+    /// is the common case, so running it on the main actor would freeze the UI
+    /// and make opening a folder feel like a hang (the Finder stays quick because
+    /// it enumerates directories on background threads). Hopping to a detached
+    /// task keeps browsing responsive regardless of where the folder lives.
+    private func listFromDisk(path: String) async throws -> [FileItem] {
         try ensureSecurityScopedAccess()
         let dir = url(forPath: path)
+        return try await Task.detached(priority: .userInitiated) {
+            try Self.readDirectory(at: dir, parentPath: path)
+        }.value
+    }
+
+    private static func readDirectory(at dir: URL, parentPath path: String) throws -> [FileItem] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .nameKey]
         let contents = try FileManager.default.contentsOfDirectory(
             at: dir,
@@ -181,8 +196,12 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
 
     func directURL(forPath path: String) -> URL? {
         guard (try? ensureSecurityScopedAccess()) != nil else { return nil }
-        let url = url(forPath: path)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        // Return the URL without a `fileExists` check: this is called
+        // synchronously for every visible row on the main thread, and for a
+        // network-mounted folder that stat is a per-row round-trip to the server
+        // that stalls scrolling. Callers that actually open the file handle a
+        // missing path gracefully (artwork/metadata simply don't load).
+        return url(forPath: path)
     }
 }
 
