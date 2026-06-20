@@ -99,6 +99,19 @@ struct ContentView: View {
         selection = .queue
     }
 
+    /// Translucent "liquid glass" backing for the sidebar: a blur material with a
+    /// faint accent wash, so the window/content shows through.
+    private var sidebarGlass: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.10), .clear, Color.accentColor.opacity(0.05)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+
     private var sidebar: some View {
         List(selection: $selection) {
             Section("Playback") {
@@ -174,6 +187,8 @@ struct ContentView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(sidebarGlass)
         .navigationTitle("FWPlayer")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
