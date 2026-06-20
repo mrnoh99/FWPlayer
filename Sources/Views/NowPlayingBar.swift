@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Floating "liquid glass" now-playing bar pinned near the bottom of the app,
-/// styled like Apple Music: rounded translucent card with centered transport.
-/// Tapping it opens the full `PlayerView`.
+/// styled like Apple Music: rounded translucent card with centered transport
+/// flanked by shuffle and repeat. Tapping it opens the full `PlayerView`.
 struct NowPlayingBar: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var artwork: ArtworkStore
@@ -18,6 +18,8 @@ struct NowPlayingBar: View {
     @State private var canGoNext = false
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
+    @State private var isShuffled = false
+    @State private var repeatMode: RepeatMode = .off
 
     private var progress: Double {
         let total = max(duration.isFinite ? duration : 0, 0.1)
@@ -64,8 +66,14 @@ struct NowPlayingBar: View {
                 }
             }
 
-            // Centered transport, Apple Music style.
-            HStack(spacing: 40) {
+            // Centered transport with shuffle/repeat, Apple Music style.
+            HStack(spacing: 28) {
+                Button { Task { @MainActor in player.toggleShuffle() } } label: {
+                    Image(systemName: "shuffle")
+                        .font(.subheadline)
+                        .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
+                }
+
                 Button { Task { @MainActor in player.previous() } } label: {
                     Image(systemName: "backward.fill").font(.title3)
                 }
@@ -84,6 +92,12 @@ struct NowPlayingBar: View {
                     Image(systemName: "forward.fill").font(.title3)
                 }
                 .disabled(!canGoNext)
+
+                Button { Task { @MainActor in player.cycleRepeatMode() } } label: {
+                    Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
+                        .font(.subheadline)
+                        .foregroundStyle(repeatMode == .off ? Color.secondary : Color.accentColor)
+                }
             }
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
@@ -121,5 +135,7 @@ struct NowPlayingBar: View {
         canGoNext = player.canGoNext
         currentTime = player.currentTime
         duration = player.duration
+        isShuffled = player.isShuffled
+        repeatMode = player.repeatMode
     }
 }
