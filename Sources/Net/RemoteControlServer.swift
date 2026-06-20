@@ -194,6 +194,12 @@ final class RemoteControlServer: ObservableObject {
         case .removeFromQueue(let indices):
             player.removeFromQueue(at: IndexSet(indices))
 
+        case .clearQueue:
+            player.clearQueue()
+
+        case .moveQueue(let from, let to):
+            player.moveQueue(fromOffsets: IndexSet(from), toOffset: to)
+
         case .playFolder(let sourceID, let path, let recursive):
             Task {
                 await playFolder(sourceID: sourceID, path: path, recursive: recursive)

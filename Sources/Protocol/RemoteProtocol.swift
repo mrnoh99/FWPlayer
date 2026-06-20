@@ -150,6 +150,10 @@ enum RemoteCommand: Codable, Hashable {
     case playNext(tracks: [RemoteQueueTrack])
     /// Remove tracks at the given zero-based indices from the current queue.
     case removeFromQueue(at: [Int])
+    /// Remove every track from the queue.
+    case clearQueue
+    /// Move the tracks at `from` (zero-based) to before index `to`.
+    case moveQueue(from: [Int], to: Int)
     /// Play every audio file under a folder, optionally including subfolders.
     case playFolder(sourceID: String, path: String, recursive: Bool)
     /// Append `tracks` to the playlist with the given id.
