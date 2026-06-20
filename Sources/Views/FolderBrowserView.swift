@@ -87,12 +87,25 @@ struct FolderBrowserView: View {
     }
 
     private var list: some View {
-        listContent
-            #if targetEnvironment(macCatalyst)
-            .listStyle(.inset)
-            #endif
-            .scrollPosition(id: $scrollTarget, anchor: .center)
-            .refreshable { await reload(forceRefresh: true) }
+        ScrollViewReader { proxy in
+            listContent
+                #if targetEnvironment(macCatalyst)
+                .listStyle(.inset)
+                #endif
+                .refreshable { await reload(forceRefresh: true) }
+                // Keep the focused/playing row, and the "Locate File" target,
+                // centered. ScrollViewReader is more reliable than
+                // .scrollPosition, whose two-way binding gets reset to the top
+                // row on first layout (so Locate never centered).
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation { proxy.scrollTo(target, anchor: .center) }
+                }
+                .onChange(of: isLoading) { _, loading in
+                    if !loading { centerLocatedFile(using: proxy) }
+                }
+                .onAppear { centerLocatedFile(using: proxy) }
+        }
     }
 
     @ViewBuilder
@@ -342,6 +355,19 @@ struct FolderBrowserView: View {
         ListFocusBehavior.cancelRevert(task: &focusRevertTask)
         selectedItemPath = focusFilePath
         scrollTarget = focusFilePath
+    }
+
+    /// Scrolls the "Locate File" target to the centre once the folder's rows are
+    /// laid out. Runs after a short delay so the List has rendered the row the
+    /// proxy needs to find.
+    private func centerLocatedFile(using proxy: ScrollViewProxy) {
+        guard let focusFilePath,
+              (focusFilePath as NSString).deletingLastPathComponent == path,
+              items.contains(where: { $0.path == focusFilePath }) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            withAnimation { proxy.scrollTo(focusFilePath, anchor: .center) }
+        }
     }
 }
 
