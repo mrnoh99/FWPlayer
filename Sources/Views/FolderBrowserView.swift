@@ -515,6 +515,12 @@ private struct TrackRow: View {
                         if let onAddToPlaylist {
                             Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
                         }
+                        if let onToggleFavorite {
+                            Button(action: onToggleFavorite) {
+                                Label(isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                                      systemImage: isFavorite ? "star.slash" : "star")
+                            }
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                             .foregroundStyle(isCurrent ? Color.white : Color.secondary)

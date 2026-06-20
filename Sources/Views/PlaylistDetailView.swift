@@ -320,6 +320,12 @@ private struct EntryRow: View {
                     if let onAddToPlaylist {
                         Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
                     }
+                    Button {
+                        playlists.toggleFavorite(track)
+                    } label: {
+                        Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
+                              systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
+                    }
                     if let onLocate {
                         Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
                     }

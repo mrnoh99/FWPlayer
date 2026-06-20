@@ -6,6 +6,7 @@ import SwiftUI
 /// History lists recently played tracks, most recent first.
 struct QueueView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var playlists: PlaylistManager
     /// Reveals a track's file in the browser (jumps to its source).
     var onLocate: ((Track) -> Void)? = nil
 
@@ -120,8 +121,19 @@ struct QueueView: View {
             playArea(track: track, index: index, isCurrent: isCurrent, onPlay: onPlay)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+            Button {
+                playlists.toggleFavorite(track)
+            } label: {
+                Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                    .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
+
             QueueRowMenu(
+                isFavorite: playlists.isFavorite(track),
                 onPlayNow: { Task { @MainActor in onPlay() } },
+                onToggleFavorite: { playlists.toggleFavorite(track) },
                 onAddToPlaylist: { trackToAdd = track },
                 onLocate: onLocate.map { locate in { locate(track) } },
                 onRemove: { Task { @MainActor in onRemove() } }
@@ -223,7 +235,9 @@ private struct QueueRow: View {
 /// The trailing ••• action menu for a queue row, kept separate from the row's
 /// play-tap area so it reliably opens on every platform.
 private struct QueueRowMenu: View {
+    var isFavorite: Bool = false
     var onPlayNow: (() -> Void)? = nil
+    var onToggleFavorite: (() -> Void)? = nil
     var onAddToPlaylist: (() -> Void)? = nil
     var onLocate: (() -> Void)? = nil
     var onRemove: (() -> Void)? = nil
@@ -232,6 +246,12 @@ private struct QueueRowMenu: View {
         Menu {
             if let onPlayNow {
                 Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+            }
+            if let onToggleFavorite {
+                Button(action: onToggleFavorite) {
+                    Label(isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                          systemImage: isFavorite ? "star.slash" : "star")
+                }
             }
             if let onAddToPlaylist {
                 Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
