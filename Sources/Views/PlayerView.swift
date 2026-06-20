@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// Full-screen player with album artwork, scrubber, and transport controls.
+/// Full-screen player. On a wide screen (iPad / Mac Catalyst) it splits into the
+/// Apple Music landscape layout: artwork + transport on the left, the Up Next
+/// queue on the right. On iPhone it stays a single column and the queue is
+/// reached from the toolbar. A route button lets the user pick where audio plays.
 struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var artwork: ArtworkStore
+    @EnvironmentObject private var playlists: PlaylistManager
     @Environment(\.dismiss) private var dismiss
     var onShowQueue: (() -> Void)? = nil
 
@@ -23,68 +27,40 @@ struct PlayerView: View {
     /// Local scrub position while the user is dragging the slider.
     @State private var scrubTime: Double = 0
     @State private var isScrubbing = false
+    @State private var trackToAdd: Track?
+    /// True when there's room for the two-pane (artwork + Up Next) layout. Based
+    /// on actual width, since an iPad sheet reports a compact size class.
+    @State private var isWide = false
 
     var body: some View {
-        VStack(spacing: 28) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 40, height: 5)
-                .padding(.top, 8)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.4))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 8)
 
-            Spacer()
-
-            Group {
-                if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
-                    Image(uiImage: cover).resizable().scaledToFill()
+                if isWide {
+                    HStack(alignment: .top, spacing: 28) {
+                        nowPlayingColumn
+                            .frame(maxWidth: .infinity)
+                        Divider()
+                        queueColumn
+                            .frame(width: 360)
+                    }
+                    .padding()
                 } else {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 90))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.secondary.opacity(0.12))
+                    nowPlayingColumn
+                        .padding()
                 }
             }
-            .frame(width: 240, height: 240)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
-
-            VStack(spacing: 6) {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text(title)
-                        .font(.title2.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                }
-                if let artist {
-                    Text(artist).foregroundStyle(.secondary)
-                }
-                if let album {
-                    Text(album).font(.subheadline).foregroundStyle(.secondary)
-                }
-                if let sampleRate {
-                    Text(AudioFormatReader.formatSampleRate(sampleRate))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal)
-
-            Spacer()
-
-            scrubber
-
-            transportControls
-
-            shuffleRepeatControls
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { isWide = geo.size.width > 680 }
+            .onChange(of: geo.size.width) { _, width in isWide = width > 680 }
         }
-        .padding()
         .presentationDragIndicator(.hidden)
         .toolbar {
-            if let onShowQueue, !player.queue.isEmpty {
+            if !isWide, let onShowQueue, !player.queue.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         dismiss()
@@ -95,10 +71,106 @@ struct PlayerView: View {
                 }
             }
         }
+        .sheet(item: $trackToAdd) { track in
+            AddToPlaylistView(track: track)
+        }
         .onAppear { refreshFromPlayer() }
         .onReceive(player.objectWillChange) { _ in
             Task { @MainActor in refreshFromPlayer() }
         }
+    }
+
+    // MARK: - Now Playing (left)
+
+    private var nowPlayingColumn: some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 0)
+            artworkView
+            Spacer(minLength: 0)
+            infoRow
+            scrubber
+            transportControls
+            outputRow
+        }
+        .frame(maxWidth: 520)
+    }
+
+    private var artworkView: some View {
+        Group {
+            if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
+                Image(uiImage: cover).resizable().scaledToFill()
+            } else {
+                Image(systemName: "music.note")
+                    .font(.system(size: 90))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.secondary.opacity(0.12))
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: 320, maxHeight: 320)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+    }
+
+    private var infoRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Text(title)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Text(subtitleText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+
+            if let track = player.currentTrack {
+                Button {
+                    playlists.toggleFavorite(track)
+                } label: {
+                    Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : Color.secondary)
+                }
+                .buttonStyle(.plain)
+
+                Menu {
+                    Button {
+                        trackToAdd = track
+                    } label: {
+                        Label("Add to Playlist", systemImage: "text.badge.plus")
+                    }
+                    Button {
+                        playlists.toggleFavorite(track)
+                    } label: {
+                        Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
+                              systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var subtitleText: String {
+        var parts: [String] = []
+        if let artist { parts.append(artist) }
+        else if let album { parts.append(album) }
+        if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
+        return parts.joined(separator: " · ")
     }
 
     private var scrubberMax: Double {
@@ -136,36 +208,11 @@ struct PlayerView: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal)
     }
 
+    /// Shuffle · prev · play · next · repeat, matching Apple Music's transport row.
     private var transportControls: some View {
-        HStack(spacing: 48) {
-            Button {
-                Task { @MainActor in player.previous() }
-            } label: {
-                Image(systemName: "backward.fill").font(.title)
-            }
-            .disabled(!canGoPrevious)
-            Button {
-                Task { @MainActor in player.togglePlayPause() }
-            } label: {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 64))
-            }
-            Button {
-                Task { @MainActor in player.next() }
-            } label: {
-                Image(systemName: "forward.fill").font(.title)
-            }
-            .disabled(!canGoNext)
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Apple Music–style shuffle (left) and repeat (right) row.
-    private var shuffleRepeatControls: some View {
-        HStack {
+        HStack(spacing: 0) {
             Button {
                 Task { @MainActor in player.toggleShuffle() }
             } label: {
@@ -173,7 +220,34 @@ struct PlayerView: View {
                     .font(.title3)
                     .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
             }
+
             Spacer()
+
+            HStack(spacing: 36) {
+                Button {
+                    Task { @MainActor in player.previous() }
+                } label: {
+                    Image(systemName: "backward.fill").font(.title)
+                }
+                .disabled(!canGoPrevious)
+
+                Button {
+                    Task { @MainActor in player.togglePlayPause() }
+                } label: {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 60))
+                }
+
+                Button {
+                    Task { @MainActor in player.next() }
+                } label: {
+                    Image(systemName: "forward.fill").font(.title)
+                }
+                .disabled(!canGoNext)
+            }
+
+            Spacer()
+
             Button {
                 Task { @MainActor in player.cycleRepeatMode() }
             } label: {
@@ -183,8 +257,124 @@ struct PlayerView: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 44)
+        .padding(.horizontal, 8)
     }
+
+    /// Output-route (AirPlay) button — choose where sound is sent.
+    private var outputRow: some View {
+        HStack {
+            AudioRoutePickerButton()
+                .frame(width: 42, height: 42)
+            Text("Output")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - Up Next (right)
+
+    /// Upcoming queue entries paired with their absolute index in the queue.
+    private var upcoming: [(offset: Int, element: Track)] {
+        let all = Array(player.queue.enumerated())
+        guard let current = player.currentIndex else { return all.map { ($0.offset, $0.element) } }
+        return all.filter { $0.offset > current }.map { ($0.offset, $0.element) }
+    }
+
+    private var queueColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Up Next")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task { @MainActor in player.toggleShuffle() }
+                } label: {
+                    Image(systemName: "shuffle")
+                        .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
+                }
+                Button {
+                    Task { @MainActor in player.cycleRepeatMode() }
+                } label: {
+                    Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
+                        .foregroundStyle(repeatMode == .off ? .secondary : Color.accentColor)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 4)
+
+            if upcoming.isEmpty {
+                VStack {
+                    Spacer()
+                    Text("No upcoming tracks")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(upcoming, id: \.offset) { item in
+                        Button {
+                            Task { @MainActor in player.play(at: item.offset) }
+                        } label: {
+                            queueRow(item.element)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                    }
+                    .onMove { source, destination in
+                        moveUpcoming(from: source, to: destination)
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+    }
+
+    private func queueRow(_ track: Track) -> some View {
+        HStack(spacing: 10) {
+            queueArtwork(track)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title).lineLimit(1)
+                if let line = track.artist ?? track.album {
+                    Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func queueArtwork(_ track: Track) -> some View {
+        Group {
+            if let img = artwork.image(for: track) {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                Image(systemName: "music.note")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.secondary.opacity(0.12))
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Maps a move within the upcoming sublist back to absolute queue indices.
+    private func moveUpcoming(from source: IndexSet, to destination: Int) {
+        let base = (player.currentIndex ?? -1) + 1
+        let absoluteSource = IndexSet(source.map { $0 + base })
+        let absoluteDestination = destination + base
+        Task { @MainActor in
+            player.moveQueue(fromOffsets: absoluteSource, toOffset: absoluteDestination)
+        }
+    }
+
+    // MARK: - State
 
     private func refreshFromPlayer() {
         isLoading = player.isLoading

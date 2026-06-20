@@ -31,12 +31,6 @@ struct NowPlayingBar: View {
     /// trims the secondary controls so the essentials still fit.
     private var isWide: Bool { horizontalSizeClass == .regular }
 
-    private var progress: Double {
-        let total = max(duration.isFinite ? duration : 0, 0.1)
-        guard currentTime.isFinite else { return 0 }
-        return min(max(currentTime / total, 0), 1)
-    }
-
     var body: some View {
         HStack(spacing: isWide ? 22 : 14) {
             transport
@@ -82,6 +76,10 @@ struct NowPlayingBar: View {
         .background(.ultraThinMaterial, in: Capsule(style: .continuous))
         .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 5)
+        // A compact capsule sized to its content and centred near the bottom,
+        // like Apple Music's floating player — not stretched edge to edge.
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .onAppear { refreshFromPlayer() }
@@ -137,45 +135,33 @@ struct NowPlayingBar: View {
     // MARK: - Track card (centre)
 
     private var trackCard: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 10) {
-                cover
-                    .frame(width: 38, height: 38)
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        HStack(spacing: 10) {
+            cover
+                .frame(width: 38, height: 38)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title.isEmpty ? "Not Playing" : title)
-                        .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.isEmpty ? "Not Playing" : title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 8)
-
-                if let track = player.currentTrack {
-                    Button { playlists.toggleFavorite(track) } label: {
-                        Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
-                            .font(.footnote)
-                            .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
                 }
             }
+            Spacer(minLength: 8)
 
-            // Thin progress line under the card, Apple Music style.
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.secondary.opacity(0.25))
-                    Capsule().fill(Color.primary.opacity(0.55))
-                        .frame(width: max(0, geo.size.width * progress))
+            if let track = player.currentTrack {
+                Button { playlists.toggleFavorite(track) } label: {
+                    Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                        .font(.footnote)
+                        .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : .secondary)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
             }
-            .frame(height: 3)
         }
     }
 

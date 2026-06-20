@@ -71,6 +71,7 @@ struct ContentView: View {
             PlayerView(onShowQueue: showQueue)
                 .environmentObject(player)
                 .environmentObject(artwork)
+                .environmentObject(playlists)
         }
         .alert("New Playlist", isPresented: $showingNewPlaylist) {
             TextField("Playlist name", text: $newPlaylistName)
