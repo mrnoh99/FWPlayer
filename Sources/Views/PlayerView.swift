@@ -214,6 +214,7 @@ struct PlayerView: View {
     private var transportControls: some View {
         HStack(spacing: 0) {
             Button {
+                Haptics.tap()
                 Task { @MainActor in player.toggleShuffle() }
             } label: {
                 Image(systemName: "shuffle")
@@ -225,20 +226,30 @@ struct PlayerView: View {
 
             HStack(spacing: 36) {
                 Button {
+                    Haptics.tap()
                     Task { @MainActor in player.previous() }
                 } label: {
                     Image(systemName: "backward.fill").font(.title)
                 }
                 .disabled(!canGoPrevious)
 
-                Button {
-                    Task { @MainActor in player.togglePlayPause() }
-                } label: {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 60))
+                if isLoading {
+                    // Preparing the track — show a spinner so the press is visible.
+                    ProgressView()
+                        .controlSize(.large)
+                        .frame(width: 60, height: 60)
+                } else {
+                    Button {
+                        Haptics.tap()
+                        Task { @MainActor in player.togglePlayPause() }
+                    } label: {
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 60))
+                    }
                 }
 
                 Button {
+                    Haptics.tap()
                     Task { @MainActor in player.next() }
                 } label: {
                     Image(systemName: "forward.fill").font(.title)
@@ -249,6 +260,7 @@ struct PlayerView: View {
             Spacer()
 
             Button {
+                Haptics.tap()
                 Task { @MainActor in player.cycleRepeatMode() }
             } label: {
                 Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")

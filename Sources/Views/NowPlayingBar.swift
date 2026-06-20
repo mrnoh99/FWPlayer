@@ -96,13 +96,13 @@ struct NowPlayingBar: View {
     private var transport: some View {
         HStack(spacing: isWide ? 20 : 16) {
             if isWide {
-                Button { Task { @MainActor in player.toggleShuffle() } } label: {
+                Button { Haptics.tap(); Task { @MainActor in player.toggleShuffle() } } label: {
                     Image(systemName: "shuffle")
                         .font(.subheadline)
                         .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
                 }
             }
-            Button { Task { @MainActor in player.previous() } } label: {
+            Button { Haptics.tap(); Task { @MainActor in player.previous() } } label: {
                 Image(systemName: "backward.fill").font(.title3)
             }
             .disabled(!canGoPrevious)
@@ -110,18 +110,18 @@ struct NowPlayingBar: View {
             if isLoading {
                 ProgressView().frame(width: 30, height: 30)
             } else {
-                Button { Task { @MainActor in player.togglePlayPause() } } label: {
+                Button { Haptics.tap(); Task { @MainActor in player.togglePlayPause() } } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title)
                 }
             }
 
-            Button { Task { @MainActor in player.next() } } label: {
+            Button { Haptics.tap(); Task { @MainActor in player.next() } } label: {
                 Image(systemName: "forward.fill").font(.title3)
             }
             .disabled(!canGoNext)
 
             if isWide {
-                Button { Task { @MainActor in player.cycleRepeatMode() } } label: {
+                Button { Haptics.tap(); Task { @MainActor in player.cycleRepeatMode() } } label: {
                     Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
                         .font(.subheadline)
                         .foregroundStyle(repeatMode == .off ? Color.secondary : Color.accentColor)
