@@ -68,7 +68,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var prefetched: [String: (sourceID: String, url: URL)] = [:]
     private var prefetchTasks: [String: Task<Void, Never>] = [:]
     /// How many upcoming tracks to pre-download.
-    private let prefetchDepth = 2
+    private let prefetchDepth = 10
 
     init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.registry = registry

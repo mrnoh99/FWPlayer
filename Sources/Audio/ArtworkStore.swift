@@ -123,11 +123,57 @@ enum AlbumArtwork {
     /// FLAC/Vorbis picture). Read via AVFoundation.
     static func embedded(from url: URL) async -> Data? {
         let asset = AVURLAsset(url: url)
-        guard let items = try? await asset.load(.commonMetadata) else { return nil }
-        for item in items where item.commonKey == .commonKeyArtwork {
-            if let data = try? await item.load(.dataValue) { return data }
+        if let items = try? await asset.load(.commonMetadata) {
+            for item in items where item.commonKey == .commonKeyArtwork {
+                if let data = try? await item.load(.dataValue) { return data }
+            }
+        }
+        // AVFoundation doesn't surface FLAC's embedded picture, so parse it directly.
+        if url.pathExtension.lowercased() == "flac" {
+            return flacPicture(from: url)
         }
         return nil
+    }
+
+    /// Extracts the image from a FLAC `METADATA_BLOCK_PICTURE`. Reads only the
+    /// metadata header region (the picture block sits before the audio frames).
+    static func flacPicture(from url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let magic = try? handle.read(upToCount: 4), magic == Data("fLaC".utf8) else { return nil }
+        while true {
+            guard let header = try? handle.read(upToCount: 4), header.count == 4 else { return nil }
+            let h = [UInt8](header)
+            let isLast = (h[0] & 0x80) != 0
+            let type = h[0] & 0x7F
+            let length = (Int(h[1]) << 16) | (Int(h[2]) << 8) | Int(h[3])
+            if type == 6 {   // PICTURE
+                guard let block = try? handle.read(upToCount: length), block.count == length else { return nil }
+                return parseFlacPicture(block)
+            }
+            guard (try? handle.seek(toOffset: handle.offsetInFile + UInt64(length))) != nil else { return nil }
+            if isLast { break }
+        }
+        return nil
+    }
+
+    private static func parseFlacPicture(_ data: Data) -> Data? {
+        let bytes = [UInt8](data)
+        var i = 0
+        func u32() -> Int? {
+            guard i + 4 <= bytes.count else { return nil }
+            let v = (Int(bytes[i]) << 24) | (Int(bytes[i + 1]) << 16) | (Int(bytes[i + 2]) << 8) | Int(bytes[i + 3])
+            i += 4
+            return v
+        }
+        guard u32() != nil,                       // picture type
+              let mimeLen = u32() else { return nil }
+        i += mimeLen
+        guard let descLen = u32() else { return nil }
+        i += descLen
+        guard u32() != nil, u32() != nil, u32() != nil, u32() != nil,   // width, height, depth, colors
+              let dataLen = u32(), i + dataLen <= bytes.count else { return nil }
+        return Data(bytes[i..<(i + dataLen)])
     }
 
     /// A cover image file living in the same folder as the track.
