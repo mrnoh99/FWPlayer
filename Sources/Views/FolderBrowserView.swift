@@ -450,67 +450,94 @@ private struct TrackRow: View {
     var onAddToPlaylist: (() -> Void)? = nil
 
     @State private var sampleRate: Double?
+    @State private var duration: Double?
 
     private var track: Track { Track(sourceID: sourceID, item: item) }
 
+    /// Album · format line under the title (artist/album when the metadata is
+    /// known, otherwise the audio format — meaningful for a lossless player).
+    private var subtitle: String {
+        var parts: [String] = [item.fileExtension.uppercased()]
+        if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The "Time" column: track length once known, otherwise the file size.
+    private var timeText: String {
+        if let duration { return AudioFormatReader.formatDuration(duration) }
+        if let size = item.size { return ByteCountFormatter.string(fromByteCount: size, countStyle: .file) }
+        return ""
+    }
+
     var body: some View {
-        HStack {
-            ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
-            VStack(alignment: .leading) {
-                Text((item.name as NSString).deletingPathExtension)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(item.fileExtension.uppercased())
-                    if let sampleRate {
-                        Text("·")
-                        Text(AudioFormatReader.formatSampleRate(sampleRate))
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if let size = item.size {
-                Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 8) {
+            // Favorite star sits in a leading gutter, outside the row highlight.
             if let onToggleFavorite {
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.footnote)
                         .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
             }
-            if onPlayNow != nil || onPlayNext != nil || onAddToQueue != nil {
-                Menu {
-                    if let onPlayNow {
-                        Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
-                    }
-                    if let onPlayNext {
-                        Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
-                    }
-                    if let onAddToQueue {
-                        Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
-                    }
-                    if let onAddToPlaylist {
-                        Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
+
+            HStack(spacing: 10) {
+                ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text((item.name as NSString).deletingPathExtension)
+                        .fontWeight(isCurrent ? .semibold : .regular)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(isCurrent ? Color.white.opacity(0.85) : Color.secondary)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("More")
+
+                Spacer(minLength: 8)
+
+                if !timeText.isEmpty {
+                    Text(timeText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(isCurrent ? Color.white.opacity(0.9) : Color.secondary)
+                }
+
+                if onPlayNow != nil || onPlayNext != nil || onAddToQueue != nil {
+                    Menu {
+                        if let onPlayNow {
+                            Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+                        }
+                        if let onPlayNext {
+                            Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                        }
+                        if let onAddToQueue {
+                            Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+                        }
+                        if let onAddToPlaylist {
+                            Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundStyle(isCurrent ? Color.white : Color.secondary)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("More")
+                }
             }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .foregroundStyle(isCurrent ? Color.white : Color.primary)
+            .background(isCurrent ? Color.accentColor : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .contentShape(Rectangle())
         .task(id: directURL?.path) {
             guard let directURL else { return }
             sampleRate = await AudioFormatReader.sampleRate(for: directURL)
+            duration = await AudioFormatReader.duration(for: directURL)
         }
     }
 }

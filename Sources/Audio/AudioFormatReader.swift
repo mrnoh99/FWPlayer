@@ -22,6 +22,24 @@ enum AudioFormatReader {
         return nil
     }
 
+    static func duration(for url: URL) async -> Double? {
+        await DurationCache.shared.duration(for: url)
+    }
+
+    static func readDuration(from url: URL) async -> Double? {
+        let asset = AVURLAsset(url: url)
+        guard let time = try? await asset.load(.duration) else { return nil }
+        let seconds = CMTimeGetSeconds(time)
+        return seconds.isFinite && seconds > 0 ? seconds : nil
+    }
+
+    /// "m:ss" duration string (e.g. 3:23).
+    static func formatDuration(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "" }
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
     static func formatSampleRate(_ hz: Double) -> String {
         if hz >= 1000 {
             let khz = hz / 1000
@@ -45,5 +63,19 @@ actor SampleRateCache {
         let rate = await AudioFormatReader.readSampleRate(from: url)
         if let rate { values[key] = rate }
         return rate
+    }
+}
+
+actor DurationCache {
+    static let shared = DurationCache()
+
+    private var values: [String: Double] = [:]
+
+    func duration(for url: URL) async -> Double? {
+        let key = url.path
+        if let cached = values[key] { return cached }
+        let seconds = await AudioFormatReader.readDuration(from: url)
+        if let seconds { values[key] = seconds }
+        return seconds
     }
 }

@@ -162,10 +162,13 @@ struct NowPlayingBar: View {
         }
     }
 
+    /// Artist and the sampling rate (the rate is always shown — it matters for a
+    /// bit-perfect/lossless player).
     private var subtitle: String? {
-        if let artist { return artist }
-        if let sampleRate { return AudioFormatReader.formatSampleRate(sampleRate) }
-        return nil
+        var parts: [String] = []
+        if let artist { parts.append(artist) }
+        if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func refreshFromPlayer() {

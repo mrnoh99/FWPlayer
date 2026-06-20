@@ -249,7 +249,9 @@ private struct EntryRow: View {
     var onLocate: (() -> Void)? = nil
 
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var playlists: PlaylistManager
     @State private var loadedSampleRate: Double?
+    @State private var duration: Double?
 
     private var track: Track { Track(entry: entry) }
 
@@ -258,51 +260,88 @@ private struct EntryRow: View {
         return loadedSampleRate
     }
 
-    var body: some View {
-        HStack {
-            ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title)
-                    .lineLimit(1)
-                if let sampleRate = displayedSampleRate {
-                    Text(AudioFormatReader.formatSampleRate(sampleRate))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
+    private var subtitle: String? {
+        guard let rate = displayedSampleRate else { return nil }
+        return AudioFormatReader.formatSampleRate(rate)
+    }
 
-            Menu {
-                if let onPlayNow {
-                    Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
-                }
-                if let onPlayFromHere {
-                    Button(action: onPlayFromHere) { Label("Play from Here", systemImage: "play.circle") }
-                }
-                if let onPlayNext {
-                    Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
-                }
-                if let onAddToQueue {
-                    Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
-                }
-                if let onAddToPlaylist {
-                    Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
-                }
-                if let onLocate {
-                    Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
+    private var timeText: String {
+        if let duration { return AudioFormatReader.formatDuration(duration) }
+        return ""
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Favorite star in a leading gutter, outside the row highlight.
+            Button { playlists.toggleFavorite(track) } label: {
+                Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                    .font(.footnote)
+                    .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : Color.secondary)
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
+
+            HStack(spacing: 10) {
+                ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                        .fontWeight(isCurrent ? .semibold : .regular)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(isCurrent ? Color.white.opacity(0.85) : Color.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if !timeText.isEmpty {
+                    Text(timeText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(isCurrent ? Color.white.opacity(0.9) : Color.secondary)
+                }
+
+                Menu {
+                    if let onPlayNow {
+                        Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+                    }
+                    if let onPlayFromHere {
+                        Button(action: onPlayFromHere) { Label("Play from Here", systemImage: "play.circle") }
+                    }
+                    if let onPlayNext {
+                        Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                    }
+                    if let onAddToQueue {
+                        Button(action: onAddToQueue) { Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") }
+                    }
+                    if let onAddToPlaylist {
+                        Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
+                    }
+                    if let onLocate {
+                        Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(isCurrent ? Color.white : Color.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .foregroundStyle(isCurrent ? Color.white : Color.primary)
+            .background(isCurrent ? Color.accentColor : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .contentShape(Rectangle())
         .task(id: directURL?.path) {
             guard let directURL else { return }
             loadedSampleRate = await AudioFormatReader.sampleRate(for: directURL)
+            duration = await AudioFormatReader.duration(for: directURL)
         }
     }
 }
