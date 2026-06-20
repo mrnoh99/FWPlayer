@@ -41,8 +41,14 @@ struct FolderBrowserView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Opening \(title)…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let loadError {
                 EmptyStateView(title: "Couldn't Load Folder",
                                systemImage: "exclamationmark.triangle",
