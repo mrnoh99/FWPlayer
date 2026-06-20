@@ -98,6 +98,7 @@ struct PlaylistDetailView: View {
                 EntryRow(
                     entry: entry,
                     isCurrent: isCurrent(entry),
+                    isPlaying: player.isPlaying,
                     directURL: registry.source(for: entry.sourceID)?.directURL(forPath: entry.path),
                     onPlayNow: { player.play(tracks: [Track(entry: entry)], startAt: 0) },
                     onPlayFromHere: { play(playlist, startAt: index) },
@@ -248,6 +249,7 @@ struct PlaylistDetailView: View {
 private struct EntryRow: View {
     let entry: PlaylistEntry
     let isCurrent: Bool
+    var isPlaying: Bool = false
     let directURL: URL?
     var onPlayNow: (() -> Void)? = nil
     var onPlayFromHere: (() -> Void)? = nil
@@ -295,13 +297,20 @@ private struct EntryRow: View {
                 ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.title)
-                        .fontWeight(isCurrent ? .semibold : .regular)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if isCurrent {
+                            Image(systemName: isPlaying ? "speaker.wave.2.fill" : "pause.fill")
+                                .font(.caption)
+                                .foregroundStyle(.tint)
+                        }
+                        Text(entry.title)
+                            .fontWeight(isCurrent ? .semibold : .regular)
+                            .lineLimit(1)
+                    }
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(isCurrent ? Color.white.opacity(0.85) : Color.secondary)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -311,7 +320,7 @@ private struct EntryRow: View {
                 if !timeText.isEmpty {
                     Text(timeText)
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(isCurrent ? Color.white.opacity(0.9) : Color.secondary)
+                        .foregroundStyle(.secondary)
                 }
 
                 Menu {
@@ -349,7 +358,7 @@ private struct EntryRow: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .foregroundStyle(isCurrent ? Color.white : Color.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 30, height: 30)
                         .contentShape(Rectangle())
                 }
@@ -357,8 +366,7 @@ private struct EntryRow: View {
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 10)
-            .foregroundStyle(isCurrent ? Color.white : Color.primary)
-            .background(isCurrent ? Color.accentColor : Color.clear,
+            .background(isCurrent ? Color.accentColor.opacity(0.15) : Color.clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .contentShape(Rectangle())

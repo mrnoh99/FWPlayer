@@ -68,11 +68,12 @@ struct HistoryView: View {
     @ViewBuilder
     private func playArea(track: Track) -> some View {
         PlaybackRowInteraction(
-            isHighlighted: false,
+            isHighlighted: isCurrent(track),
             onSelect: {},
             onPlay: { player.play(tracks: [track], startAt: 0) }
         ) {
-            QueueRow(index: index(of: track), track: track, isCurrent: false, isPlaying: false)
+            QueueRow(index: index(of: track), track: track,
+                     isCurrent: isCurrent(track), isPlaying: player.isPlaying)
         }
         #if targetEnvironment(macCatalyst)
         .overlay {
@@ -130,6 +131,10 @@ struct HistoryView: View {
         guard player.history.indices.contains(index) else { return }
         let tracks = Array(player.history[index...])
         player.play(tracks: tracks, startAt: 0)
+    }
+
+    private func isCurrent(_ track: Track) -> Bool {
+        player.currentTrack?.id == track.id
     }
 
     /// Recency rank shown in the row's number column.

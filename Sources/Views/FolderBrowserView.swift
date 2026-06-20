@@ -155,6 +155,7 @@ struct FolderBrowserView: View {
                         item: item,
                         sourceID: source.id,
                         isCurrent: isCurrent(item),
+                        isPlaying: player.isPlaying,
                         directURL: source.directURL(forPath: item.path),
                         isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
                         onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) },
@@ -358,6 +359,7 @@ private struct TrackRow: View {
     let item: FileItem
     let sourceID: String
     let isCurrent: Bool
+    var isPlaying: Bool = false
     let directURL: URL?
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
@@ -404,12 +406,19 @@ private struct TrackRow: View {
                 ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text((item.name as NSString).deletingPathExtension)
-                        .fontWeight(isCurrent ? .semibold : .regular)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if isCurrent {
+                            Image(systemName: isPlaying ? "speaker.wave.2.fill" : "pause.fill")
+                                .font(.caption)
+                                .foregroundStyle(.tint)
+                        }
+                        Text((item.name as NSString).deletingPathExtension)
+                            .fontWeight(isCurrent ? .semibold : .regular)
+                            .lineLimit(1)
+                    }
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(isCurrent ? Color.white.opacity(0.85) : Color.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
@@ -418,7 +427,7 @@ private struct TrackRow: View {
                 if !timeText.isEmpty {
                     Text(timeText)
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(isCurrent ? Color.white.opacity(0.9) : Color.secondary)
+                        .foregroundStyle(.secondary)
                 }
 
                 if onPlayNow != nil || onPlayNext != nil || onAddToQueue != nil {
@@ -446,7 +455,7 @@ private struct TrackRow: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .foregroundStyle(isCurrent ? Color.white : Color.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(width: 30, height: 30)
                             .contentShape(Rectangle())
                     }
@@ -456,8 +465,7 @@ private struct TrackRow: View {
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 10)
-            .foregroundStyle(isCurrent ? Color.white : Color.primary)
-            .background(isCurrent ? Color.accentColor : Color.clear,
+            .background(isCurrent ? Color.accentColor.opacity(0.15) : Color.clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .contentShape(Rectangle())
