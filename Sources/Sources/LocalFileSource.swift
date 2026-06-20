@@ -110,19 +110,23 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
     func subfolderHasPlayableAudio(in path: String) async -> Bool {
         let cacheEmpty = await listingCache.isEmpty
         if !cacheEmpty { return await listingCache.subfolderHasPlayableAudio(in: path) }
-        guard let entries = try? await list(path: path) else { return false }
+        // No cache (e.g. Catalyst local, which we don't pre-scan): walk the tree
+        // live, but bail the moment the caller cancels (the user navigated away)
+        // so this scan stops hogging the listing cache and slowing the next open.
+        guard !Task.isCancelled, let entries = try? await list(path: path) else { return false }
         for item in entries where item.kind == .directory {
+            if Task.isCancelled { return false }
             if await hasPlayableAudio(in: item.path) { return true }
         }
         return false
     }
 
     private func hasPlayableAudio(in path: String) async -> Bool {
-        if let entries = try? await list(path: path) {
-            if entries.contains(where: { $0.kind == .audio }) { return true }
-            for item in entries where item.kind == .directory {
-                if await hasPlayableAudio(in: item.path) { return true }
-            }
+        guard !Task.isCancelled, let entries = try? await list(path: path) else { return false }
+        if entries.contains(where: { $0.kind == .audio }) { return true }
+        for item in entries where item.kind == .directory {
+            if Task.isCancelled { return false }
+            if await hasPlayableAudio(in: item.path) { return true }
         }
         return false
     }

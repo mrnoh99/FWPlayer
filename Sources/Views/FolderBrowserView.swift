@@ -385,7 +385,7 @@ struct FolderBrowserView: View {
             subfoldersHaveAudio = false
             return
         }
-        playabilityTask = Task {
+        playabilityTask = Task(priority: .utility) {
             let subs = await source.subfolderHasPlayableAudio(in: path)
             guard !Task.isCancelled else { return }
             await MainActor.run {
