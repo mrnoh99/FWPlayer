@@ -54,7 +54,7 @@ struct NowPlayingBar: View {
                     Label("Add to Playlist", systemImage: "text.badge.plus")
                 }
                 if let track = player.currentTrack {
-                    Button {
+                    Button(role: playlists.isFavorite(track) ? .destructive : nil) {
                         playlists.toggleFavorite(track)
                     } label: {
                         Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",

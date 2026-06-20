@@ -95,7 +95,9 @@ struct HistoryView: View {
             Button { trackToAdd = track } label: {
                 Label("Add to Playlist", systemImage: "text.badge.plus")
             }
-            Button { playlists.toggleFavorite(track) } label: {
+            Button(role: playlists.isFavorite(track) ? .destructive : nil) {
+                playlists.toggleFavorite(track)
+            } label: {
                 Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
                       systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
             }

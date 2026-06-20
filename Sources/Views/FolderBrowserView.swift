@@ -464,7 +464,7 @@ private struct TrackRow: View {
                             Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
                         }
                         if let onToggleFavorite {
-                            Button(action: onToggleFavorite) {
+                            Button(role: isFavorite ? .destructive : nil, action: onToggleFavorite) {
                                 Label(isFavorite ? "Remove from Favorites" : "Add to Favorites",
                                       systemImage: isFavorite ? "star.slash" : "star")
                             }

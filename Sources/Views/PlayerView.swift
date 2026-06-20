@@ -146,7 +146,7 @@ struct PlayerView: View {
                     } label: {
                         Label("Add to Playlist", systemImage: "text.badge.plus")
                     }
-                    Button {
+                    Button(role: playlists.isFavorite(track) ? .destructive : nil) {
                         playlists.toggleFavorite(track)
                     } label: {
                         Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",

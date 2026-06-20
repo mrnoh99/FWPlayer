@@ -354,7 +354,7 @@ private struct EntryRow: View {
                                 .disabled(onMoveDown == nil)
                         }
                     }
-                    Button {
+                    Button(role: playlists.isFavorite(track) ? .destructive : nil) {
                         playlists.toggleFavorite(track)
                     } label: {
                         Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",

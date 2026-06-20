@@ -221,7 +221,7 @@ private struct QueueRowMenu: View {
                 }
             }
             if let onToggleFavorite {
-                Button(action: onToggleFavorite) {
+                Button(role: isFavorite ? .destructive : nil, action: onToggleFavorite) {
                     Label(isFavorite ? "Remove from Favorites" : "Add to Favorites",
                           systemImage: isFavorite ? "star.slash" : "star")
                 }
