@@ -57,6 +57,12 @@ final class SourceRegistry: ObservableObject {
         }
 
         sources = loaded
+
+        #if targetEnvironment(macCatalyst)
+        // Mac: pre-scan SMB shares so browsing stays fast; local folders are read
+        // on demand (prewarm itself skips non-SMB sources).
+        for source in loaded { prewarm(source) }
+        #endif
     }
 
     func source(for id: String) -> (any FileSource)? {
@@ -68,12 +74,11 @@ final class SourceRegistry: ObservableObject {
     /// Walks a source's folder tree once, caching listings for fast browsing.
     /// `force` clears and re-scans (used when SMB settings change).
     ///
-    /// On Mac Catalyst this is a no-op: folders are read on demand only, never
-    /// pre-scanned in the background.
+    /// Policy: iOS / iPadOS never pre-scans (everything is read on demand). Mac
+    /// Catalyst pre-scans SMB shares only, never local folders.
     private func prewarm(_ source: any FileSource, force: Bool = false) {
         #if targetEnvironment(macCatalyst)
-        return
-        #else
+        guard source.kind == .smb else { return }
         guard let scannable = source as? PrewarmableFileSource else { return }
         let id = source.id
         libraryScans[id] = LibraryScanProgress(isScanning: true, foldersScanned: 0)
