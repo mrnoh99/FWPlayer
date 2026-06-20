@@ -15,5 +15,13 @@
     <true/>
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
+    <!-- AVFoundation's playback path reaches audioanalyticsd over a mach
+         lookup. Under the Mac Catalyst App Sandbox that lookup is blocked by
+         default, which trips a precondition failure and kills the process the
+         moment a track starts. Granting the lookup lets audio play. -->
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.apple.audioanalyticsd</string>
+    </array>
 </dict>
 </plist>
