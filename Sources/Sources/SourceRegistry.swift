@@ -57,13 +57,6 @@ final class SourceRegistry: ObservableObject {
         }
 
         sources = loaded
-
-        #if targetEnvironment(macCatalyst)
-        // Scan connected local folders that don't have a listing cache yet.
-        for source in loaded {
-            prewarm(source)
-        }
-        #endif
     }
 
     func source(for id: String) -> (any FileSource)? {
@@ -74,7 +67,13 @@ final class SourceRegistry: ObservableObject {
 
     /// Walks a source's folder tree once, caching listings for fast browsing.
     /// `force` clears and re-scans (used when SMB settings change).
+    ///
+    /// On Mac Catalyst this is a no-op: folders are read on demand only, never
+    /// pre-scanned in the background.
     private func prewarm(_ source: any FileSource, force: Bool = false) {
+        #if targetEnvironment(macCatalyst)
+        return
+        #else
         guard let scannable = source as? PrewarmableFileSource else { return }
         let id = source.id
         libraryScans[id] = LibraryScanProgress(isScanning: true, foldersScanned: 0)
@@ -91,6 +90,7 @@ final class SourceRegistry: ObservableObject {
             }
             await MainActor.run { self?.libraryScans[id]?.isScanning = false }
         }
+        #endif
     }
 
     // MARK: - Local folders
