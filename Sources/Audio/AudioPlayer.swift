@@ -60,7 +60,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var ticker: AnyCancellable?
     /// Resources backing the current track: the source file (an SMB download, to
     /// be released) and any decoder-produced temp file (to be deleted).
-    private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
+    private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?, trackID: String)?
     private var loadTask: Task<Void, Never>?
     /// Pre-downloaded local copies of upcoming queue tracks (keyed by track id) so
     /// playback starts instantly when their turn comes, instead of waiting on a
@@ -69,6 +69,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var prefetchTasks: [String: Task<Void, Never>] = [:]
     /// How many upcoming tracks to pre-download.
     private let prefetchDepth = 5
+    /// Recently played tracks' downloaded files, kept after playback so replaying
+    /// them (e.g. from History or going back) is instant. Bounded LRU.
+    private var recentlyPlayed: [String: (sourceID: String, url: URL)] = [:]
+    private var recentlyPlayedOrder: [String] = []
+    private let recentlyPlayedCap = 10
 
     init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.registry = registry
@@ -336,6 +341,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         loadTask?.cancel()
         clearPrefetch()
         tearDownPlayback(keepQueue: false)
+        clearRecentlyPlayed()
         isLoading = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         noteTransportEvent()
@@ -385,7 +391,8 @@ final class AudioPlayer: NSObject, ObservableObject {
 
         for index in upcomingIndices() {
             let track = queue[index]
-            guard prefetched[track.id] == nil, prefetchTasks[track.id] == nil else { continue }
+            guard prefetched[track.id] == nil, prefetchTasks[track.id] == nil,
+                  recentlyPlayed[track.id] == nil else { continue }   // already cached
             guard let source = registry.source(for: track.sourceID) else { continue }
             if source.directURL(forPath: track.path) != nil { continue }   // local: no download
 
@@ -500,6 +507,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if let prefetchedResource = self.prefetched[track.id] {
                     self.prefetched[track.id] = nil   // ownership transfers to playback
                     sourceURL = prefetchedResource.url
+                } else if let cached = self.takeRecentlyPlayed(track.id) {
+                    sourceURL = cached.url             // replayed from cache — no re-download
                 } else {
                     sourceURL = try await source.fileURL(forPath: track.path)
                 }
@@ -571,7 +580,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             duration = newPlayer.duration
             currentTime = 0
             isLoading = false
-            activeResource = (sourceID, sourceURL, playable.temporaryURL)
+            activeResource = (sourceID, sourceURL, playable.temporaryURL, track.id)
             if autoPlay {
                 newPlayer.play()
                 isPlaying = true
@@ -620,12 +629,43 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func cleanupTemp() {
         if let active = activeResource {
-            registry.source(for: active.sourceID)?.releaseTemporaryURL(active.sourceURL)
+            // Keep the downloaded source file for fast replay (History / back),
+            // instead of releasing it right away. Decoder temp files are transient.
+            retainRecentlyPlayed(trackID: active.trackID, sourceID: active.sourceID, url: active.sourceURL)
             if let decoded = active.decodedTempURL {
                 try? FileManager.default.removeItem(at: decoded)
             }
         }
         activeResource = nil
+    }
+
+    /// Adds a just-played file to the recently-played cache, evicting the oldest
+    /// (and deleting its temp) once the cap is exceeded.
+    private func retainRecentlyPlayed(trackID: String, sourceID: String, url: URL) {
+        recentlyPlayedOrder.removeAll { $0 == trackID }
+        recentlyPlayed[trackID] = (sourceID, url)
+        recentlyPlayedOrder.append(trackID)
+        while recentlyPlayedOrder.count > recentlyPlayedCap {
+            let evicted = recentlyPlayedOrder.removeFirst()
+            if let resource = recentlyPlayed.removeValue(forKey: evicted) {
+                registry.source(for: resource.sourceID)?.releaseTemporaryURL(resource.url)
+            }
+        }
+    }
+
+    /// Removes and returns a cached recently-played file, if present (ownership
+    /// transfers back to active playback).
+    private func takeRecentlyPlayed(_ trackID: String) -> (sourceID: String, url: URL)? {
+        recentlyPlayedOrder.removeAll { $0 == trackID }
+        return recentlyPlayed.removeValue(forKey: trackID)
+    }
+
+    private func clearRecentlyPlayed() {
+        for resource in recentlyPlayed.values {
+            registry.source(for: resource.sourceID)?.releaseTemporaryURL(resource.url)
+        }
+        recentlyPlayed.removeAll()
+        recentlyPlayedOrder.removeAll()
     }
 
     // MARK: - Metadata
