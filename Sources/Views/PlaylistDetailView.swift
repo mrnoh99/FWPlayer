@@ -251,6 +251,8 @@ private struct EntryRow: View {
     @EnvironmentObject private var player: AudioPlayer
     @State private var loadedSampleRate: Double?
 
+    private var track: Track { Track(entry: entry) }
+
     private var displayedSampleRate: Double? {
         if isCurrent, let rate = player.currentTrack?.sampleRate { return rate }
         return loadedSampleRate
@@ -258,9 +260,7 @@ private struct EntryRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: isCurrent ? "speaker.wave.2.fill" : "music.note")
-                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
-                .frame(width: 24)
+            ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title)
                     .lineLimit(1)

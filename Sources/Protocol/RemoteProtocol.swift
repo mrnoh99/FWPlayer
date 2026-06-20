@@ -156,8 +156,16 @@ enum RemoteCommand: Codable, Hashable {
     case addToPlaylist(playlistID: String, tracks: [RemoteQueueTrack])
 }
 
+/// Album artwork for one track, sent player → remote (separately from the
+/// frequent state push so the image isn't re-sent on every update). The JPEG is
+/// Base64-encoded and downscaled.
+struct RemoteArtwork: Codable, Hashable {
+    var trackID: String
+    var jpegBase64: String
+}
+
 /// The envelope exchanged over the wire. Commands flow remote → player; state,
-/// library, and folder listings flow player → remote.
+/// library, folder listings, and artwork flow player → remote.
 enum RemoteMessage: Codable {
     case command(RemoteCommand)
     case pairingRequired(PairingRequired)
@@ -165,4 +173,5 @@ enum RemoteMessage: Codable {
     case state(PlaybackState)
     case library(RemoteLibrary)
     case listing(RemoteListing)
+    case artwork(RemoteArtwork)
 }

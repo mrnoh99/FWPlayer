@@ -13,6 +13,7 @@ struct ContentView: View {
     @EnvironmentObject private var registry: SourceRegistry
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
+    @EnvironmentObject private var artwork: ArtworkStore
     @EnvironmentObject private var remoteServer: RemoteControlServer
 
     @State private var selection: SidebarSelection?
@@ -68,6 +69,7 @@ struct ContentView: View {
         .sheet(isPresented: $showingPlayer) {
             PlayerView(onShowQueue: showQueue)
                 .environmentObject(player)
+                .environmentObject(artwork)
         }
         .alert("New Playlist", isPresented: $showingNewPlaylist) {
             TextField("Playlist name", text: $newPlaylistName)

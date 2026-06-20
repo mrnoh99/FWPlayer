@@ -5,6 +5,7 @@ import SwiftUI
 /// Tapping it opens the full `PlayerView`.
 struct NowPlayingBar: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var artwork: ArtworkStore
     var onTap: () -> Void
     var onShowQueue: (() -> Void)? = nil
 
@@ -27,11 +28,19 @@ struct NowPlayingBar: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: "music.note")
-                    .font(.title3)
-                    .frame(width: 42, height: 42)
-                    .background(Color.secondary.opacity(0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                Group {
+                    if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
+                        Image(uiImage: cover).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "music.note")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.secondary.opacity(0.18))
+                    }
+                }
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.isEmpty ? "Not Playing" : title)

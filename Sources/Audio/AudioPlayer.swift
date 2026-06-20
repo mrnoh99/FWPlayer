@@ -53,6 +53,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     private unowned let registry: SourceRegistry
+    /// Album-artwork cache, used to enrich the playing track and feed the UI.
+    let artwork: ArtworkStore
     private unowned let playlists: PlaylistManager
     private var player: AVAudioPlayer?
     private var ticker: AnyCancellable?
@@ -61,9 +63,10 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?)?
     private var loadTask: Task<Void, Never>?
 
-    init(registry: SourceRegistry, playlists: PlaylistManager) {
+    init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.registry = registry
         self.playlists = playlists
+        self.artwork = artwork
         super.init()
         configureAudioSession()
         configureRemoteCommands()
@@ -558,6 +561,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                 updated[idx] = track
                 self.queue = updated
                 if self.currentIndex == idx { self.updateNowPlaying() }
+                // Fetch album art (embedded → folder cover → online) for this track.
+                self.artwork.resolve(track: track, fileURL: url, folderURL: url.deletingLastPathComponent())
             }
         }
     }

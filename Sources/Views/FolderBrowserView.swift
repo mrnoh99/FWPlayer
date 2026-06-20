@@ -193,6 +193,7 @@ struct FolderBrowserView: View {
                 ) {
                     TrackRow(
                         item: item,
+                        sourceID: source.id,
                         isCurrent: isCurrent(item),
                         directURL: source.directURL(forPath: item.path),
                         isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
@@ -386,6 +387,7 @@ private struct FolderRow: View {
 
 private struct TrackRow: View {
     let item: FileItem
+    let sourceID: String
     let isCurrent: Bool
     let directURL: URL?
     var isFavorite: Bool = false
@@ -397,11 +399,11 @@ private struct TrackRow: View {
 
     @State private var sampleRate: Double?
 
+    private var track: Track { Track(sourceID: sourceID, item: item) }
+
     var body: some View {
         HStack {
-            Image(systemName: isCurrent ? "speaker.wave.2.fill" : "music.note")
-                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
-                .frame(width: 24)
+            ArtworkThumbnail(track: track, directURL: directURL, isCurrent: isCurrent)
             VStack(alignment: .leading) {
                 Text((item.name as NSString).deletingPathExtension)
                     .lineLimit(1)

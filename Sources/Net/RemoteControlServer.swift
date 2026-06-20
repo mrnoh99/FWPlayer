@@ -9,6 +9,9 @@ final class RemoteControlServer: ObservableObject {
     private unowned let player: AudioPlayer
     private unowned let registry: SourceRegistry
     private unowned let playlists: PlaylistManager
+    private unowned let artwork: ArtworkStore
+    /// The track id whose cover was last broadcast, so we send each cover once.
+    private var lastArtworkTrackID: String?
 
     private var listener: NWListener?
     private var clients: [ObjectIdentifier: Client] = [:]
@@ -26,10 +29,11 @@ final class RemoteControlServer: ObservableObject {
         var isAuthenticated = false
     }
 
-    init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager) {
+    init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.player = player
         self.registry = registry
         self.playlists = playlists
+        self.artwork = artwork
         self.deviceName = HostDeviceName.current
         self.bonjourName = HostDeviceName.bonjourServiceName
         self.pairingPIN = Self.makePIN()
@@ -57,6 +61,14 @@ final class RemoteControlServer: ObservableObject {
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 self?.broadcastState()
+                self?.broadcastArtworkIfNeeded()
+            }
+            .store(in: &cancellables)
+
+        artwork.objectWillChange
+            .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.broadcastArtworkIfNeeded()
             }
             .store(in: &cancellables)
     }
@@ -106,6 +118,7 @@ final class RemoteControlServer: ObservableObject {
                 clients[clientID] = client
                 client.link.send(.authResult(AuthResult(success: true, message: nil)))
                 pushState(to: client.link)
+                if let art = currentArtworkMessage() { client.link.send(.artwork(art)) }
             } else {
                 client.link.send(.authResult(AuthResult(success: false, message: "Incorrect PIN.")))
             }
@@ -220,6 +233,23 @@ final class RemoteControlServer: ObservableObject {
 
     private func pushState(to link: RemoteLink) {
         link.send(.state(makePlaybackState()))
+    }
+
+    /// Builds the current track's artwork message, if a cover is cached.
+    private func currentArtworkMessage() -> RemoteArtwork? {
+        guard let track = player.currentTrack,
+              let data = artwork.jpeg(for: track) else { return nil }
+        return RemoteArtwork(trackID: track.id, jpegBase64: data.base64EncodedString())
+    }
+
+    /// Broadcasts the current cover once per track to every authenticated client.
+    private func broadcastArtworkIfNeeded() {
+        guard let track = player.currentTrack else { lastArtworkTrackID = nil; return }
+        guard track.id != lastArtworkTrackID, let message = currentArtworkMessage() else { return }
+        lastArtworkTrackID = track.id
+        for client in clients.values where client.isAuthenticated {
+            client.link.send(.artwork(message))
+        }
     }
 
     private func makePlaybackState() -> PlaybackState {

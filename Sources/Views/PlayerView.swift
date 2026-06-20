@@ -3,6 +3,7 @@ import SwiftUI
 /// Full-screen player with artwork placeholder, scrubber, and transport controls.
 struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var artwork: ArtworkStore
     @Environment(\.dismiss) private var dismiss
     var onShowQueue: (() -> Void)? = nil
 
@@ -32,12 +33,20 @@ struct PlayerView: View {
 
             Spacer()
 
-            Image(systemName: "music.note")
-                .font(.system(size: 90))
-                .foregroundStyle(.secondary)
-                .frame(width: 240, height: 240)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+            Group {
+                if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
+                    Image(uiImage: cover).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 90))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.secondary.opacity(0.12))
+                }
+            }
+            .frame(width: 240, height: 240)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
 
             VStack(spacing: 6) {
                 if isLoading {
