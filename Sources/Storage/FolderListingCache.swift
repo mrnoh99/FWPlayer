@@ -12,7 +12,8 @@ actor FolderListingCache {
             ?? FileManager.default.temporaryDirectory
         let dir = base.appendingPathComponent(subdirectory, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.fileURL = dir.appendingPathComponent("\(sourceID).json")
+        // v2: prewarm no longer caches failed reads as empty listings.
+        self.fileURL = dir.appendingPathComponent("\(sourceID)-v2.json")
 
         if let data = try? Data(contentsOf: fileURL),
            let loaded = try? JSONDecoder().decode([String: [FileItem]].self, from: data) {

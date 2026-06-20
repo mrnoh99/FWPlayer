@@ -70,7 +70,7 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
                     stack.append(item.path)
                 }
             } catch {
-                await listingCache.store(path: path, items: [], persist: false)
+                // Don't cache failed reads — list() will retry from disk later.
                 scanned += 1
                 await progress(scanned)
             }
@@ -127,7 +127,18 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
         return false
     }
 
+    private func ensureSecurityScopedAccess() throws {
+        guard isSecurityScoped else { return }
+        if !didStartAccessing {
+            didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+        }
+        guard didStartAccessing else {
+            throw FileSourceError.accessDenied
+        }
+    }
+
     private func listFromDisk(path: String) throws -> [FileItem] {
+        try ensureSecurityScopedAccess()
         let dir = url(forPath: path)
         let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .nameKey]
         let contents = try FileManager.default.contentsOfDirectory(
@@ -156,6 +167,7 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
     }
 
     func fileURL(forPath path: String) async throws -> URL {
+        try ensureSecurityScopedAccess()
         let url = url(forPath: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw FileSourceError.fileNotFound(path)
@@ -164,6 +176,7 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
     }
 
     func directURL(forPath path: String) -> URL? {
+        guard (try? ensureSecurityScopedAccess()) != nil else { return nil }
         let url = url(forPath: path)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }

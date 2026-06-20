@@ -246,7 +246,9 @@ struct ContentView: View {
 
     /// Pushes a sub-folder (used by Catalyst's programmatic open).
     private func pushFolder(_ route: FolderRoute) {
-        sourcePaths[route.sourceID, default: []].append(route)
+        var paths = sourcePaths[route.sourceID] ?? []
+        paths.append(route)
+        sourcePaths[route.sourceID] = paths
     }
 
     /// "Locate File": switch to the track's source and open the folder that holds

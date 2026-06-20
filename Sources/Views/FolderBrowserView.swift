@@ -120,7 +120,7 @@ struct FolderBrowserView: View {
             .listStyle(.inset)
             #endif
             .scrollPosition(id: $scrollTarget, anchor: .center)
-            .refreshable { await reload() }
+            .refreshable { await reload(forceRefresh: true) }
     }
 
     @ViewBuilder
@@ -347,14 +347,21 @@ struct FolderBrowserView: View {
         }
     }
 
-    private func reload() async {
+    private func reload(forceRefresh: Bool = false) async {
         playabilityTask?.cancel()
         isLoading = true
         loadError = nil
         hasPlayableContent = false
         subfoldersHaveAudio = false
         do {
-            items = try await source.list(path: path)
+            items = if forceRefresh {
+                try await source.refresh(path: path)
+            } else {
+                try await source.list(path: path)
+            }
+            if items.isEmpty, !forceRefresh, !path.isEmpty {
+                items = try await refreshedIfAdvertisedInParent(current: items)
+            }
             isLoading = false
             updatePlayabilityHints()
         } catch {
@@ -388,6 +395,18 @@ struct FolderBrowserView: View {
                 hasPlayableContent = directAudio || subs
             }
         }
+    }
+
+    /// Re-reads from disk when a stale cache returned empty for a folder the parent
+    /// listing still advertises.
+    private func refreshedIfAdvertisedInParent(current: [FileItem]) async throws -> [FileItem] {
+        guard current.isEmpty, !path.isEmpty else { return current }
+        let parent = (path as NSString).deletingLastPathComponent
+        guard let parentEntries = try? await source.list(path: parent),
+              parentEntries.contains(where: { $0.kind == .directory && $0.path == path }) else {
+            return current
+        }
+        return try await source.refresh(path: path)
     }
 
     private func userFacingLoadError(_ error: Error) -> String {

@@ -170,7 +170,7 @@ final class RemoteControlServer: ObservableObject {
 
         case .browse(let sourceID, let path):
             Task {
-                let listing = await buildListing(sourceID: sourceID, path: path)
+                let listing = await buildListing(sourceID: sourceID, path: path, forceRefresh: false)
                 link.send(.listing(listing))
             }
 
@@ -297,13 +297,18 @@ final class RemoteControlServer: ObservableObject {
         )
     }
 
-    private func buildListing(sourceID: String, path: String) async -> RemoteListing {
+    private func buildListing(sourceID: String, path: String, forceRefresh: Bool) async -> RemoteListing {
         guard let source = registry.source(for: sourceID) else {
             return RemoteListing(sourceID: sourceID, path: path, items: [], error: "Source not found.")
         }
 
         do {
-            let entries = try await source.list(path: path)
+            var entries = try await (forceRefresh ? source.refresh(path: path) : source.list(path: path))
+            // Retry once from disk when a poisoned cache returns an empty folder that
+            // the parent listing still advertises (common after a failed pre-scan).
+            if entries.isEmpty, !forceRefresh, await folderAdvertisedInParent(source: source, path: path) {
+                entries = try await source.refresh(path: path)
+            }
             let items = entries.compactMap { item -> RemoteFileItem? in
                 switch item.kind {
                 case .directory:
@@ -323,6 +328,15 @@ final class RemoteControlServer: ObservableObject {
                 error: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             )
         }
+    }
+
+    /// Returns true when the parent folder's cached listing still contains `path`.
+    private func folderAdvertisedInParent(source: any FileSource, path: String) async -> Bool {
+        guard !path.isEmpty else { return false }
+        let parent = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+        guard let parentEntries = try? await source.list(path: parent) else { return false }
+        return parentEntries.contains { $0.kind == .directory && $0.path == path && $0.name == name }
     }
 
     private static func makePIN() -> String {
