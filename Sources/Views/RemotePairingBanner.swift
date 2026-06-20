@@ -17,6 +17,9 @@ struct RemotePairingBanner: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
+            Text("Developed by JaiSung NOH MD 2026")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
