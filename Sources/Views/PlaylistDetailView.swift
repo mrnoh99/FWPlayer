@@ -93,7 +93,7 @@ struct PlaylistDetailView: View {
             PlaybackRowInteraction(
                 isHighlighted: isFocused(entry),
                 onSelect: { focus(on: entry, transient: false) },
-                onPlay: { player.playNext(Track(entry: entry)) }
+                onPlay: { play(playlist, startAt: index) }
             ) {
                 EntryRow(
                     entry: entry,
@@ -117,14 +117,6 @@ struct PlaylistDetailView: View {
             .id(entry.id)
             #if targetEnvironment(macCatalyst)
             .tag(entry.id)
-            .overlay {
-                DoubleClickDetector(
-                    onSingleClick: { play(playlist, startAt: index) },
-                    onDoubleClick: { play(playlist, startAt: index) },
-                    leadingPassthrough: 34,
-                    trailingPassthrough: 48
-                )
-            }
             .contextMenu {
                 Button {
                     player.enqueue(tracks: [Track(sourceID: entry.sourceID, path: entry.path, title: entry.title)])

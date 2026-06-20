@@ -147,12 +147,6 @@ struct FolderBrowserView: View {
                     FolderRow(name: item.name)
                 }
                 .tag(item.path)
-                .overlay {
-                    DoubleClickDetector(
-                        onSingleClick: { openFolder(at: item.path, name: item.name) },
-                        onDoubleClick: { openFolder(at: item.path, name: item.name) }
-                    )
-                }
                 #else
                 NavigationLink(value: FolderRoute(sourceID: source.id, path: item.path, title: item.name)) {
                     Label(item.name, systemImage: "folder")
@@ -162,7 +156,7 @@ struct FolderBrowserView: View {
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
                     onSelect: { focus(on: item, transient: false) },
-                    onPlay: { player.playNext(Track(sourceID: source.id, item: item)) }
+                    onPlay: { playFromQueue(startingAt: item) }
                 ) {
                     TrackRow(
                         item: item,
@@ -182,14 +176,6 @@ struct FolderBrowserView: View {
                 .id(item.path)
                 #if targetEnvironment(macCatalyst)
                 .tag(item.path)
-                .overlay {
-                    DoubleClickDetector(
-                        onSingleClick: { playFromQueue(startingAt: item) },
-                        onDoubleClick: { playFromQueue(startingAt: item) },
-                        leadingPassthrough: 34,
-                        trailingPassthrough: 48
-                    )
-                }
                 #endif
                 .swipeActions(edge: .trailing) {
                     Button {

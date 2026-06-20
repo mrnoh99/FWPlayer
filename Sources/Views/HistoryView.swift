@@ -76,14 +76,6 @@ struct HistoryView: View {
             QueueRow(index: index(of: track), track: track,
                      isCurrent: isCurrent(track), isPlaying: player.isPlaying)
         }
-        #if targetEnvironment(macCatalyst)
-        .overlay {
-            DoubleClickDetector(
-                onSingleClick: { player.play(tracks: [track], startAt: 0) },
-                onDoubleClick: { player.play(tracks: [track], startAt: 0) }
-            )
-        }
-        #endif
     }
 
     private func menu(track: Track, index: Int) -> some View {

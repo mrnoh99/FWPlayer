@@ -19,14 +19,16 @@ struct PlaybackRowInteraction<Content: View>: View {
             if isEditing {
                 content()
             } else {
-                #if targetEnvironment(macCatalyst)
-                content()
-                #else
+                // A native SwiftUI Button on every platform — including Catalyst,
+                // which previously used a UIKit tap-recognizer overlay that the
+                // List's own gestures intermittently swallowed (a single click
+                // would only sometimes open/play). A Button is as reliable as the
+                // Return key. The embedded favorite star and ••• menu still work
+                // as higher-priority nested controls.
                 Button(action: onPlay) {
                     content()
                 }
                 .buttonStyle(.plain)
-                #endif
             }
         }
         .listRowBackground(isHighlighted && !isEditing ? Color.accentColor.opacity(0.15) : nil)

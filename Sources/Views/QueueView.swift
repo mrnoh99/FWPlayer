@@ -127,12 +127,6 @@ struct QueueView: View {
         ) {
             QueueRow(index: index, track: track, isCurrent: isCurrent, isPlaying: player.isPlaying)
         }
-        #if targetEnvironment(macCatalyst)
-        .overlay {
-            DoubleClickDetector(onSingleClick: { Task { @MainActor in onPlay() } },
-                                onDoubleClick: { Task { @MainActor in onPlay() } })
-        }
-        #endif
     }
 
     // MARK: - Header
