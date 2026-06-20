@@ -113,7 +113,9 @@ struct PlaylistDetailView: View {
             .overlay {
                 DoubleClickDetector(
                     onSingleClick: { focus(on: entry, transient: false) },
-                    onDoubleClick: { play(playlist, startAt: index) }
+                    onDoubleClick: { play(playlist, startAt: index) },
+                    leadingPassthrough: 34,
+                    trailingPassthrough: 48
                 )
             }
             .contextMenu {

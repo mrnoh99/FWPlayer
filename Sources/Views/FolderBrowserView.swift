@@ -171,7 +171,9 @@ struct FolderBrowserView: View {
                 .overlay {
                     DoubleClickDetector(
                         onSingleClick: { focus(on: item, transient: false) },
-                        onDoubleClick: { playFromQueue(startingAt: item) }
+                        onDoubleClick: { playFromQueue(startingAt: item) },
+                        leadingPassthrough: 34,
+                        trailingPassthrough: 48
                     )
                 }
                 #endif

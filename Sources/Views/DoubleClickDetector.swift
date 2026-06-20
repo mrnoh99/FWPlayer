@@ -18,6 +18,13 @@ import UIKit
 struct DoubleClickDetector: UIViewRepresentable {
     var onSingleClick: () -> Void
     var onDoubleClick: () -> Void
+    /// Widths (in points) at the leading/trailing edges where touches should
+    /// pass *through* to the controls beneath instead of being captured for
+    /// click detection. Track rows put a favorite star at the leading edge and
+    /// a ••• menu at the trailing edge; without these gaps the full-row detector
+    /// would swallow their taps and they'd be unclickable on Catalyst.
+    var leadingPassthrough: CGFloat = 0
+    var trailingPassthrough: CGFloat = 0
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onSingleClick: onSingleClick, onDoubleClick: onDoubleClick)
@@ -25,6 +32,8 @@ struct DoubleClickDetector: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let view = PassThroughView()
+        view.leadingPassthrough = leadingPassthrough
+        view.trailingPassthrough = trailingPassthrough
 
         let tap = UITapGestureRecognizer(
             target: context.coordinator,
@@ -42,6 +51,10 @@ struct DoubleClickDetector: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.onSingleClick = onSingleClick
         context.coordinator.onDoubleClick = onDoubleClick
+        if let view = uiView as? PassThroughView {
+            view.leadingPassthrough = leadingPassthrough
+            view.trailingPassthrough = trailingPassthrough
+        }
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
@@ -83,8 +96,15 @@ struct DoubleClickDetector: UIViewRepresentable {
     }
 
     final class PassThroughView: UIView {
+        var leadingPassthrough: CGFloat = 0
+        var trailingPassthrough: CGFloat = 0
+
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
             guard bounds.contains(point) else { return nil }
+            // Leave the leading (favorite star) and trailing (••• menu) gutters
+            // for the controls beneath so they stay tappable.
+            if point.x < leadingPassthrough { return nil }
+            if point.x > bounds.width - trailingPassthrough { return nil }
             return self
         }
     }
