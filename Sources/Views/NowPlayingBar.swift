@@ -1,11 +1,15 @@
 import SwiftUI
 
 /// Floating "liquid glass" now-playing bar pinned near the bottom of the app,
-/// styled like Apple Music: rounded translucent card with centered transport
-/// flanked by shuffle and repeat. Tapping it opens the full `PlayerView`.
+/// styled like the Apple Music desktop player: a single horizontal capsule with
+/// the transport (shuffle · prev · play · next · repeat) on the left, the track
+/// card (artwork, title/artist, favorite, thin progress) in the centre, and a
+/// queue button on the right. Tapping the centre opens the full `PlayerView`.
 struct NowPlayingBar: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var artwork: ArtworkStore
+    @EnvironmentObject private var playlists: PlaylistManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var onTap: () -> Void
     var onShowQueue: (() -> Void)? = nil
 
@@ -21,6 +25,10 @@ struct NowPlayingBar: View {
     @State private var isShuffled = false
     @State private var repeatMode: RepeatMode = .off
 
+    /// Wide layouts (iPad/Mac) show the full Apple Music bar; compact (iPhone)
+    /// trims the secondary controls so the essentials still fit.
+    private var isWide: Bool { horizontalSizeClass == .regular }
+
     private var progress: Double {
         let total = max(duration.isFinite ? duration : 0, 0.1)
         guard currentTime.isFinite else { return 0 }
@@ -28,101 +36,136 @@ struct NowPlayingBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                Group {
-                    if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
-                        Image(uiImage: cover).resizable().scaledToFill()
-                    } else {
-                        Image(systemName: "music.note")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.secondary.opacity(0.18))
-                    }
+        HStack(spacing: isWide ? 22 : 14) {
+            transport
+            trackCard
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onTap)
+            if isWide, let onShowQueue, !player.queue.isEmpty {
+                Button(action: onShowQueue) {
+                    Image(systemName: "list.bullet").font(.body)
                 }
-                .frame(width: 42, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title.isEmpty ? "Not Playing" : title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    if let artist {
-                        Text(artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    } else if let sampleRate {
-                        Text(AudioFormatReader.formatSampleRate(sampleRate))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 8)
-
-                if let onShowQueue, !player.queue.isEmpty {
-                    Button(action: onShowQueue) {
-                        Image(systemName: "list.bullet").font(.body)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
+        }
+        .padding(.horizontal, isWide ? 22 : 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 5)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .onAppear { refreshFromPlayer() }
+        .onReceive(player.objectWillChange) { _ in
+            Task { @MainActor in refreshFromPlayer() }
+        }
+    }
 
-            // Centered transport with shuffle/repeat, Apple Music style.
-            HStack(spacing: 28) {
+    // MARK: - Transport (left cluster)
+
+    private var transport: some View {
+        HStack(spacing: isWide ? 20 : 16) {
+            if isWide {
                 Button { Task { @MainActor in player.toggleShuffle() } } label: {
                     Image(systemName: "shuffle")
                         .font(.subheadline)
                         .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
                 }
+            }
+            Button { Task { @MainActor in player.previous() } } label: {
+                Image(systemName: "backward.fill").font(.title3)
+            }
+            .disabled(!canGoPrevious)
 
-                Button { Task { @MainActor in player.previous() } } label: {
-                    Image(systemName: "backward.fill").font(.title3)
+            if isLoading {
+                ProgressView().frame(width: 30, height: 30)
+            } else {
+                Button { Task { @MainActor in player.togglePlayPause() } } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title)
                 }
-                .disabled(!canGoPrevious)
+            }
 
-                if isLoading {
-                    ProgressView().frame(width: 34, height: 34)
-                } else {
-                    Button { Task { @MainActor in player.togglePlayPause() } } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title)
-                    }
-                }
+            Button { Task { @MainActor in player.next() } } label: {
+                Image(systemName: "forward.fill").font(.title3)
+            }
+            .disabled(!canGoNext)
 
-                Button { Task { @MainActor in player.next() } } label: {
-                    Image(systemName: "forward.fill").font(.title3)
-                }
-                .disabled(!canGoNext)
-
+            if isWide {
                 Button { Task { @MainActor in player.cycleRepeatMode() } } label: {
                     Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
                         .font(.subheadline)
                         .foregroundStyle(repeatMode == .off ? Color.secondary : Color.accentColor)
                 }
             }
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+    }
 
-            // Thin progress line.
-            ProgressView(value: progress)
-                .progressViewStyle(.linear)
-                .tint(.accentColor)
-                .scaleEffect(x: 1, y: 0.6, anchor: .center)
+    // MARK: - Track card (centre)
+
+    private var trackCard: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 10) {
+                cover
+                    .frame(width: 38, height: 38)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title.isEmpty ? "Not Playing" : title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+
+                if let track = player.currentTrack {
+                    Button { playlists.toggleFavorite(track) } label: {
+                        Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                            .font(.footnote)
+                            .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
+                }
+            }
+
+            // Thin progress line under the card, Apple Music style.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.25))
+                    Capsule().fill(Color.primary.opacity(0.55))
+                        .frame(width: max(0, geo.size.width * progress))
+                }
+            }
+            .frame(height: 3)
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 5)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 6)
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture(perform: onTap)
-        .onAppear { refreshFromPlayer() }
-        .onReceive(player.objectWillChange) { _ in
-            Task { @MainActor in refreshFromPlayer() }
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        if let image = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else {
+            Image(systemName: "music.note")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.secondary.opacity(0.18))
         }
+    }
+
+    private var subtitle: String? {
+        if let artist { return artist }
+        if let sampleRate { return AudioFormatReader.formatSampleRate(sampleRate) }
+        return nil
     }
 
     private func refreshFromPlayer() {
