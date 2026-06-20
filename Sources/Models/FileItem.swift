@@ -47,6 +47,11 @@ struct FileItem: Identifiable, Hashable, Codable {
     }
 
     static func kind(forName name: String, isDirectory: Bool) -> Kind {
+        // Skip hidden / metadata files. macOS drops AppleDouble sidecars
+        // ("._song.flac") and .DS_Store onto SMB and other non-Mac shares; the
+        // "._" files share the audio extension but are just resource-fork
+        // metadata and can't play, so don't list them as tracks.
+        if name.hasPrefix(".") { return .other }
         if isDirectory { return .directory }
         let ext = (name as NSString).pathExtension.lowercased()
         return audioExtensions.contains(ext) ? .audio : .other
