@@ -56,18 +56,26 @@ struct QueueView: View {
             }
         } header: {
             sectionHeader(title: "Queue", count: player.queue.count, isExpanded: $queueExpanded) {
-                Menu {
+                HStack(spacing: 16) {
                     Button {
                         queueExpanded = true
                         withAnimation { editMode = editMode.isEditing ? .inactive : .active }
                     } label: {
-                        Label(editMode.isEditing ? "Done" : "Edit", systemImage: "arrow.up.arrow.down")
+                        Text(editMode.isEditing ? "Done" : "Edit")
                     }
-                    Button(role: .destructive) { player.clearQueue() } label: {
+                    .disabled(player.queue.isEmpty)
+
+                    Button(role: .destructive) {
+                        editMode = .inactive
+                        player.clearQueue()
+                    } label: {
                         Label("Clear", systemImage: "trash")
                     }
-                } label: { ellipsisLabel }
-                .disabled(player.queue.isEmpty)
+                    .labelStyle(.iconOnly)
+                    .disabled(player.queue.isEmpty)
+                }
+                .buttonStyle(.borderless)
+                .font(.subheadline)
             }
         }
     }
