@@ -54,17 +54,10 @@ struct FolderBrowserView: View {
             }
         }
         .navigationTitle(title)
-        .toolbar {
-            #if targetEnvironment(macCatalyst)
-            if canGoToParent {
-                ToolbarItem(placement: .navigation) {
-                    Button { dismiss() } label: {
-                        Label("Parent Folder", systemImage: "chevron.left")
-                    }
-                }
-            }
-            #endif
-        }
+        // The detail's value-based NavigationStack already supplies a standard
+        // back button; an extra custom one here showed up as a second chevron
+        // (bumped to the trailing edge inside the split view). The in-list parent
+        // row below covers the explicit "go up" affordance on Catalyst.
         .task(id: path) {
             await reload()
         }
