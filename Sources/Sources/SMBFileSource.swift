@@ -23,7 +23,13 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
     private let listingCache: FolderListingCache
 
     #if canImport(SMBClient)
-    private let connection: SMBConnection
+    /// Directory listings (interactive browsing) and file downloads (playback)
+    /// each get their own SMB session. A single shared session serializes
+    /// everything, so prefetching upcoming tracks would block folder browsing
+    /// during playback. Two sessions let a browse complete without waiting behind
+    /// downloads.
+    private let listConnection: SMBConnection
+    private let downloadConnection: SMBConnection
     #endif
 
     init(config: SMBServerConfig, password: String) {
@@ -32,7 +38,8 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         self.config = config
         self.listingCache = FolderListingCache(subdirectory: "SMBCache", sourceID: config.id.uuidString)
         #if canImport(SMBClient)
-        self.connection = SMBConnection(config: config, password: password)
+        self.listConnection = SMBConnection(config: config, password: password)
+        self.downloadConnection = SMBConnection(config: config, password: password)
         Task { [listingCache] in
             let cacheEmpty = await listingCache.isEmpty
             if !cacheEmpty {
@@ -52,7 +59,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         // (and across app restarts).
         if let cached = await listingCache.listing(path: path) { return cached }
         do {
-            let files = try await connection.listDirectory(path: path)
+            let files = try await listConnection.listDirectory(path: path)
             let items = Self.items(from: files, parent: path)
             await listingCache.store(path: path, items: items)
             return items
@@ -70,7 +77,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
 
     func refresh(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
-        let files = try await connection.listDirectory(path: path)
+        let files = try await listConnection.listDirectory(path: path)
         let items = Self.items(from: files, parent: path)
         await listingCache.store(path: path, items: items)
         return items
@@ -88,7 +95,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         var stack = [""]
         while let path = stack.popLast() {
             do {
-                let files = try await connection.listDirectory(path: path)
+                let files = try await listConnection.listDirectory(path: path)
                 let items = Self.items(from: files, parent: path)
                 await listingCache.store(path: path, items: items, persist: false)
                 scanned += 1
@@ -106,7 +113,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         }
         await listingCache.flush()
         await listingCache.computePlayabilityIndex()
-        await connection.invalidate()
+        await listConnection.invalidate()
         #endif
     }
 
@@ -163,7 +170,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
 
     func fileURL(forPath path: String) async throws -> URL {
         #if canImport(SMBClient)
-        let data = try await connection.download(path: path)
+        let data = try await downloadConnection.download(path: path)
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fwplayer-smb", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -185,7 +192,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
     /// Verifies that the configured credentials and share are reachable.
     func testConnection() async throws {
         #if canImport(SMBClient)
-        _ = try await connection.listDirectory(path: "")
+        _ = try await listConnection.listDirectory(path: "")
         #else
         throw FileSourceError.smbUnavailable
         #endif
