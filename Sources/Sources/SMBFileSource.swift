@@ -11,7 +11,7 @@ import SMBClient
 /// The actual SMB protocol work is provided by the `SMBClient` Swift package.
 /// When that package is not present the source still compiles, but every
 /// operation reports `FileSourceError.smbUnavailable`.
-final class SMBFileSource: FileSource {
+final class SMBFileSource: FileSource, PrewarmableFileSource {
     let id: String
     let displayName: String
     let kind: SourceKind = .smb
@@ -20,7 +20,7 @@ final class SMBFileSource: FileSource {
     let config: SMBServerConfig
 
     /// Persistent on-disk cache of this server's folder listings.
-    private let listingCache: SMBListingCache
+    private let listingCache: FolderListingCache
 
     #if canImport(SMBClient)
     private let connection: SMBConnection
@@ -30,10 +30,20 @@ final class SMBFileSource: FileSource {
         self.id = config.sourceID
         self.displayName = config.displayName
         self.config = config
-        self.listingCache = SMBListingCache(serverID: config.id.uuidString)
+        self.listingCache = FolderListingCache(subdirectory: "SMBCache", sourceID: config.id.uuidString)
         #if canImport(SMBClient)
         self.connection = SMBConnection(config: config, password: password)
+        Task { [listingCache] in
+            let cacheEmpty = await listingCache.isEmpty
+            if !cacheEmpty {
+                await listingCache.computePlayabilityIndex()
+            }
+        }
         #endif
+    }
+
+    func needsPrewarm() async -> Bool {
+        await listingCache.isEmpty
     }
 
     func list(path: String) async throws -> [FileItem] {
@@ -41,10 +51,18 @@ final class SMBFileSource: FileSource {
         // The on-disk cache makes browsing instant after the one-time pre-scan
         // (and across app restarts).
         if let cached = await listingCache.listing(path: path) { return cached }
-        let files = try await connection.listDirectory(path: path)
-        let items = Self.items(from: files, parent: path)
-        await listingCache.store(path: path, items: items)
-        return items
+        do {
+            let files = try await connection.listDirectory(path: path)
+            let items = Self.items(from: files, parent: path)
+            await listingCache.store(path: path, items: items)
+            return items
+        } catch {
+            if smbErrorIsObjectNotFound(error) {
+                await listingCache.store(path: path, items: [])
+                return []
+            }
+            throw error
+        }
         #else
         throw FileSourceError.smbUnavailable
         #endif
@@ -69,17 +87,56 @@ final class SMBFileSource: FileSource {
         var scanned = 0
         var stack = [""]
         while let path = stack.popLast() {
-            guard let files = try? await connection.listDirectory(path: path) else { continue }
-            let items = Self.items(from: files, parent: path)
-            await listingCache.store(path: path, items: items, persist: false)
-            scanned += 1
-            await progress(scanned)
-            for item in items where item.kind == .directory {
-                stack.append(item.path)
+            do {
+                let files = try await connection.listDirectory(path: path)
+                let items = Self.items(from: files, parent: path)
+                await listingCache.store(path: path, items: items, persist: false)
+                scanned += 1
+                await progress(scanned)
+                for item in items where item.kind == .directory {
+                    stack.append(item.path)
+                }
+            } catch {
+                // Cache an empty listing so later browsing doesn't retry paths that
+                // don't exist on the server (symlinks, stale entries, etc.).
+                await listingCache.store(path: path, items: [], persist: false)
+                scanned += 1
+                await progress(scanned)
             }
         }
         await listingCache.flush()
+        await listingCache.computePlayabilityIndex()
+        await connection.invalidate()
         #endif
+    }
+
+    /// Cache-only: does `path` or any descendant contain playable audio?
+    func hasPlayableAudio(in path: String) async -> Bool {
+        let cacheEmpty = await listingCache.isEmpty
+        if !cacheEmpty { return await listingCache.hasPlayableAudio(in: path) }
+        return ((try? await collectAudioItems(in: path, recursive: true))?.isEmpty == false)
+    }
+
+    /// Cache-only: does any subdirectory under `path` contain playable audio?
+    func subfolderHasPlayableAudio(in path: String) async -> Bool {
+        let cacheEmpty = await listingCache.isEmpty
+        if !cacheEmpty { return await listingCache.subfolderHasPlayableAudio(in: path) }
+        guard let entries = try? await list(path: path) else { return false }
+        for item in entries where item.kind == .directory {
+            if await hasPlayableAudio(in: item.path) { return true }
+        }
+        return false
+    }
+
+    func audioItems(in path: String, recursive: Bool = true) async throws -> [FileItem] {
+        let cacheEmpty = await listingCache.isEmpty
+        if !cacheEmpty {
+            if recursive {
+                return await listingCache.recursiveAudio(in: path)
+            }
+            return (await listingCache.listing(path: path) ?? []).filter { $0.kind == .audio }
+        }
+        return try await collectAudioItems(in: path, recursive: recursive)
     }
 
     #if canImport(SMBClient)
@@ -133,9 +190,54 @@ final class SMBFileSource: FileSource {
         throw FileSourceError.smbUnavailable
         #endif
     }
+
+    /// Maps SMB protocol errors to clearer guidance in the add-server form.
+    static func userFacingMessage(for error: Error) -> String {
+        #if canImport(SMBClient)
+        return smbClientUserFacingMessage(for: error)
+        #else
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        #endif
+    }
 }
 
 #if canImport(SMBClient)
+private func smbErrorIsObjectNotFound(_ error: Error) -> Bool {
+    guard let err = error as? ErrorResponse else { return false }
+    return NTStatus(err.header.status) == .objectNameNotFound
+}
+
+/// Maps SMBClient `ErrorResponse` statuses to user-facing text.
+private func smbClientUserFacingMessage(for error: Error) -> String {
+    if let err = error as? ErrorResponse {
+        switch NTStatus(err.header.status) {
+        case .logonFailure:
+            return "Login failed. Check username and password, enable guest access on the server if using Guest, or try DOMAIN\\username for Windows/Synology accounts."
+        case .badNetworkName:
+            return "Share not found. Use the share name only (e.g. Music), not a path."
+        case .accessDenied:
+            return "Access denied. The account may not have permission for this share."
+        case .objectNameNotFound:
+            return "Folder not found on the server. It may have been moved or removed."
+        default:
+            break
+        }
+    }
+    return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+}
+
+/// Splits `DOMAIN\username` entered in the username field for NTLM login.
+private func parseSMBLogin(username: String, password: String, isGuest: Bool)
+    -> (username: String?, password: String?, domain: String?) {
+    if isGuest { return (nil, nil, nil) }
+    if let slash = username.firstIndex(of: "\\") {
+        let domain = String(username[..<slash])
+        let account = String(username[username.index(after: slash)...])
+        return (account, password, domain.isEmpty ? nil : domain)
+    }
+    return (username, password, nil)
+}
+
 /// Runs `operation`, throwing `FileSourceError.timedOut` if it doesn't finish
 /// within `seconds`. Prevents a stalled SMB call from hanging the UI forever
 /// (the browser would otherwise spin on "Loading…" with no error). Real errors
@@ -146,46 +248,19 @@ final class SMBFileSource: FileSource {
 /// cancellation — exactly the case that caused the endless spinner.
 func withTimeout<T>(_ seconds: TimeInterval,
                     _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
-    // `@unchecked Sendable` holders let us carry a non-Sendable result (SMBClient's
-    // `File` isn't Sendable) and resume the continuation exactly once. The result
-    // is written before its task finishes and read only after, so access is ordered.
-    final class Box: @unchecked Sendable { var result: Result<T, Error>? }
-    final class Gate: @unchecked Sendable {
-        private let lock = NSLock()
-        private var finished = false
-        func enter() -> Bool {
-            lock.lock(); defer { lock.unlock() }
-            if finished { return false }
-            finished = true
-            return true
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await operation()
         }
-    }
-    let box = Box()
-    let gate = Gate()
-    let opTask = Task {
-        do { box.result = .success(try await operation()) }
-        catch { box.result = .failure(error) }
-    }
-    let timerTask = Task { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
-
-    return try await withTaskCancellationHandler {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
-            Task {
-                await opTask.value
-                guard gate.enter() else { return }
-                timerTask.cancel()
-                continuation.resume(with: box.result ?? .failure(FileSourceError.timedOut))
-            }
-            Task {
-                await timerTask.value
-                guard gate.enter() else { return }
-                opTask.cancel()
-                continuation.resume(throwing: FileSourceError.timedOut)
-            }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw FileSourceError.timedOut
         }
-    } onCancel: {
-        opTask.cancel()
-        timerTask.cancel()
+        defer { group.cancelAll() }
+        guard let result = try await group.next() else {
+            throw FileSourceError.timedOut
+        }
+        return result
     }
 }
 
@@ -207,16 +282,27 @@ private actor SMBConnection {
         self.password = password
     }
 
+    func invalidate() {
+        client = nil
+    }
+
     private func connectedClient() async throws -> SMBClient {
         if let client { return client }
         let host = config.host, port = config.port
-        let username = config.isGuest ? "Guest" : config.username
-        let secret = config.isGuest ? "" : password
         let share = config.share
+        let login = parseSMBLogin(
+            username: config.username,
+            password: password,
+            isGuest: config.isGuest
+        )
 
         let client = SMBClient(host: host, port: port)
         try await withTimeout(connectTimeout) {
-            try await client.login(username: username, password: secret)
+            try await client.login(
+                username: login.username,
+                password: login.password,
+                domain: login.domain
+            )
             try await client.connectShare(share)
         }
         self.client = client
@@ -224,17 +310,53 @@ private actor SMBConnection {
     }
 
     func listDirectory(path: String) async throws -> [File] {
+        do {
+            return try await performListDirectory(path: path)
+        } catch {
+            client = nil
+            if smbShouldReconnect(error) {
+                return try await performListDirectory(path: path)
+            }
+            throw error
+        }
+    }
+
+    func download(path: String) async throws -> Data {
+        do {
+            return try await performDownload(path: path)
+        } catch {
+            client = nil
+            if smbShouldReconnect(error) {
+                return try await performDownload(path: path)
+            }
+            throw error
+        }
+    }
+
+    private func performListDirectory(path: String) async throws -> [File] {
         let client = try await connectedClient()
         return try await withTimeout(listTimeout) {
             try await client.listDirectory(path: path)
         }
     }
 
-    func download(path: String) async throws -> Data {
+    private func performDownload(path: String) async throws -> Data {
         let client = try await connectedClient()
         return try await withTimeout(downloadTimeout) {
             try await client.download(path: path)
         }
+    }
+}
+
+private func smbShouldReconnect(_ error: Error) -> Bool {
+    if error is FileSourceError { return true }
+    guard let err = error as? ErrorResponse else { return false }
+    switch NTStatus(err.header.status) {
+    case .objectNameNotFound, .userSessionDeleted, .networkNameDeleted, .connectionRefused,
+         .networkSessionExpired, .fileClosed:
+        return true
+    default:
+        return false
     }
 }
 #endif

@@ -29,19 +29,17 @@ struct FolderBrowserView: View {
     #endif
 
     @State private var items: [FileItem] = []
-    @State private var playableTracks: [FileItem] = []
+    @State private var hasPlayableContent = false
+    @State private var subfoldersHaveAudio = false
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var trackToAdd: Track?
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
+    @State private var playabilityTask: Task<Void, Never>?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
-
-    /// `playableTracks` is every audio under this folder (recursive); `audioItems`
-    /// is only the direct files. If they differ, a subfolder holds music.
-    private var subfoldersHaveAudio: Bool { playableTracks.count > audioItems.count }
 
     /// The folder's Play button is enabled only when this folder has audio and no
     /// subfolder holds playable music (so playing it captures everything here).
@@ -79,7 +77,7 @@ struct FolderBrowserView: View {
                 }
             }
             #endif
-            if !playableTracks.isEmpty {
+            if hasPlayableContent {
                 ToolbarItem(placement: .primaryAction) {
                     Button { playFolder() } label: {
                         Label("Play", systemImage: "play.fill")
@@ -350,18 +348,53 @@ struct FolderBrowserView: View {
     }
 
     private func reload() async {
+        playabilityTask?.cancel()
         isLoading = true
         loadError = nil
+        hasPlayableContent = false
+        subfoldersHaveAudio = false
         do {
             items = try await source.list(path: path)
-            playableTracks = try await source.audioItems(in: path, recursive: true)
+            isLoading = false
+            updatePlayabilityHints()
         } catch {
-            loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            playableTracks = []
+            loadError = userFacingLoadError(error)
+            items = []
+            isLoading = false
         }
-        isLoading = false
         syncFocusFromPlayer()
         applyLocateFocusIfNeeded()
+    }
+
+    /// Updates Play toolbar state without blocking the folder list from appearing.
+    private func updatePlayabilityHints() {
+        let directAudio = items.contains(where: { $0.kind == .audio })
+        let hasSubfolders = items.contains(where: { $0.kind == .directory })
+        if directAudio && !hasSubfolders {
+            hasPlayableContent = true
+            subfoldersHaveAudio = false
+            return
+        }
+        if !directAudio && !hasSubfolders {
+            hasPlayableContent = false
+            subfoldersHaveAudio = false
+            return
+        }
+        playabilityTask = Task {
+            let subs = await source.subfolderHasPlayableAudio(in: path)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                subfoldersHaveAudio = subs
+                hasPlayableContent = directAudio || subs
+            }
+        }
+    }
+
+    private func userFacingLoadError(_ error: Error) -> String {
+        if let smb = source as? SMBFileSource {
+            return SMBFileSource.userFacingMessage(for: error)
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// If this folder holds the "Locate File" target, highlight and scroll to it.

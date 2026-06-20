@@ -118,7 +118,7 @@ struct ContentView: View {
                 ForEach(registry.sources, id: \.id) { source in
                     HStack {
                         Label(source.displayName, systemImage: source.symbolName)
-                        if let scan = registry.smbScans[source.id], scan.isScanning {
+                        if let scan = registry.libraryScans[source.id], scan.isScanning {
                             Spacer()
                             ProgressView().controlSize(.small)
                             Text("\(scan.foldersScanned)")

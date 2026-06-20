@@ -34,7 +34,16 @@ struct AddSMBServerView: View {
     }
 
     private var canSave: Bool {
-        !host.trimmed.isEmpty && !share.trimmed.isEmpty
+        !host.trimmed.isEmpty && !share.trimmed.isEmpty && hasCredentials
+    }
+
+    /// Guest needs no credentials; new servers need username + password; edits can
+    /// keep the stored Keychain password when the field is left blank.
+    private var hasCredentials: Bool {
+        if isGuest { return true }
+        if !username.trimmed.isEmpty && !password.isEmpty { return true }
+        if editing != nil && password.isEmpty { return true }
+        return false
     }
 
     var body: some View {
@@ -112,27 +121,34 @@ struct AddSMBServerView: View {
         )
     }
 
+    private func effectivePassword() -> String {
+        if !password.isEmpty { return password }
+        if let editing { return registry.smbPassword(for: editing) }
+        return password
+    }
+
     private func testConnection() async {
         isTesting = true
         statusMessage = nil
-        let source = SMBFileSource(config: makeConfig(), password: password)
+        let source = SMBFileSource(config: makeConfig(), password: effectivePassword())
         do {
             try await source.testConnection()
             statusIsError = false
             statusMessage = "Connected successfully."
         } catch {
             statusIsError = true
-            statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusMessage = SMBFileSource.userFacingMessage(for: error)
         }
         isTesting = false
     }
 
     private func save() {
         let config = makeConfig()
+        let pwd = effectivePassword()
         if editing == nil {
-            registry.addSMBServer(config, password: password)
+            registry.addSMBServer(config, password: pwd)
         } else {
-            registry.updateSMBServer(config, password: password)
+            registry.updateSMBServer(config, password: pwd)
         }
         dismiss()
     }

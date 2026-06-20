@@ -9,7 +9,10 @@ import Foundation
 ///    reached via a persisted security-scoped bookmark. Folders the user has
 ///    connected in the Files app (including SMB shares mounted there) can be
 ///    selected this way too.
-final class LocalFileSource: FileSource {
+///
+/// On Mac Catalyst, connected folders are pre-scanned into a listing cache so
+/// browsing large libraries stays responsive.
+final class LocalFileSource: FileSource, PrewarmableFileSource {
     let id: String
     let displayName: String
     let kind: SourceKind
@@ -18,6 +21,7 @@ final class LocalFileSource: FileSource {
     private let rootURL: URL
     private let isSecurityScoped: Bool
     private var didStartAccessing = false
+    private let listingCache: FolderListingCache
 
     init(id: String,
          displayName: String,
@@ -30,8 +34,15 @@ final class LocalFileSource: FileSource {
         self.kind = kind
         self.isSecurityScoped = isSecurityScoped
         self.symbolName = kind == .localDocuments ? "folder.fill" : "externaldrive.fill"
+        self.listingCache = FolderListingCache(subdirectory: "LocalCache", sourceID: id)
         if isSecurityScoped {
             didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+        }
+        Task { [listingCache] in
+            let cacheEmpty = await listingCache.isEmpty
+            if !cacheEmpty {
+                await listingCache.computePlayabilityIndex()
+            }
         }
     }
 
@@ -41,11 +52,82 @@ final class LocalFileSource: FileSource {
         }
     }
 
+    func needsPrewarm() async -> Bool {
+        await listingCache.isEmpty
+    }
+
+    func prewarm(progress: @MainActor @escaping (Int) -> Void) async {
+        await listingCache.clear()
+        var scanned = 0
+        var stack = [""]
+        while let path = stack.popLast() {
+            do {
+                let items = try listFromDisk(path: path)
+                await listingCache.store(path: path, items: items, persist: false)
+                scanned += 1
+                await progress(scanned)
+                for item in items where item.kind == .directory {
+                    stack.append(item.path)
+                }
+            } catch {
+                await listingCache.store(path: path, items: [], persist: false)
+                scanned += 1
+                await progress(scanned)
+            }
+        }
+        await listingCache.flush()
+        await listingCache.computePlayabilityIndex()
+    }
+
     private func url(forPath path: String) -> URL {
         path.isEmpty ? rootURL : rootURL.appendingPathComponent(path)
     }
 
     func list(path: String) async throws -> [FileItem] {
+        if let cached = await listingCache.listing(path: path) { return cached }
+        let items = try listFromDisk(path: path)
+        await listingCache.store(path: path, items: items)
+        return items
+    }
+
+    func refresh(path: String) async throws -> [FileItem] {
+        let items = try listFromDisk(path: path)
+        await listingCache.store(path: path, items: items)
+        return items
+    }
+
+    func audioItems(in path: String, recursive: Bool = true) async throws -> [FileItem] {
+        let cacheEmpty = await listingCache.isEmpty
+        if !cacheEmpty {
+            if recursive {
+                return await listingCache.recursiveAudio(in: path)
+            }
+            return (await listingCache.listing(path: path) ?? []).filter { $0.kind == .audio }
+        }
+        return try await collectAudioItems(in: path, recursive: recursive)
+    }
+
+    func subfolderHasPlayableAudio(in path: String) async -> Bool {
+        let cacheEmpty = await listingCache.isEmpty
+        if !cacheEmpty { return await listingCache.subfolderHasPlayableAudio(in: path) }
+        guard let entries = try? await list(path: path) else { return false }
+        for item in entries where item.kind == .directory {
+            if await hasPlayableAudio(in: item.path) { return true }
+        }
+        return false
+    }
+
+    private func hasPlayableAudio(in path: String) async -> Bool {
+        if let entries = try? await list(path: path) {
+            if entries.contains(where: { $0.kind == .audio }) { return true }
+            for item in entries where item.kind == .directory {
+                if await hasPlayableAudio(in: item.path) { return true }
+            }
+        }
+        return false
+    }
+
+    private func listFromDisk(path: String) throws -> [FileItem] {
         let dir = url(forPath: path)
         let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .nameKey]
         let contents = try FileManager.default.contentsOfDirectory(
@@ -60,7 +142,6 @@ final class LocalFileSource: FileSource {
             let isDir = values?.isDirectory ?? false
             let name = url.lastPathComponent
             let kind = FileItem.kind(forName: name, isDirectory: isDir)
-            // Skip non-audio, non-directory files to keep the browser tidy.
             guard kind != .other else { continue }
             let relativePath = path.isEmpty ? name : path + "/" + name
             items.append(FileItem(

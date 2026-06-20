@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// Background pre-scan progress for an SMB server.
-struct SMBScanProgress: Equatable {
+/// Background pre-scan progress for a library source (SMB or local folder).
+struct LibraryScanProgress: Equatable {
     var isScanning: Bool
     var foldersScanned: Int
 }
@@ -12,8 +12,8 @@ struct SMBScanProgress: Equatable {
 @MainActor
 final class SourceRegistry: ObservableObject {
     @Published private(set) var sources: [any FileSource] = []
-    /// Pre-scan progress for SMB servers, keyed by source id.
-    @Published private(set) var smbScans: [String: SMBScanProgress] = [:]
+    /// Pre-scan progress, keyed by source id.
+    @Published private(set) var libraryScans: [String: LibraryScanProgress] = [:]
 
     private let bookmarkStore = BookmarkStore()
     private let smbStore = SMBServerStore()
@@ -56,28 +56,40 @@ final class SourceRegistry: ObservableObject {
             loaded.append(SMBFileSource(config: config, password: password))
         }
 
-        // On launch we do NOT re-scan: each SMB source loads its persisted
-        // on-disk listing cache, so browsing is already fast.
         sources = loaded
+
+        #if targetEnvironment(macCatalyst)
+        // Scan connected local folders that don't have a listing cache yet.
+        for source in loaded {
+            prewarm(source)
+        }
+        #endif
     }
 
     func source(for id: String) -> (any FileSource)? {
         sources.first { $0.id == id }
     }
 
-    // MARK: - SMB pre-scan
+    // MARK: - Library pre-scan
 
-    /// Walks an SMB server's folder tree once (after add/edit), caching every
-    /// listing to disk so browsing stays instant across launches. Publishes progress.
-    private func prewarm(_ source: any FileSource) {
-        guard let smb = source as? SMBFileSource else { return }
+    /// Walks a source's folder tree once, caching listings for fast browsing.
+    /// `force` clears and re-scans (used when SMB settings change).
+    private func prewarm(_ source: any FileSource, force: Bool = false) {
+        guard let scannable = source as? PrewarmableFileSource else { return }
         let id = source.id
-        smbScans[id] = SMBScanProgress(isScanning: true, foldersScanned: 0)
+        libraryScans[id] = LibraryScanProgress(isScanning: true, foldersScanned: 0)
         Task { [weak self] in
-            await smb.prewarm { count in
-                self?.smbScans[id]?.foldersScanned = count
+            let needsScan = await scannable.needsPrewarm()
+            if !force && !needsScan {
+                await MainActor.run { self?.libraryScans[id]?.isScanning = false }
+                return
             }
-            self?.smbScans[id]?.isScanning = false
+            await scannable.prewarm { count in
+                Task { @MainActor in
+                    self?.libraryScans[id]?.foldersScanned = count
+                }
+            }
+            await MainActor.run { self?.libraryScans[id]?.isScanning = false }
         }
     }
 
@@ -88,13 +100,15 @@ final class SourceRegistry: ObservableObject {
         let id = "local:" + UUID().uuidString
         let name = url.lastPathComponent
         bookmarkStore.add(.init(id: id, displayName: name, bookmark: bookmark))
-        sources.append(LocalFileSource(
+        let source = LocalFileSource(
             id: id,
             displayName: name,
             rootURL: url,
             kind: .localFolder,
             isSecurityScoped: true
-        ))
+        )
+        sources.append(source)
+        prewarm(source)
     }
 
     // MARK: - SMB servers
@@ -103,7 +117,7 @@ final class SourceRegistry: ObservableObject {
         smbStore.add(config, password: password)
         let source = SMBFileSource(config: config, password: password)
         sources.append(source)
-        prewarm(source)   // learn the folder structure up front
+        prewarm(source, force: true)
     }
 
     /// Updates an existing SMB server's settings and rebuilds its live source so
@@ -116,7 +130,7 @@ final class SourceRegistry: ObservableObject {
         } else {
             sources.append(updated)
         }
-        prewarm(updated)   // re-scan with the new settings
+        prewarm(updated, force: true)
     }
 
     /// The stored password for an SMB server, for pre-filling the edit form.
@@ -134,6 +148,6 @@ final class SourceRegistry: ObservableObject {
             bookmarkStore.remove(id: source.id)
         }
         sources.removeAll { $0.id == source.id }
-        smbScans[source.id] = nil
+        libraryScans[source.id] = nil
     }
 }

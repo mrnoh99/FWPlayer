@@ -32,6 +32,18 @@ protocol FileSource: AnyObject, Identifiable {
 
     /// Re-lists `path`, bypassing any cached results (used for pull-to-refresh).
     func refresh(path: String) async throws -> [FileItem]
+
+    /// Collects playable audio under `path`, optionally including subfolders.
+    func audioItems(in path: String, recursive: Bool) async throws -> [FileItem]
+
+    /// Whether any subdirectory holds playable audio (used for folder Play UI).
+    func subfolderHasPlayableAudio(in path: String) async -> Bool
+}
+
+/// Sources that pre-scan folder listings into an on-disk cache for fast browsing.
+protocol PrewarmableFileSource: FileSource {
+    func needsPrewarm() async -> Bool
+    func prewarm(progress: @MainActor @escaping (Int) -> Void) async
 }
 
 extension FileSource {
@@ -42,16 +54,34 @@ extension FileSource {
 
     /// Collects playable audio under `path`, optionally including subfolders.
     func audioItems(in path: String, recursive: Bool = true) async throws -> [FileItem] {
+        try await collectAudioItems(in: path, recursive: recursive)
+    }
+
+    /// Shared recursive audio collection used by concrete sources.
+    func collectAudioItems(in path: String, recursive: Bool) async throws -> [FileItem] {
         let entries = try await list(path: path)
         var audio = entries.filter { $0.kind == .audio }
         if recursive {
             for directory in entries where directory.kind == .directory {
-                audio.append(contentsOf: try await audioItems(in: directory.path, recursive: true))
+                do {
+                    audio.append(contentsOf: try await audioItems(in: directory.path, recursive: true))
+                } catch {
+                    continue
+                }
             }
         }
         return audio.sorted {
             $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending
         }
+    }
+
+    func subfolderHasPlayableAudio(in path: String) async -> Bool {
+        guard let entries = try? await list(path: path) else { return false }
+        for item in entries where item.kind == .directory {
+            let audio = (try? await audioItems(in: item.path, recursive: true)) ?? []
+            if !audio.isEmpty { return true }
+        }
+        return false
     }
 }
 
