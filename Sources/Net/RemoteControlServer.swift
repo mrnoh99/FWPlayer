@@ -49,7 +49,12 @@ final class RemoteControlServer: ObservableObject {
         guard listener == nil else { return }
 
         do {
-            let params = NWParameters.tcp
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.enableKeepalive = true
+            tcpOptions.keepaliveIdle = 4
+            tcpOptions.keepaliveInterval = 2
+            tcpOptions.keepaliveCount = 3
+            let params = NWParameters(tls: nil, tcp: tcpOptions)
             params.includePeerToPeer = true
             let listener = try NWListener(using: params)
             listener.service = NWListener.Service(name: bonjourName, type: fwRemoteServiceType)
@@ -84,6 +89,14 @@ final class RemoteControlServer: ObservableObject {
             .sink { [weak self] _ in
                 self?.broadcastLibrary()
             }
+            .store(in: &cancellables)
+
+        // Periodic keepalive: resend state every couple of seconds (deduped, so
+        // it's cheap) so an idle/paused link stays warm and a remote can tell a
+        // dead connection from a quiet one.
+        Timer.publish(every: 2, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.broadcastState() }
             .store(in: &cancellables)
     }
 
