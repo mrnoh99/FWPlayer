@@ -12,6 +12,11 @@ final class RemoteControlServer: ObservableObject {
     private unowned let artwork: ArtworkStore
     /// The track id whose cover was last broadcast, so we send each cover once.
     private var lastArtworkTrackID: String?
+    /// The last state we sent, and when, so a stream of pure `currentTime` ticks
+    /// during playback doesn't flood the link (the remote interpolates time
+    /// itself). Meaningful changes still go out immediately.
+    private var lastSentState: PlaybackState?
+    private var lastTimeSync = Date.distantPast
 
     private var listener: NWListener?
     private var clients: [ObjectIdentifier: Client] = [:]
@@ -252,6 +257,21 @@ final class RemoteControlServer: ObservableObject {
 
     private func broadcastState() {
         let state = makePlaybackState()
+
+        // Collapse pure time ticks: if nothing but currentTime changed, resync at
+        // most once a second so browsing/commands aren't starved during playback.
+        var meaningfulChanged = true
+        if var last = lastSentState {
+            last.currentTime = state.currentTime
+            meaningfulChanged = (last != state)
+        }
+        let now = Date()
+        if !meaningfulChanged && now.timeIntervalSince(lastTimeSync) < 1.0 {
+            return
+        }
+        lastSentState = state
+        lastTimeSync = now
+
         for client in clients.values where client.isAuthenticated {
             client.link.send(.state(state))
         }
