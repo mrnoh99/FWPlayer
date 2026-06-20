@@ -104,6 +104,12 @@ struct PlaylistDetailView: View {
                     onPlayNext: { player.playNext(Track(entry: entry)) },
                     onAddToQueue: { player.enqueue(tracks: [Track(entry: entry)]) },
                     onAddToPlaylist: { trackToAdd = Track(entry: entry) },
+                    onMoveUp: index > 0
+                        ? { playlists.moveEntries(from: IndexSet(integer: index), to: index - 1, in: playlistID) }
+                        : nil,
+                    onMoveDown: index < playlist.entries.count - 1
+                        ? { playlists.moveEntries(from: IndexSet(integer: index), to: index + 2, in: playlistID) }
+                        : nil,
                     onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } }
                 )
             }
@@ -248,6 +254,8 @@ private struct EntryRow: View {
     var onPlayNext: (() -> Void)? = nil
     var onAddToQueue: (() -> Void)? = nil
     var onAddToPlaylist: (() -> Void)? = nil
+    var onMoveUp: (() -> Void)? = nil
+    var onMoveDown: (() -> Void)? = nil
     var onLocate: (() -> Void)? = nil
 
     @EnvironmentObject private var player: AudioPlayer
@@ -321,6 +329,14 @@ private struct EntryRow: View {
                     }
                     if let onAddToPlaylist {
                         Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
+                    }
+                    if onMoveUp != nil || onMoveDown != nil {
+                        Section {
+                            Button(action: onMoveUp ?? {}) { Label("Move Up", systemImage: "arrow.up") }
+                                .disabled(onMoveUp == nil)
+                            Button(action: onMoveDown ?? {}) { Label("Move Down", systemImage: "arrow.down") }
+                                .disabled(onMoveDown == nil)
+                        }
                     }
                     Button {
                         playlists.toggleFavorite(track)

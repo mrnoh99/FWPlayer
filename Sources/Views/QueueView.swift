@@ -102,6 +102,12 @@ struct QueueView: View {
             QueueRowMenu(
                 isFavorite: playlists.isFavorite(track),
                 onPlayNow: { Task { @MainActor in onPlay() } },
+                onMoveUp: index > 0
+                    ? { player.moveQueue(fromOffsets: IndexSet(integer: index), toOffset: index - 1) }
+                    : nil,
+                onMoveDown: index < player.queue.count - 1
+                    ? { player.moveQueue(fromOffsets: IndexSet(integer: index), toOffset: index + 2) }
+                    : nil,
                 onToggleFavorite: { playlists.toggleFavorite(track) },
                 onAddToPlaylist: { trackToAdd = track },
                 onLocate: onLocate.map { locate in { locate(track) } },
@@ -198,6 +204,8 @@ struct QueueRow: View {
 private struct QueueRowMenu: View {
     var isFavorite: Bool = false
     var onPlayNow: (() -> Void)? = nil
+    var onMoveUp: (() -> Void)? = nil
+    var onMoveDown: (() -> Void)? = nil
     var onToggleFavorite: (() -> Void)? = nil
     var onAddToPlaylist: (() -> Void)? = nil
     var onLocate: (() -> Void)? = nil
@@ -207,6 +215,14 @@ private struct QueueRowMenu: View {
         Menu {
             if let onPlayNow {
                 Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+            }
+            if onMoveUp != nil || onMoveDown != nil {
+                Section {
+                    Button(action: onMoveUp ?? {}) { Label("Move Up", systemImage: "arrow.up") }
+                        .disabled(onMoveUp == nil)
+                    Button(action: onMoveDown ?? {}) { Label("Move Down", systemImage: "arrow.down") }
+                        .disabled(onMoveDown == nil)
+                }
             }
             if let onToggleFavorite {
                 Button(action: onToggleFavorite) {
