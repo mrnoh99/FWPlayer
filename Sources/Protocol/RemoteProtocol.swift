@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 4
+let fwRemoteProtocolVersion = 5
 
 /// The fixed id of the built-in Favorites playlist, so the remote can offer an
 /// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
@@ -162,6 +162,8 @@ enum RemoteCommand: Codable, Hashable {
     case addToPlaylist(playlistID: String, tracks: [RemoteQueueTrack])
     /// Move the playlist entries at `from` (zero-based) to before index `to`.
     case movePlaylistEntry(playlistID: String, from: [Int], to: Int)
+    /// Remove the playlist entries at the given zero-based indices.
+    case removePlaylistEntry(playlistID: String, at: [Int])
     /// Toggle a track's membership in the built-in Favorites playlist.
     case toggleFavorite(track: RemoteQueueTrack)
 }

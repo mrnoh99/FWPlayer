@@ -110,10 +110,18 @@ struct PlaylistDetailView: View {
                     onMoveDown: index < playlist.entries.count - 1
                         ? { playlists.moveEntries(from: IndexSet(integer: index), to: index + 2, in: playlistID) }
                         : nil,
-                    onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } }
+                    onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } },
+                    onRemove: {
+                        if let i = playlist.entries.firstIndex(where: { $0.id == entry.id }) {
+                            playlists.removeEntries(at: IndexSet(integer: i), from: playlistID)
+                        }
+                    }
                 )
             }
-            .id(entry.id)
+            // No explicit .id() here: it overrides the ForEach's structural
+            // identity, which is what .onDelete / .onMove use — with it, the
+            // edit-mode red minus appeared but never deleted. Scrolling still
+            // targets the row via the ForEach id (entry.id).
             #if targetEnvironment(macCatalyst)
             .tag(entry.id)
             .contextMenu {
@@ -125,6 +133,13 @@ struct PlaylistDetailView: View {
             }
             #endif
             .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    if let i = playlist.entries.firstIndex(where: { $0.id == entry.id }) {
+                        playlists.removeEntries(at: IndexSet(integer: i), from: playlistID)
+                    }
+                } label: {
+                    Label("Remove", systemImage: "trash")
+                }
                 Button {
                     player.enqueue(tracks: [Track(sourceID: entry.sourceID, path: entry.path, title: entry.title)])
                 } label: {
@@ -250,6 +265,7 @@ private struct EntryRow: View {
     var onMoveUp: (() -> Void)? = nil
     var onMoveDown: (() -> Void)? = nil
     var onLocate: (() -> Void)? = nil
+    var onRemove: (() -> Void)? = nil
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
@@ -346,6 +362,12 @@ private struct EntryRow: View {
                     }
                     if let onLocate {
                         Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
+                    }
+                    if let onRemove {
+                        Divider()
+                        Button(role: .destructive, action: onRemove) {
+                            Label("Remove from Playlist", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
