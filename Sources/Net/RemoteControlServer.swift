@@ -220,6 +220,10 @@ final class RemoteControlServer: ObservableObject {
                 playlists.add(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title), to: uuid)
             }
 
+        case .movePlaylistEntry(let playlistID, let from, let to):
+            guard let uuid = UUID(uuidString: playlistID) else { return }
+            playlists.moveEntries(from: IndexSet(from), to: to, in: uuid)
+
         case .toggleFavorite(let remote):
             playlists.toggleFavorite(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title))
 
