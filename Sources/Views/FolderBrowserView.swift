@@ -29,21 +29,14 @@ struct FolderBrowserView: View {
     #endif
 
     @State private var items: [FileItem] = []
-    @State private var hasPlayableContent = false
-    @State private var subfoldersHaveAudio = false
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var trackToAdd: Track?
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
-    @State private var playabilityTask: Task<Void, Never>?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
-
-    /// The folder's Play button is enabled only when this folder has audio and no
-    /// subfolder holds playable music (so playing it captures everything here).
-    private var canPlayFolder: Bool { !audioItems.isEmpty && !subfoldersHaveAudio }
 
     var body: some View {
         Group {
@@ -71,14 +64,6 @@ struct FolderBrowserView: View {
                 }
             }
             #endif
-            if hasPlayableContent {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { playFolder() } label: {
-                        Label("Play", systemImage: "play.fill")
-                    }
-                    .disabled(!canPlayFolder)
-                }
-            }
         }
         .task(id: path) {
             await reload()
@@ -162,23 +147,9 @@ struct FolderBrowserView: View {
                         onDoubleClick: { openFolder(at: item.path, name: item.name) }
                     )
                 }
-                .contextMenu {
-                    Button {
-                        Task { await playFolder(at: item.path) }
-                    } label: {
-                        Label("Play Folder", systemImage: "play.fill")
-                    }
-                }
                 #else
                 NavigationLink(value: FolderRoute(sourceID: source.id, path: item.path, title: item.name)) {
                     Label(item.name, systemImage: "folder")
-                }
-                .contextMenu {
-                    Button {
-                        Task { await playFolder(at: item.path) }
-                    } label: {
-                        Label("Play Folder", systemImage: "play.fill")
-                    }
                 }
                 #endif
             case .audio:
@@ -194,7 +165,8 @@ struct FolderBrowserView: View {
                         directURL: source.directURL(forPath: item.path),
                         isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
                         onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) },
-                        onPlayNow: { playFromQueue(startingAt: item) },
+                        onPlayNow: { player.play(tracks: [Track(sourceID: source.id, item: item)], startAt: 0) },
+                        onPlayFromHere: { playFromQueue(startingAt: item) },
                         onPlayNext: { player.playNext(Track(sourceID: source.id, item: item)) },
                         onAddToQueue: { player.enqueue(tracks: [Track(sourceID: source.id, item: item)]) },
                         onAddToPlaylist: { trackToAdd = Track(sourceID: source.id, item: item) }
@@ -325,32 +297,9 @@ struct FolderBrowserView: View {
         player.play(tracks: tracks, startAt: index)
     }
 
-    /// Plays this folder's direct audio (used by the folder Play button, which is
-    /// only enabled when no subfolder holds music).
-    private func playFolder() {
-        let tracks = audioItems.map { Track(sourceID: source.id, item: $0) }
-        guard !tracks.isEmpty else { return }
-        player.play(tracks: tracks, startAt: 0)
-    }
-
-    /// Plays every audio under a subfolder recursively ("Play Folder" on a folder row).
-    private func playFolder(at folderPath: String) async {
-        do {
-            let items = try await source.audioItems(in: folderPath, recursive: true)
-            guard !items.isEmpty else { return }
-            let tracks = items.map { Track(sourceID: source.id, item: $0) }
-            player.play(tracks: tracks, startAt: 0)
-        } catch {
-            loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
     private func reload(forceRefresh: Bool = false) async {
-        playabilityTask?.cancel()
         isLoading = true
         loadError = nil
-        hasPlayableContent = false
-        subfoldersHaveAudio = false
         do {
             items = if forceRefresh {
                 try await source.refresh(path: path)
@@ -361,7 +310,6 @@ struct FolderBrowserView: View {
                 items = try await refreshedIfAdvertisedInParent(current: items)
             }
             isLoading = false
-            updatePlayabilityHints()
         } catch {
             loadError = userFacingLoadError(error)
             items = []
@@ -369,30 +317,6 @@ struct FolderBrowserView: View {
         }
         syncFocusFromPlayer()
         applyLocateFocusIfNeeded()
-    }
-
-    /// Updates Play toolbar state without blocking the folder list from appearing.
-    private func updatePlayabilityHints() {
-        let directAudio = items.contains(where: { $0.kind == .audio })
-        let hasSubfolders = items.contains(where: { $0.kind == .directory })
-        if directAudio && !hasSubfolders {
-            hasPlayableContent = true
-            subfoldersHaveAudio = false
-            return
-        }
-        if !directAudio && !hasSubfolders {
-            hasPlayableContent = false
-            subfoldersHaveAudio = false
-            return
-        }
-        playabilityTask = Task(priority: .utility) {
-            let subs = await source.subfolderHasPlayableAudio(in: path)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                subfoldersHaveAudio = subs
-                hasPlayableContent = directAudio || subs
-            }
-        }
     }
 
     /// Re-reads from disk when a stale cache returned empty for a folder the parent
@@ -443,6 +367,7 @@ private struct TrackRow: View {
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
     var onPlayNow: (() -> Void)? = nil
+    var onPlayFromHere: (() -> Void)? = nil
     var onPlayNext: (() -> Void)? = nil
     var onAddToQueue: (() -> Void)? = nil
     var onAddToPlaylist: (() -> Void)? = nil
@@ -505,6 +430,9 @@ private struct TrackRow: View {
                     Menu {
                         if let onPlayNow {
                             Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+                        }
+                        if let onPlayFromHere {
+                            Button(action: onPlayFromHere) { Label("Play from Here", systemImage: "play.circle") }
                         }
                         if let onPlayNext {
                             Button(action: onPlayNext) { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
