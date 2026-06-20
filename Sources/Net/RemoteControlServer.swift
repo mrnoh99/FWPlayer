@@ -71,6 +71,15 @@ final class RemoteControlServer: ObservableObject {
                 self?.broadcastArtworkIfNeeded()
             }
             .store(in: &cancellables)
+
+        // Re-send the library when playlists/favorites change so remotes can
+        // reflect favorite state.
+        playlists.objectWillChange
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.broadcastLibrary()
+            }
+            .store(in: &cancellables)
     }
 
     func stop() {
@@ -211,6 +220,9 @@ final class RemoteControlServer: ObservableObject {
                 playlists.add(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title), to: uuid)
             }
 
+        case .toggleFavorite(let remote):
+            playlists.toggleFavorite(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title))
+
         case .authenticate:
             break
         }
@@ -241,6 +253,13 @@ final class RemoteControlServer: ObservableObject {
         link.send(.state(makePlaybackState()))
     }
 
+    private func broadcastLibrary() {
+        let library = buildLibrary()
+        for client in clients.values where client.isAuthenticated {
+            client.link.send(.library(library))
+        }
+    }
+
     /// Builds the current track's artwork message, if a cover is cached.
     private func currentArtworkMessage() -> RemoteArtwork? {
         guard let track = player.currentTrack,
@@ -266,17 +285,8 @@ final class RemoteControlServer: ObservableObject {
             currentTime: player.currentTime,
             duration: player.duration,
             currentIndex: player.currentIndex,
-            queue: player.queue.map {
-                RemoteTrack(
-                    id: $0.id,
-                    title: $0.title,
-                    artist: $0.artist,
-                    album: $0.album,
-                    duration: $0.duration,
-                    sourceID: $0.sourceID,
-                    path: $0.path
-                )
-            },
+            queue: Self.remoteTracks(player.queue),
+            history: Self.remoteTracks(player.history),
             errorMessage: player.errorMessage,
             audioFormat: player.currentTrack.flatMap { track in
                 track.sampleRate.map { AudioFormatReader.formatSampleRate($0) }
@@ -284,6 +294,15 @@ final class RemoteControlServer: ObservableObject {
             isShuffled: player.isShuffled,
             repeatMode: player.repeatMode.rawValue
         )
+    }
+
+    private static func remoteTracks(_ tracks: [Track]) -> [RemoteTrack] {
+        tracks.map {
+            RemoteTrack(
+                id: $0.id, title: $0.title, artist: $0.artist, album: $0.album,
+                duration: $0.duration, sourceID: $0.sourceID, path: $0.path
+            )
+        }
     }
 
     private func buildLibrary() -> RemoteLibrary {

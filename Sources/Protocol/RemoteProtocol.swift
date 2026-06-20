@@ -49,6 +49,8 @@ struct PlaybackState: Codable, Hashable {
     var duration: TimeInterval
     var currentIndex: Int?
     var queue: [RemoteTrack]
+    /// Recently played tracks, most recent first.
+    var history: [RemoteTrack] = []
     var errorMessage: String?
     /// Current output format, e.g. "96 kHz · 24-bit · Stereo".
     var audioFormat: String?
@@ -158,6 +160,8 @@ enum RemoteCommand: Codable, Hashable {
     case playFolder(sourceID: String, path: String, recursive: Bool)
     /// Append `tracks` to the playlist with the given id.
     case addToPlaylist(playlistID: String, tracks: [RemoteQueueTrack])
+    /// Toggle a track's membership in the built-in Favorites playlist.
+    case toggleFavorite(track: RemoteQueueTrack)
 }
 
 /// Album artwork for one track, sent player → remote (separately from the
