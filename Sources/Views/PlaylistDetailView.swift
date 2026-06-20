@@ -366,9 +366,11 @@ private struct EntryRow: View {
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 10)
-            .background(isCurrent ? Color.accentColor.opacity(0.15) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 6)
+        .background(isCurrent ? Color.accentColor.opacity(0.22) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .task(id: directURL?.path) {
             guard let directURL else { return }

@@ -114,6 +114,7 @@ struct QueueView: View {
                 onRemove: { Task { @MainActor in onRemove() } }
             )
         }
+        .listRowBackground(isCurrent ? Color.accentColor.opacity(0.18) : nil)
     }
 
     @ViewBuilder

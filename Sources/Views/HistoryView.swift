@@ -63,6 +63,7 @@ struct HistoryView: View {
 
             menu(track: track, index: index)
         }
+        .listRowBackground(isCurrent(track) ? Color.accentColor.opacity(0.18) : nil)
     }
 
     @ViewBuilder
