@@ -210,7 +210,7 @@ private struct QueueRow: View {
                         Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
                     }
                     if let onRemove {
-                        Button(role: .destructive, action: onRemove) { Label("Remove", systemImage: "trash") }
+                        Button(role: .destructive, action: onRemove) { Label("Remove from Queue", systemImage: "trash") }
                     }
                 } label: {
                     Image(systemName: "ellipsis")

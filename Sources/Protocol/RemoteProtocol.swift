@@ -20,6 +20,10 @@ let fwRemoteServiceType = "_fwplayer._tcp"
 /// A protocol version so the two sides can detect a mismatch.
 let fwRemoteProtocolVersion = 3
 
+/// The fixed id of the built-in Favorites playlist, so the remote can offer an
+/// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
+let fwFavoritesPlaylistID = "FA000000-0000-0000-0000-000000000001"
+
 /// A track as exposed to the remote. A trimmed-down, transport-friendly mirror
 /// of the player's internal `Track`.
 struct RemoteTrack: Codable, Hashable, Identifiable {
