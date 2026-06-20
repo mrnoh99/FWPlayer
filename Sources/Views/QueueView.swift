@@ -106,20 +106,30 @@ struct QueueView: View {
     @ViewBuilder
     private func row(track: Track, index: Int, isCurrent: Bool,
                      onPlay: @escaping () -> Void, onRemove: @escaping () -> Void) -> some View {
+        // The ••• menu lives OUTSIDE the play-tap area (and the Catalyst
+        // double-click overlay) so its action list always opens.
+        HStack(spacing: 6) {
+            playArea(track: track, index: index, isCurrent: isCurrent, onPlay: onPlay)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            QueueRowMenu(
+                onPlayNow: { Task { @MainActor in onPlay() } },
+                onAddToPlaylist: { trackToAdd = track },
+                onLocate: onLocate.map { locate in { locate(track) } },
+                onRemove: { Task { @MainActor in onRemove() } }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func playArea(track: Track, index: Int, isCurrent: Bool,
+                          onPlay: @escaping () -> Void) -> some View {
         PlaybackRowInteraction(
             isHighlighted: isCurrent,
             onSelect: {},
             onPlay: { Task { @MainActor in onPlay() } }
         ) {
-            QueueRow(
-                index: index,
-                track: track,
-                isCurrent: isCurrent,
-                isPlaying: player.isPlaying,
-                onLocate: onLocate.map { locate in { locate(track) } },
-                onAddToPlaylist: { trackToAdd = track },
-                onRemove: { Task { @MainActor in onRemove() } }
-            )
+            QueueRow(index: index, track: track, isCurrent: isCurrent, isPlaying: player.isPlaying)
         }
         #if targetEnvironment(macCatalyst)
         .overlay {
@@ -170,9 +180,6 @@ private struct QueueRow: View {
     let track: Track
     let isCurrent: Bool
     let isPlaying: Bool
-    var onLocate: (() -> Void)? = nil
-    var onAddToPlaylist: (() -> Void)? = nil
-    var onRemove: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -199,28 +206,41 @@ private struct QueueRow: View {
                         .lineLimit(1)
                 }
             }
-            Spacer()
-
-            if onLocate != nil || onAddToPlaylist != nil || onRemove != nil {
-                Menu {
-                    if let onLocate {
-                        Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
-                    }
-                    if let onAddToPlaylist {
-                        Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
-                    }
-                    if let onRemove {
-                        Button(role: .destructive, action: onRemove) { Label("Remove from Queue", systemImage: "trash") }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-            }
+            Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// The trailing ••• action menu for a queue row, kept separate from the row's
+/// play-tap area so it reliably opens on every platform.
+private struct QueueRowMenu: View {
+    var onPlayNow: (() -> Void)? = nil
+    var onAddToPlaylist: (() -> Void)? = nil
+    var onLocate: (() -> Void)? = nil
+    var onRemove: (() -> Void)? = nil
+
+    var body: some View {
+        Menu {
+            if let onPlayNow {
+                Button(action: onPlayNow) { Label("Play Now", systemImage: "play.fill") }
+            }
+            if let onAddToPlaylist {
+                Button(action: onAddToPlaylist) { Label("Add to Playlist", systemImage: "text.badge.plus") }
+            }
+            if let onLocate {
+                Button(action: onLocate) { Label("Locate File", systemImage: "folder") }
+            }
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) { Label("Remove from Queue", systemImage: "trash") }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: 36, height: 40)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 }

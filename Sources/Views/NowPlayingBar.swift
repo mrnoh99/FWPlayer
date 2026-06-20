@@ -24,6 +24,8 @@ struct NowPlayingBar: View {
     @State private var duration: TimeInterval = 0
     @State private var isShuffled = false
     @State private var repeatMode: RepeatMode = .off
+    /// Drives the "Add to Playlist" sheet from the ••• menu.
+    @State private var trackToAdd: Track?
 
     /// Wide layouts (iPad/Mac) show the full Apple Music bar; compact (iPhone)
     /// trims the secondary controls so the essentials still fit.
@@ -49,6 +51,31 @@ struct NowPlayingBar: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
             }
+
+            // ••• actions for the current track.
+            Menu {
+                Button {
+                    if let track = player.currentTrack { trackToAdd = track }
+                } label: {
+                    Label("Add to Playlist", systemImage: "text.badge.plus")
+                }
+                if let track = player.currentTrack {
+                    Button {
+                        playlists.toggleFavorite(track)
+                    } label: {
+                        Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
+                              systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(player.currentTrack == nil)
         }
         .padding(.horizontal, isWide ? 22 : 16)
         .padding(.vertical, 10)
@@ -60,6 +87,9 @@ struct NowPlayingBar: View {
         .onAppear { refreshFromPlayer() }
         .onReceive(player.objectWillChange) { _ in
             Task { @MainActor in refreshFromPlayer() }
+        }
+        .sheet(item: $trackToAdd) { track in
+            AddToPlaylistView(track: track)
         }
     }
 
