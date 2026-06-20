@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full-screen player with artwork placeholder, scrubber, and transport controls.
+/// Full-screen player with album artwork, scrubber, and transport controls.
 struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var artwork: ArtworkStore
