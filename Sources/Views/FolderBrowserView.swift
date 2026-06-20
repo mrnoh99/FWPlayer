@@ -110,15 +110,13 @@ struct FolderBrowserView: View {
 
     @ViewBuilder
     private var listContent: some View {
-        #if targetEnvironment(macCatalyst)
-        List(selection: $selectedItemPath) {
-            listRows
-        }
-        #else
+        // A plain List (no selection binding). On Catalyst a List(selection:)
+        // claims the single click as a row *selection* (the highlight moves but
+        // nothing opens — you'd have to press Return), which defeats the row's
+        // Button. Without it the Button gets the click and opens on one tap.
         List {
             listRows
         }
-        #endif
     }
 
     @ViewBuilder

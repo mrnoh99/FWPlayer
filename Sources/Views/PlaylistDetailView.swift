@@ -73,15 +73,14 @@ struct PlaylistDetailView: View {
 
     private func content(for playlist: Playlist) -> some View {
         Group {
-            #if targetEnvironment(macCatalyst)
-            List(selection: $selectedEntryID) {
-                playlistRows(for: playlist)
-            }
-            .listStyle(.inset)
-            #else
+            // Plain List (no selection binding): on Catalyst a List(selection:)
+            // claims the single click as a selection and the row's Button never
+            // fires. Without it a single click plays the row.
             List {
                 playlistRows(for: playlist)
             }
+            #if targetEnvironment(macCatalyst)
+            .listStyle(.inset)
             #endif
         }
         .scrollPosition(id: $scrollTarget, anchor: .center)
