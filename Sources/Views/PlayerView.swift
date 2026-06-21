@@ -62,6 +62,22 @@ struct PlayerView: View {
             .onAppear { isWide = geo.size.width > 680 }
             .onChange(of: geo.size.width) { _, width in isWide = width > 680 }
         }
+        // An always-present close control: Mac Catalyst sheets don't swipe to
+        // dismiss and show no drag indicator, so without this the full player
+        // can't be closed. Esc / ⌘W also dismiss it.
+        .overlay(alignment: .topTrailing) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Close")
+        }
         .presentationDragIndicator(.hidden)
         .toolbar {
             if !isWide, let onShowQueue, !player.queue.isEmpty {
