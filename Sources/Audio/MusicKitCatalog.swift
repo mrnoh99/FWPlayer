@@ -97,7 +97,7 @@ enum MusicKitCatalog {
             genres: match.genreNames,
             releaseDate: match.releaseDate,
             trackCount: match.trackCount,
-            recordLabel: match.recordLabel,
+            recordLabel: match.recordLabelName,
             contentRating: contentRatingText(match.contentRating),
             editorialNotes: match.editorialNotes?.standard ?? match.editorialNotes?.short,
             copyright: match.copyright,
