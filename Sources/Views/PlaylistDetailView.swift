@@ -91,7 +91,6 @@ struct PlaylistDetailView: View {
         ForEach(Array(playlist.entries.enumerated()), id: \.element.id) { index, entry in
             PlaybackRowInteraction(
                 isHighlighted: isFocused(entry),
-                onSelect: { focus(on: entry, transient: false) },
                 onPlay: { play(playlist, startAt: index) }
             ) {
                 EntryRow(

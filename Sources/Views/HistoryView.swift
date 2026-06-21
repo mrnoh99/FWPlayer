@@ -70,7 +70,6 @@ struct HistoryView: View {
     private func playArea(track: Track) -> some View {
         PlaybackRowInteraction(
             isHighlighted: isCurrent(track),
-            onSelect: {},
             onPlay: { player.play(tracks: [track], startAt: 0) }
         ) {
             QueueRow(index: index(of: track), track: track,

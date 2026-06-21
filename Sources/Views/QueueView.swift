@@ -122,7 +122,6 @@ struct QueueView: View {
                           onPlay: @escaping () -> Void) -> some View {
         PlaybackRowInteraction(
             isHighlighted: isCurrent,
-            onSelect: {},
             onPlay: { Task { @MainActor in onPlay() } }
         ) {
             QueueRow(index: index, track: track, isCurrent: isCurrent, isPlaying: player.isPlaying)

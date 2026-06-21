@@ -151,7 +151,6 @@ struct FolderBrowserView: View {
                 #if targetEnvironment(macCatalyst)
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
-                    onSelect: { focus(on: item, transient: false) },
                     onPlay: { openFolder(at: item.path, name: item.name) }
                 ) {
                     FolderRow(name: item.name)
@@ -166,7 +165,6 @@ struct FolderBrowserView: View {
             case .audio:
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
-                    onSelect: { focus(on: item, transient: false) },
                     onPlay: { playFromQueue(startingAt: item) }
                 ) {
                     TrackRow(

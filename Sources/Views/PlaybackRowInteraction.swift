@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// On iOS/iPadOS a single tap plays. On Mac Catalyst a single click selects
-/// via `List(selection:)` and a double click plays or opens.
+/// A row whose content plays/opens on a single tap (a plain SwiftUI Button on
+/// every platform). In edit mode it renders the content without the button so
+/// reorder/delete controls work.
 struct PlaybackRowInteraction<Content: View>: View {
     let isHighlighted: Bool
-    let onSelect: () -> Void
     let onPlay: () -> Void
     @ViewBuilder var content: () -> Content
 
