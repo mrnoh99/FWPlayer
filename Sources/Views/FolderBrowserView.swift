@@ -35,6 +35,9 @@ struct FolderBrowserView: View {
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
+    /// The sub-folder last opened from here, so returning scrolls back to it
+    /// instead of jumping to the top.
+    @State private var lastOpenedChildPath: String?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
 
@@ -110,7 +113,10 @@ struct FolderBrowserView: View {
                 .onChange(of: isLoading) { _, loading in
                     if !loading { centerLocatedFile(using: proxy) }
                 }
-                .onAppear { centerLocatedFile(using: proxy) }
+                .onAppear {
+                    centerLocatedFile(using: proxy)
+                    restoreLastOpenedChild(using: proxy)
+                }
         }
     }
 
@@ -155,6 +161,7 @@ struct FolderBrowserView: View {
                 NavigationLink(value: FolderRoute(sourceID: source.id, path: item.path, title: item.name)) {
                     Label(item.name, systemImage: "folder")
                 }
+                .simultaneousGesture(TapGesture().onEnded { lastOpenedChildPath = item.path })
                 #endif
             case .audio:
                 PlaybackRowInteraction(
@@ -241,6 +248,7 @@ struct FolderBrowserView: View {
 
     private func openFolder(at path: String, name: String) {
         ListFocusBehavior.cancelRevert(task: &focusRevertTask)
+        lastOpenedChildPath = path
         pushFolder?(FolderRoute(sourceID: source.id, path: path, title: name))
     }
     #endif
@@ -345,6 +353,17 @@ struct FolderBrowserView: View {
         ListFocusBehavior.cancelRevert(task: &focusRevertTask)
         selectedItemPath = focusFilePath
         scrollTarget = focusFilePath
+    }
+
+    /// On returning from a sub-folder, scrolls back to the folder that was opened
+    /// so the list resumes where it was rather than at the top.
+    private func restoreLastOpenedChild(using proxy: ScrollViewProxy) {
+        guard let child = lastOpenedChildPath,
+              items.contains(where: { $0.path == child }) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            proxy.scrollTo(child, anchor: .center)
+        }
     }
 
     /// Scrolls the "Locate File" target to the centre once the folder's rows are
