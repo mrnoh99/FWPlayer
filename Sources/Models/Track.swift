@@ -15,6 +15,8 @@ struct Track: Identifiable, Hashable, Codable, Transferable {
     let title: String
     var artist: String?
     var album: String?
+    /// Release year, e.g. "1986", if embedded in the file's metadata.
+    var year: String?
     var duration: TimeInterval?
     var sampleRate: Double?
 

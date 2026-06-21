@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 5
+let fwRemoteProtocolVersion = 6
 
 /// The fixed id of the built-in Favorites playlist, so the remote can offer an
 /// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
@@ -31,6 +31,8 @@ struct RemoteTrack: Codable, Hashable, Identifiable {
     var title: String
     var artist: String?
     var album: String?
+    /// Release year, e.g. "1986", if known.
+    var year: String?
     var duration: TimeInterval?
     /// Source + path the track came from, so the remote can "Locate File" it in
     /// the player's library. Optional for compatibility with older players.

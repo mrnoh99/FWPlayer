@@ -341,7 +341,7 @@ final class RemoteControlServer: ObservableObject {
         tracks.map {
             RemoteTrack(
                 id: $0.id, title: $0.title, artist: $0.artist, album: $0.album,
-                duration: $0.duration, sourceID: $0.sourceID, path: $0.path
+                year: $0.year, duration: $0.duration, sourceID: $0.sourceID, path: $0.path
             )
         }
     }

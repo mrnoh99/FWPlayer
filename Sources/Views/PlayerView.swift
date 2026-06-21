@@ -15,6 +15,7 @@ struct PlayerView: View {
     @State private var title = "Not Playing"
     @State private var artist: String?
     @State private var album: String?
+    @State private var year: String?
     @State private var sampleRate: Double?
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
@@ -127,6 +128,12 @@ struct PlayerView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let albumYear = albumYearText {
+                    Text(albumYear)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
 
@@ -168,9 +175,14 @@ struct PlayerView: View {
     private var subtitleText: String {
         var parts: [String] = []
         if let artist { parts.append(artist) }
-        else if let album { parts.append(album) }
         if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
         return parts.joined(separator: " · ")
+    }
+
+    /// Album title and release year, shown small below the title when known.
+    private var albumYearText: String? {
+        let parts = [album, year].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var scrubberMax: Double {
@@ -393,6 +405,7 @@ struct PlayerView: View {
         title = player.currentTrack?.title ?? "Not Playing"
         artist = player.currentTrack?.artist
         album = player.currentTrack?.album
+        year = player.currentTrack?.year
         sampleRate = player.currentTrack?.sampleRate
         isPlaying = player.isPlaying
         currentTime = player.currentTime

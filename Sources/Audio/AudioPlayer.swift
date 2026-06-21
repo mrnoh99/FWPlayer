@@ -677,12 +677,14 @@ final class AudioPlayer: NSObject, ObservableObject {
             guard let metadata = try? await asset.load(.commonMetadata) else { return }
             var artist: String?
             var album: String?
+            var year: String?
             for item in metadata {
                 guard let key = item.commonKey else { continue }
                 let value = try? await item.load(.stringValue)
                 switch key {
                 case .commonKeyArtist: artist = value
                 case .commonKeyAlbumName: album = value
+                case .commonKeyCreationDate: year = Self.releaseYear(from: value)
                 default: break
                 }
             }
@@ -693,6 +695,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 var track = self.queue[idx]
                 if let artist { track.artist = artist }
                 if let album { track.album = album }
+                if let year { track.year = year }
                 if let sampleRate, track.sampleRate == nil { track.sampleRate = sampleRate }
                 // The file-name-derived title is kept; embedded title is only a fallback.
                 var updated = self.queue
@@ -703,6 +706,15 @@ final class AudioPlayer: NSObject, ObservableObject {
                 self.artwork.resolve(track: track, fileURL: url, folderURL: url.deletingLastPathComponent())
             }
         }
+    }
+
+    /// Pulls a 4-digit release year out of a metadata date string such as
+    /// "1986", "2019-05-01", or "2004-01-01T00:00:00Z".
+    static func releaseYear(from value: String?) -> String? {
+        guard let value,
+              let match = value.range(of: "(19|20)\\d{2}", options: .regularExpression)
+        else { return nil }
+        return String(value[match])
     }
 
     private func updateTrackSampleRate(trackID: String, sampleRate: Double) {
