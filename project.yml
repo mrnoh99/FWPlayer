@@ -54,6 +54,7 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         NSLocalNetworkUsageDescription: "FWPlayer connects to SMB shares and advertises itself on your local network so FWPlayer Remote can control playback."
+        NSAppleMusicUsageDescription: "FWPlayer looks up album artwork, release year, and genre in the Apple Music catalog for the tracks you play."
         NSBonjourServices:
           - _fwplayer._tcp
         UISupportedInterfaceOrientations:

@@ -16,6 +16,7 @@ struct PlayerView: View {
     @State private var artist: String?
     @State private var album: String?
     @State private var year: String?
+    @State private var genre: String?
     @State private var sampleRate: Double?
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
@@ -179,9 +180,10 @@ struct PlayerView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Album title and release year, shown small below the title when known.
+    /// Album title, release year, and genre, shown small below the title when
+    /// known (year/genre may come from the Apple Music Catalog).
     private var albumYearText: String? {
-        let parts = [album, year].compactMap { $0 }.filter { !$0.isEmpty }
+        let parts = [album, year, genre].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -406,6 +408,7 @@ struct PlayerView: View {
         artist = player.currentTrack?.artist
         album = player.currentTrack?.album
         year = player.currentTrack?.year
+        genre = player.currentTrack?.genre
         sampleRate = player.currentTrack?.sampleRate
         isPlaying = player.isPlaying
         currentTime = player.currentTime

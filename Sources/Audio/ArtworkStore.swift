@@ -64,7 +64,13 @@ final class ArtworkStore: ObservableObject {
             var data = await AlbumArtwork.embedded(from: fileURL)
             if data == nil, let folderURL { data = AlbumArtwork.sidecar(in: folderURL) }
             if data == nil, allowOnline {
-                data = await AlbumArtwork.online(artist: track.artist, album: track.album, session: session)
+                // Primary online source: Apple Music Catalog (MusicKit)…
+                data = await MusicKitCatalog.artwork(
+                    artist: track.artist, album: track.album, maxDimension: 600, session: session)
+                // …with iTunes Search as the backup when MusicKit has nothing.
+                if data == nil {
+                    data = await AlbumArtwork.online(artist: track.artist, album: track.album, session: session)
+                }
             }
             await self.finish(key: key, data: data, maxDimension: 600)
         }

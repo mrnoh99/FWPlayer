@@ -15,8 +15,11 @@ struct Track: Identifiable, Hashable, Codable, Transferable {
     let title: String
     var artist: String?
     var album: String?
-    /// Release year, e.g. "1986", if embedded in the file's metadata.
+    /// Release year, e.g. "1986", from the file's metadata or the Apple Music
+    /// Catalog (MusicKit) lookup.
     var year: String?
+    /// Primary genre, e.g. "Jazz", resolved from the Apple Music Catalog.
+    var genre: String?
     var duration: TimeInterval?
     var sampleRate: Double?
 

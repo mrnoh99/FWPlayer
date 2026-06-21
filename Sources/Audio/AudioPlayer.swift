@@ -689,9 +689,10 @@ final class AudioPlayer: NSObject, ObservableObject {
                 }
             }
             let sampleRate = await AudioFormatReader.readSampleRate(from: url)
-            await MainActor.run {
+            // First pass: apply the file's embedded tags and start artwork resolution.
+            let lookup: (artist: String?, album: String?)? = await MainActor.run {
                 guard let self,
-                      let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
+                      let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return nil }
                 var track = self.queue[idx]
                 if let artist { track.artist = artist }
                 if let album { track.album = album }
@@ -702,8 +703,29 @@ final class AudioPlayer: NSObject, ObservableObject {
                 updated[idx] = track
                 self.queue = updated
                 if self.currentIndex == idx { self.updateNowPlaying() }
-                // Fetch album art (embedded → folder cover → online) for this track.
+                // Fetch album art (embedded → folder cover → MusicKit → iTunes) for this track.
                 self.artwork.resolve(track: track, fileURL: url, folderURL: url.deletingLastPathComponent())
+                return (track.artist, track.album)
+            }
+
+            // Second pass: enrich missing year/genre from the Apple Music Catalog
+            // (MusicKit), so the player and remote can show release year and genre
+            // even for files that don't tag them.
+            guard let lookup, MusicKitCatalog.isSupported,
+                  let info = await MusicKitCatalog.album(artist: lookup.artist, album: lookup.album)
+            else { return }
+            await MainActor.run {
+                guard let self,
+                      let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
+                var track = self.queue[idx]
+                var changed = false
+                if track.year == nil, let y = info.year { track.year = y; changed = true }
+                if track.genre == nil, let g = info.genre { track.genre = g; changed = true }
+                guard changed else { return }
+                var updated = self.queue
+                updated[idx] = track
+                self.queue = updated
+                if self.currentIndex == idx { self.updateNowPlaying() }
             }
         }
     }
