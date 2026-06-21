@@ -45,12 +45,12 @@ struct PlayerView: View {
                     .padding(.top, 8)
 
                 if isWide {
-                    HStack(alignment: .top, spacing: 28) {
+                    HStack(alignment: .top, spacing: 24) {
                         nowPlayingColumn
-                            .frame(maxWidth: .infinity)
+                            .frame(width: 340)
                         Divider()
                         queueColumn
-                            .frame(width: 360)
+                            .frame(maxWidth: .infinity)
                     }
                     .padding()
                 } else {
@@ -103,18 +103,21 @@ struct PlayerView: View {
     // MARK: - Now Playing (left)
 
     private var nowPlayingColumn: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 0)
-            artworkView
-            Spacer(minLength: 0)
-            infoRow
-            scrubber
-            transportControls
-            outputRow
-            catalogSummary
-            catalogDetails
+        ScrollView {
+            VStack(spacing: 18) {
+                artworkView
+                infoRow
+                scrubber
+                transportControls
+                outputRow
+                catalogSummary
+                catalogDetails
+            }
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
         }
-        .frame(maxWidth: 520)
     }
 
     // MARK: - Apple Music Catalog details
@@ -144,17 +147,14 @@ struct PlayerView: View {
     private var catalogDetails: some View {
         if let info = player.currentCatalogInfo, Self.hasExtended(info) {
             DisclosureGroup(isExpanded: $detailsExpanded) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        detailRow("Rating", info.contentRating)
-                        detailRow("Copyright", info.copyright)
-                        detailParagraph("About", info.editorialNotes)
-                        detailParagraph("Lyrics", info.lyrics)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
+                VStack(alignment: .leading, spacing: 8) {
+                    detailRow("Rating", info.contentRating)
+                    detailRow("Copyright", info.copyright)
+                    detailParagraph("About", info.editorialNotes)
+                    detailParagraph("Lyrics", info.lyrics)
                 }
-                .frame(maxHeight: 220)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
             } label: {
                 Label("More Info", systemImage: "info.circle")
                     .font(.subheadline.weight(.semibold))
@@ -228,7 +228,7 @@ struct PlayerView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: 320, maxHeight: 320)
+        .frame(maxWidth: 300, maxHeight: 300)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
     }
@@ -317,23 +317,36 @@ struct PlayerView: View {
         return min(max(time, 0), scrubberMax)
     }
 
+    /// A knob-less progress bar (just a track + fill) that's still draggable to
+    /// seek, matching the floating bar / Apple Music style.
     private var scrubber: some View {
-        VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { displayedTime },
-                    set: { scrubTime = $0 }
-                ),
-                in: 0...scrubberMax,
-                onEditingChanged: { editing in
-                    isScrubbing = editing
-                    if !editing {
-                        Task { @MainActor in
-                            player.seek(to: scrubTime)
-                        }
-                    }
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let progress = scrubberMax > 0 ? CGFloat(displayedTime / scrubberMax) : 0
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.25))
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: max(0, min(progress, 1)) * width)
                 }
-            )
+                .frame(height: 5)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isScrubbing = true
+                            let ratio = max(0, min(value.location.x / max(width, 1), 1))
+                            scrubTime = Double(ratio) * scrubberMax
+                        }
+                        .onEnded { _ in
+                            let target = scrubTime
+                            isScrubbing = false
+                            Task { @MainActor in player.seek(to: target) }
+                        }
+                )
+            }
+            .frame(height: 16)
             HStack {
                 Text(timeString(displayedTime))
                 Spacer()
@@ -434,20 +447,23 @@ struct PlayerView: View {
                 Text("Up Next")
                     .font(.headline)
                 Spacer()
-                Button {
-                    Task { @MainActor in player.toggleShuffle() }
+                Menu {
+                    Button(role: .destructive) {
+                        let indices = upcoming.map { $0.offset }
+                        Task { @MainActor in player.removeFromQueue(at: IndexSet(indices)) }
+                    } label: {
+                        Label("Clear Up Next", systemImage: "trash")
+                    }
+                    .disabled(upcoming.isEmpty)
                 } label: {
-                    Image(systemName: "shuffle")
-                        .foregroundStyle(isShuffled ? Color.accentColor : .secondary)
+                    Image(systemName: "ellipsis")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
-                Button {
-                    Task { @MainActor in player.cycleRepeatMode() }
-                } label: {
-                    Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
-                        .foregroundStyle(repeatMode == .off ? .secondary : Color.accentColor)
-                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(.horizontal, 4)
 
             if upcoming.isEmpty {
@@ -462,12 +478,17 @@ struct PlayerView: View {
             } else {
                 List {
                     ForEach(upcoming, id: \.offset) { item in
-                        Button {
-                            Task { @MainActor in player.play(at: item.offset) }
-                        } label: {
-                            queueRow(item.element)
+                        HStack(spacing: 6) {
+                            Button {
+                                Task { @MainActor in player.play(at: item.offset) }
+                            } label: {
+                                queueRow(item.element)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            upcomingRowMenu(item)
                         }
-                        .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     }
                     .onMove { source, destination in
@@ -489,10 +510,43 @@ struct PlayerView: View {
                 }
             }
             Spacer(minLength: 0)
-            Image(systemName: "line.3.horizontal")
-                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
+    }
+
+    /// Per-track actions for an upcoming queue entry (kept outside the play-tap
+    /// area so it always opens).
+    private func upcomingRowMenu(_ item: (offset: Int, element: Track)) -> some View {
+        let track = item.element
+        return Menu {
+            Button {
+                Task { @MainActor in player.play(at: item.offset) }
+            } label: {
+                Label("Play Now", systemImage: "play.fill")
+            }
+            Button { trackToAdd = track } label: {
+                Label("Add to Playlist", systemImage: "text.badge.plus")
+            }
+            Button(role: playlists.isFavorite(track) ? .destructive : nil) {
+                playlists.toggleFavorite(track)
+            } label: {
+                Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
+                      systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
+            }
+            Divider()
+            Button(role: .destructive) {
+                Task { @MainActor in player.removeFromQueue(at: IndexSet(integer: item.offset)) }
+            } label: {
+                Label("Remove from Queue", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 40)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func queueArtwork(_ track: Track) -> some View {
