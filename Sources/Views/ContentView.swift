@@ -41,8 +41,22 @@ struct ContentView: View {
 
             NavigationSplitView {
                 sidebar
+                    .safeAreaInset(edge: .bottom) { barClearance }
             } detail: {
                 detail
+                    .safeAreaInset(edge: .bottom) { barClearance }
+            }
+        }
+        // The bar floats as an overlay (always drawn on top, so a long list can
+        // never cover it) and shows over every screen — including the sidebar on
+        // iPhone. The per-column clearance spacer above keeps list rows from
+        // sitting under it.
+        .overlay(alignment: .bottom) {
+            if player.currentTrack != nil {
+                NowPlayingBar(
+                    onTap: { showingPlayer = true },
+                    onShowQueue: showQueue
+                )
             }
         }
         .onChange(of: selection) { _, newValue in
@@ -84,16 +98,15 @@ struct ContentView: View {
         } message: {
             Text("Give your playlist a name.")
         }
-        // The floating bar lives on the outer container so it shows over every
-        // screen — including the sidebar/source list on iPhone, where the detail
-        // column isn't on screen yet.
-        .safeAreaInset(edge: .bottom) {
-            if player.currentTrack != nil {
-                NowPlayingBar(
-                    onTap: { showingPlayer = true },
-                    onShowQueue: showQueue
-                )
-            }
+    }
+
+    /// Bottom spacer matching the floating bar's height, so a list's last rows
+    /// scroll clear of the bar instead of hiding under it. Empty when nothing is
+    /// playing (the bar is hidden then).
+    @ViewBuilder
+    private var barClearance: some View {
+        if player.currentTrack != nil {
+            Color.clear.frame(height: 72)
         }
     }
 
@@ -314,6 +327,11 @@ struct ContentView: View {
 
     /// Confirms a source's remembered folder still exists; if it's gone, resets to
     /// the source root so re-selecting it starts from the top.
+    ///
+    /// Only resets when the source itself is reachable (its root lists) but the
+    /// saved folder is missing. A transient/connection failure (common for SMB
+    /// right after connecting or during playback) must NOT wipe the saved
+    /// location — otherwise re-selecting the source wrongly drops to the root.
     private func validateSavedPath(for id: String) {
         guard let deepest = sourcePaths[id]?.last,
               let source = registry.source(for: id) else { return }
@@ -321,7 +339,10 @@ struct ContentView: View {
             do {
                 _ = try await source.list(path: deepest.path)
             } catch {
-                sourcePaths[id] = []
+                // Folder failed to list. Reset only if the root is reachable
+                // (so the source is up and the folder is truly gone).
+                guard (try? await source.list(path: "")) != nil else { return }
+                await MainActor.run { sourcePaths[id] = [] }
             }
         }
     }
