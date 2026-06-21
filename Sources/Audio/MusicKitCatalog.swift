@@ -117,15 +117,27 @@ enum MusicKitCatalog {
     /// Resolves authorization without re-prompting: requests access only the
     /// first time (status `.notDetermined`); afterwards it just reads the
     /// already-decided status. No prompt is ever shown more than once.
+    ///
+    /// Requesting access without an `NSAppleMusicUsageDescription` in Info.plist
+    /// is a hard crash, so we only prompt when that key is present — otherwise we
+    /// quietly decline and the caller falls back to iTunes Search.
     @available(iOS 15.0, macCatalyst 15.0, *)
     private static func isAuthorized() async -> Bool {
         switch MusicAuthorization.currentStatus {
         case .authorized: return true
-        case .notDetermined: return await MusicAuthorization.request() == .authorized
+        case .notDetermined:
+            guard hasUsageDescription else { return false }
+            return await MusicAuthorization.request() == .authorized
         default: return false   // denied / restricted
         }
     }
     #endif
+
+    /// Whether Info.plist carries the privacy string required before prompting.
+    private static var hasUsageDescription: Bool {
+        let value = Bundle.main.object(forInfoDictionaryKey: "NSAppleMusicUsageDescription") as? String
+        return !(value ?? "").isEmpty
+    }
 
     /// Rewrites an Apple artwork template/URL to request a square render of the
     /// given pixel side (Apple URLs embed `{w}x{h}` or a fixed `NNNxNNNbb`).

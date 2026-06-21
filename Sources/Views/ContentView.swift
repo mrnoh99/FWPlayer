@@ -42,18 +42,7 @@ struct ContentView: View {
             NavigationSplitView {
                 sidebar
             } detail: {
-                // Attach the floating bar's inset to the detail content (not the
-                // outer container) so the detail List reserves space for it and
-                // its last rows can scroll above the bar instead of being hidden.
                 detail
-                    .safeAreaInset(edge: .bottom) {
-                        if player.currentTrack != nil {
-                            NowPlayingBar(
-                                onTap: { showingPlayer = true },
-                                onShowQueue: showQueue
-                            )
-                        }
-                    }
             }
         }
         .onChange(of: selection) { _, newValue in
@@ -94,6 +83,17 @@ struct ContentView: View {
             }
         } message: {
             Text("Give your playlist a name.")
+        }
+        // The floating bar lives on the outer container so it shows over every
+        // screen — including the sidebar/source list on iPhone, where the detail
+        // column isn't on screen yet.
+        .safeAreaInset(edge: .bottom) {
+            if player.currentTrack != nil {
+                NowPlayingBar(
+                    onTap: { showingPlayer = true },
+                    onShowQueue: showQueue
+                )
+            }
         }
     }
 
