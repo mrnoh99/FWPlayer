@@ -72,7 +72,7 @@ final class ArtworkStore: ObservableObject {
                     data = await AlbumArtwork.online(artist: track.artist, album: track.album, session: session)
                 }
             }
-            await self.finish(key: key, data: data, maxDimension: 600)
+            self.finish(key: key, data: data, maxDimension: 600)
         }
     }
 
@@ -87,7 +87,7 @@ final class ArtworkStore: ObservableObject {
         Task {
             var data = await AlbumArtwork.embedded(from: directURL)
             if data == nil { data = AlbumArtwork.sidecar(in: directURL.deletingLastPathComponent()) }
-            await self.finish(key: key, data: data, maxDimension: 300)
+            self.finish(key: key, data: data, maxDimension: 300)
         }
     }
 
