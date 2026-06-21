@@ -22,7 +22,7 @@ enum EmbeddedLyrics {
             .iTunesMetadataLyrics
         ]
         for item in items where item.identifier.map({ wanted.contains($0) }) == true {
-            if let value = try? await item.load(.stringValue), let value, !value.isEmpty {
+            if let value = try? await item.load(.stringValue), !value.isEmpty {
                 return value
             }
         }
