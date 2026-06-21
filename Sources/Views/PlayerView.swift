@@ -95,6 +95,7 @@ struct PlayerView: View {
             scrubber
             transportControls
             outputRow
+            catalogSummary
             catalogDetails
         }
         .frame(maxWidth: 520)
@@ -102,18 +103,33 @@ struct PlayerView: View {
 
     // MARK: - Apple Music Catalog details
 
+    /// The core catalog fields, shown directly on the detail screen.
+    @ViewBuilder
+    private var catalogSummary: some View {
+        if let info = player.currentCatalogInfo, info.hasDisplayableDetails {
+            VStack(alignment: .leading, spacing: 6) {
+                detailRow("Album", info.albumTitle)
+                detailRow("Artist", info.artistName)
+                detailRow("Genre", info.genres.isEmpty ? nil : info.genres.joined(separator: ", "))
+                detailRow("Released", releasedText(info))
+                detailRow("Tracks", info.trackCount.map { String($0) })
+                detailRow("Label", info.recordLabel)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 4)
+        }
+    }
+
+    /// The longer fields (rating, copyright, description, lyrics), tucked into a
+    /// collapsible panel so they don't crowd the screen.
     @ViewBuilder
     private var catalogDetails: some View {
-        if let info = player.currentCatalogInfo, info.hasDisplayableDetails {
+        if let info = player.currentCatalogInfo, Self.hasExtended(info) {
             DisclosureGroup(isExpanded: $detailsExpanded) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                        detailRow("Album", info.albumTitle)
-                        detailRow("Artist", info.artistName)
-                        detailRow("Genre", info.genres.isEmpty ? nil : info.genres.joined(separator: ", "))
-                        detailRow("Released", releasedText(info))
-                        detailRow("Tracks", info.trackCount.map { String($0) })
-                        detailRow("Label", info.recordLabel)
                         detailRow("Rating", info.contentRating)
                         detailRow("Copyright", info.copyright)
                         detailParagraph("About", info.editorialNotes)
@@ -124,12 +140,18 @@ struct PlayerView: View {
                 }
                 .frame(maxHeight: 220)
             } label: {
-                Label("Album Info", systemImage: "info.circle")
+                Label("More Info", systemImage: "info.circle")
                     .font(.subheadline.weight(.semibold))
             }
             .tint(.secondary)
             .padding(.horizontal, 4)
         }
+    }
+
+    /// Whether the collapsible panel has anything beyond the always-shown summary.
+    private static func hasExtended(_ info: MusicKitCatalog.AlbumInfo) -> Bool {
+        info.contentRating != nil || info.copyright != nil
+            || info.editorialNotes != nil || info.lyrics != nil
     }
 
     @ViewBuilder
@@ -209,7 +231,9 @@ struct PlayerView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if let albumYear = albumYearText {
+                // Shown only when the fuller catalog summary isn't (it would repeat
+                // the album/year/genre otherwise).
+                if player.currentCatalogInfo == nil, let albumYear = albumYearText {
                     Text(albumYear)
                         .font(.caption)
                         .foregroundStyle(.secondary)
