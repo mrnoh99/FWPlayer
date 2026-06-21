@@ -16,6 +16,7 @@ struct ContentView: View {
     @EnvironmentObject private var playlists: PlaylistManager
     @EnvironmentObject private var artwork: ArtworkStore
     @EnvironmentObject private var remoteServer: RemoteControlServer
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selection: SidebarSelection?
     @State private var showingFolderPicker = false
@@ -81,12 +82,16 @@ struct ContentView: View {
         .sheet(item: $editingSMB) { config in
             AddSMBServerView(editing: config)
         }
-        .sheet(isPresented: $showingPlayer) {
+        // The full player covers the whole screen on iPad / Mac (a regular-width
+        // sheet would otherwise float as a centred card), while iPhone keeps the
+        // swipe-down sheet.
+        .modifier(PlayerPresentation(isPresented: $showingPlayer,
+                                     fullScreen: horizontalSizeClass == .regular) {
             PlayerView(onShowQueue: showQueue)
                 .environmentObject(player)
                 .environmentObject(artwork)
                 .environmentObject(playlists)
-        }
+        })
         .alert("New Playlist", isPresented: $showingNewPlaylist) {
             TextField("Playlist name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -344,6 +349,22 @@ struct ContentView: View {
                 guard (try? await source.list(path: "")) != nil else { return }
                 await MainActor.run { sourcePaths[id] = [] }
             }
+        }
+    }
+}
+
+/// Presents the full player as a full-screen cover (iPad / Mac, so it covers the
+/// whole screen) or a sheet (iPhone, keeping swipe-to-dismiss).
+private struct PlayerPresentation<SheetContent: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let fullScreen: Bool
+    @ViewBuilder var sheet: () -> SheetContent
+
+    func body(content: Content) -> some View {
+        if fullScreen {
+            content.fullScreenCover(isPresented: $isPresented, content: sheet)
+        } else {
+            content.sheet(isPresented: $isPresented, content: sheet)
         }
     }
 }
