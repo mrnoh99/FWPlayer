@@ -13,11 +13,38 @@ import MusicKit
 /// unavailable, unauthorized, or returns nothing, every entry point returns
 /// `nil` so the caller can fall back to iTunes Search.
 enum MusicKitCatalog {
-    /// Album info resolved from the catalog.
-    struct AlbumInfo {
-        var artworkURL: URL?
-        var year: String?
-        var genre: String?
+    /// Album info resolved from the catalog. Carries every field we surface in
+    /// the player's detail view and forward to the remote.
+    struct AlbumInfo: Equatable {
+        var albumTitle: String? = nil
+        var artistName: String? = nil
+        var genres: [String] = []
+        var releaseDate: Date? = nil
+        var trackCount: Int? = nil
+        var recordLabel: String? = nil
+        /// "Explicit" / "Clean" when rated.
+        var contentRating: String? = nil
+        /// Editorial blurb (Apple's album description), when present.
+        var editorialNotes: String? = nil
+        var copyright: String? = nil
+        var artworkURL: URL? = nil
+        /// Lyrics embedded in the audio file (MusicKit doesn't expose catalog
+        /// lyrics publicly), shown in the details when present.
+        var lyrics: String? = nil
+
+        /// Four-digit release year derived from `releaseDate`.
+        var year: String? {
+            releaseDate.map { String(Calendar.current.component(.year, from: $0)) }
+        }
+        /// Primary genre.
+        var genre: String? { genres.first }
+
+        /// Whether there's anything worth showing in a details panel.
+        var hasDisplayableDetails: Bool {
+            albumTitle != nil || artistName != nil || !genres.isEmpty || releaseDate != nil
+                || trackCount != nil || recordLabel != nil || contentRating != nil
+                || editorialNotes != nil || copyright != nil || lyrics != nil
+        }
     }
 
     /// Whether MusicKit is compiled in and the OS is new enough to use it.
@@ -64,14 +91,27 @@ enum MusicKitCatalog {
         guard let response = try? await request.response(),
               let match = response.albums.first else { return nil }
 
-        let year = match.releaseDate.map {
-            String(Calendar.current.component(.year, from: $0))
-        }
         return AlbumInfo(
-            artworkURL: match.artwork?.url(width: 1200, height: 1200),
-            year: year,
-            genre: match.genreNames.first
+            albumTitle: match.title,
+            artistName: match.artistName,
+            genres: match.genreNames,
+            releaseDate: match.releaseDate,
+            trackCount: match.trackCount,
+            recordLabel: match.recordLabel,
+            contentRating: contentRatingText(match.contentRating),
+            editorialNotes: match.editorialNotes?.standard ?? match.editorialNotes?.short,
+            copyright: match.copyright,
+            artworkURL: match.artwork?.url(width: 1200, height: 1200)
         )
+    }
+
+    @available(iOS 15.0, macCatalyst 15.0, *)
+    private static func contentRatingText(_ rating: ContentRating?) -> String? {
+        switch rating {
+        case .clean: return "Clean"
+        case .explicit: return "Explicit"
+        default: return nil
+        }
     }
 
     /// Resolves authorization without re-prompting: requests access only the

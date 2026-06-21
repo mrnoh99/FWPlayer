@@ -23,6 +23,10 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published var errorMessage: String?
     /// Bumped on play/pause, skip, seek, and stop so list views can snap focus back to the playing row.
     @Published private(set) var transportEventID = 0
+    /// Apple Music Catalog (MusicKit) details for the current track, resolved
+    /// asynchronously after it starts. Drives the player's detail panel and is
+    /// forwarded to the remote. Cleared whenever the track changes.
+    @Published private(set) var currentCatalogInfo: MusicKitCatalog.AlbumInfo?
 
     var currentTrack: Track? {
         guard let i = currentIndex, queue.indices.contains(i) else { return nil }
@@ -343,6 +347,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         tearDownPlayback(keepQueue: false)
         clearRecentlyPlayed()
         isLoading = false
+        currentCatalogInfo = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         noteTransportEvent()
     }
@@ -491,6 +496,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         loadTask?.cancel()
         tearDownPlayback(keepQueue: true)
         currentIndex = index
+        currentCatalogInfo = nil   // resolved fresh for the new track
         let track = queue[index]
         isLoading = true
         errorMessage = nil
@@ -560,6 +566,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         loadTask?.cancel()
         tearDownPlayback(keepQueue: true)
         currentIndex = index
+        currentCatalogInfo = nil
         isLoading = false
         updateNowPlaying()
     }
@@ -708,12 +715,19 @@ final class AudioPlayer: NSObject, ObservableObject {
                 return (track.artist, track.album)
             }
 
-            // Second pass: enrich missing year/genre from the Apple Music Catalog
-            // (MusicKit), so the player and remote can show release year and genre
-            // even for files that don't tag them.
-            guard let lookup, MusicKitCatalog.isSupported,
-                  let info = await MusicKitCatalog.album(artist: lookup.artist, album: lookup.album)
-            else { return }
+            // Second pass: enrich from the Apple Music Catalog (MusicKit) and the
+            // file's embedded lyrics, in parallel. This fills release year/genre
+            // for untagged files and powers the full details panel (player) and
+            // details section (remote).
+            guard let lookup else { return }
+            async let lyricsTask = EmbeddedLyrics.read(from: url)
+            let catalog = MusicKitCatalog.isSupported
+                ? await MusicKitCatalog.album(artist: lookup.artist, album: lookup.album)
+                : nil
+            let lyrics = await lyricsTask
+            var info = catalog ?? MusicKitCatalog.AlbumInfo()
+            info.lyrics = lyrics
+            guard info.hasDisplayableDetails else { return }
             await MainActor.run {
                 guard let self,
                       let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
@@ -721,11 +735,17 @@ final class AudioPlayer: NSObject, ObservableObject {
                 var changed = false
                 if track.year == nil, let y = info.year { track.year = y; changed = true }
                 if track.genre == nil, let g = info.genre { track.genre = g; changed = true }
-                guard changed else { return }
-                var updated = self.queue
-                updated[idx] = track
-                self.queue = updated
-                if self.currentIndex == idx { self.updateNowPlaying() }
+                if changed {
+                    var updated = self.queue
+                    updated[idx] = track
+                    self.queue = updated
+                }
+                // Expose the full details for the current track (drives the
+                // player's detail panel and the remote's details section).
+                if self.currentIndex == idx {
+                    self.currentCatalogInfo = info
+                    self.updateNowPlaying()
+                }
             }
         }
     }

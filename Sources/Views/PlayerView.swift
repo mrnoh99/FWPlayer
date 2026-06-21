@@ -33,6 +33,8 @@ struct PlayerView: View {
     /// True when there's room for the two-pane (artwork + Up Next) layout. Based
     /// on actual width, since an iPad sheet reports a compact size class.
     @State private var isWide = false
+    /// Whether the Apple Music Catalog details panel is expanded.
+    @State private var detailsExpanded = false
 
     var body: some View {
         GeometryReader { geo in
@@ -93,9 +95,87 @@ struct PlayerView: View {
             scrubber
             transportControls
             outputRow
+            catalogDetails
         }
         .frame(maxWidth: 520)
     }
+
+    // MARK: - Apple Music Catalog details
+
+    @ViewBuilder
+    private var catalogDetails: some View {
+        if let info = player.currentCatalogInfo, info.hasDisplayableDetails {
+            DisclosureGroup(isExpanded: $detailsExpanded) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        detailRow("Album", info.albumTitle)
+                        detailRow("Artist", info.artistName)
+                        detailRow("Genre", info.genres.isEmpty ? nil : info.genres.joined(separator: ", "))
+                        detailRow("Released", releasedText(info))
+                        detailRow("Tracks", info.trackCount.map { String($0) })
+                        detailRow("Label", info.recordLabel)
+                        detailRow("Rating", info.contentRating)
+                        detailRow("Copyright", info.copyright)
+                        detailParagraph("About", info.editorialNotes)
+                        detailParagraph("Lyrics", info.lyrics)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+                }
+                .frame(maxHeight: 220)
+            } label: {
+                Label("Album Info", systemImage: "info.circle")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .tint(.secondary)
+            .padding(.horizontal, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func detailRow(_ label: String, _ value: String?) -> some View {
+        if let value, !value.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 78, alignment: .leading)
+                Text(value)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detailParagraph(_ label: String, _ value: String?) -> some View {
+        if let value, !value.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func releasedText(_ info: MusicKitCatalog.AlbumInfo) -> String? {
+        if let date = info.releaseDate {
+            return Self.releaseDateFormatter.string(from: date)
+        }
+        return info.year
+    }
+
+    private static let releaseDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 
     private var artworkView: some View {
         Group {

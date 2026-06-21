@@ -180,6 +180,27 @@ struct RemoteArtwork: Codable, Hashable {
     var jpegBase64: String
 }
 
+/// Rich details for the current track (Apple Music Catalog metadata resolved by
+/// the player via MusicKit, plus any lyrics embedded in the file). Sent player →
+/// remote separately from the frequent state push (like artwork) and shown in
+/// the remote's collapsible details section. All fields optional for forward
+/// compatibility.
+struct RemoteCatalogInfo: Codable, Hashable {
+    var trackID: String
+    var albumTitle: String?
+    var artistName: String?
+    var genre: String?
+    var year: String?
+    /// Localized release date, pre-formatted by the player.
+    var releaseDate: String?
+    var trackCount: Int?
+    var recordLabel: String?
+    var contentRating: String?
+    var editorialNotes: String?
+    var copyright: String?
+    var lyrics: String?
+}
+
 /// The envelope exchanged over the wire. Commands flow remote → player; state,
 /// library, folder listings, and artwork flow player → remote.
 enum RemoteMessage: Codable {
@@ -190,4 +211,5 @@ enum RemoteMessage: Codable {
     case library(RemoteLibrary)
     case listing(RemoteListing)
     case artwork(RemoteArtwork)
+    case catalogInfo(RemoteCatalogInfo)
 }

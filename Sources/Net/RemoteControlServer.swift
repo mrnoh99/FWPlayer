@@ -12,6 +12,9 @@ final class RemoteControlServer: ObservableObject {
     private unowned let artwork: ArtworkStore
     /// The track id whose cover was last broadcast, so we send each cover once.
     private var lastArtworkTrackID: String?
+    /// The track id whose catalog details were last broadcast, so each track's
+    /// details (which resolve asynchronously) are sent once.
+    private var lastCatalogTrackID: String?
     /// The last state we sent, and when, so a stream of pure `currentTime` ticks
     /// during playback doesn't flood the link (the remote interpolates time
     /// itself). Meaningful changes still go out immediately.
@@ -72,6 +75,7 @@ final class RemoteControlServer: ObservableObject {
             .sink { [weak self] _ in
                 self?.broadcastState()
                 self?.broadcastArtworkIfNeeded()
+                self?.broadcastCatalogInfoIfNeeded()
             }
             .store(in: &cancellables)
 
@@ -146,6 +150,7 @@ final class RemoteControlServer: ObservableObject {
                 client.link.send(.authResult(AuthResult(success: true, message: nil)))
                 pushState(to: client.link)
                 if let art = currentArtworkMessage() { client.link.send(.artwork(art)) }
+                if let details = currentCatalogMessage() { client.link.send(.catalogInfo(details)) }
             } else {
                 client.link.send(.authResult(AuthResult(success: false, message: "Incorrect PIN.")))
             }
@@ -317,6 +322,45 @@ final class RemoteControlServer: ObservableObject {
             client.link.send(.artwork(message))
         }
     }
+
+    /// Builds the current track's catalog-details message, if details have
+    /// resolved (they arrive asynchronously after the track starts).
+    private func currentCatalogMessage() -> RemoteCatalogInfo? {
+        guard let track = player.currentTrack,
+              let info = player.currentCatalogInfo,
+              info.hasDisplayableDetails else { return nil }
+        return RemoteCatalogInfo(
+            trackID: track.id,
+            albumTitle: info.albumTitle,
+            artistName: info.artistName,
+            genre: info.genre,
+            year: info.year,
+            releaseDate: info.releaseDate.map { Self.releaseDateFormatter.string(from: $0) },
+            trackCount: info.trackCount,
+            recordLabel: info.recordLabel,
+            contentRating: info.contentRating,
+            editorialNotes: info.editorialNotes,
+            copyright: info.copyright,
+            lyrics: info.lyrics
+        )
+    }
+
+    /// Broadcasts the current track's details once they resolve, once per track.
+    private func broadcastCatalogInfoIfNeeded() {
+        guard let track = player.currentTrack else { lastCatalogTrackID = nil; return }
+        guard track.id != lastCatalogTrackID, let message = currentCatalogMessage() else { return }
+        lastCatalogTrackID = track.id
+        for client in clients.values where client.isAuthenticated {
+            client.link.send(.catalogInfo(message))
+        }
+    }
+
+    private static let releaseDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 
     private func makePlaybackState() -> PlaybackState {
         PlaybackState(
