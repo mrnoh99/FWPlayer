@@ -337,7 +337,7 @@ struct FolderBrowserView: View {
     }
 
     private func userFacingLoadError(_ error: Error) -> String {
-        if let smb = source as? SMBFileSource {
+        if source is SMBFileSource {
             return SMBFileSource.userFacingMessage(for: error)
         }
         return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
