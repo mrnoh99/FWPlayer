@@ -59,7 +59,7 @@ enum MusicKitCatalog {
     /// Returns `nil` if MusicKit can't satisfy the request (caller falls back).
     static func artwork(artist: String?, album: String?,
                         maxDimension: Int, session: URLSession) async -> Data? {
-        guard let info = await album(artist: artist, album: album),
+        guard let info = await Self.album(artist: artist, album: album),
               let url = info.artworkURL else { return nil }
         let sized = artworkURL(url, side: maxDimension) ?? url
         guard let (data, _) = try? await session.data(from: sized) else { return nil }
