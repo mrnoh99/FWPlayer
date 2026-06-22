@@ -56,20 +56,14 @@ struct ContentView: View {
             // hacks (the lists simply end above it).
             nowPlayingBar
         }
-        .onChange(of: selection) { _, newValue in
+        .onChange(of: selection) { _, _ in
             if pendingLocate {
                 pendingLocate = false
             } else {
                 locateFilePath = nil
             }
-            // Restore a source's remembered folder when it's (re-)selected — but
-            // only on the selection change, so popping to root within a source
-            // doesn't immediately re-push.
-            if case .source(let id) = newValue,
-               (sourcePaths[id]?.isEmpty ?? true),
-               let remembered = rememberedSourcePaths[id], !remembered.isEmpty {
-                sourcePaths[id] = remembered
-            }
+            // Folder restore happens in the source stack's .onAppear (a deferred,
+            // binding-driven push that restores reliably).
         }
         .sheet(isPresented: $showingFolderPicker) {
             FolderPicker { url in
@@ -273,6 +267,16 @@ struct ContentView: View {
                     }
                 }
                 .id(id)
+                // Restore the remembered folder AFTER the (freshly recreated) stack
+                // appears: setting the bound path here is a normal binding-driven
+                // push, which restores reliably — unlike a non-empty *initial*
+                // path on a recreated NavigationStack, which SwiftUI drops.
+                .onAppear {
+                    if (sourcePaths[id]?.isEmpty ?? true),
+                       let remembered = rememberedSourcePaths[id], !remembered.isEmpty {
+                        DispatchQueue.main.async { sourcePaths[id] = remembered }
+                    }
+                }
             } else {
                 NavigationStack { unavailable }
             }
