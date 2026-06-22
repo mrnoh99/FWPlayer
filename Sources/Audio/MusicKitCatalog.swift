@@ -20,6 +20,9 @@ enum MusicKitCatalog {
         var artistName: String? = nil
         var genres: [String] = []
         var releaseDate: Date? = nil
+        /// An explicit year string (e.g. from the file's tags) used when there's
+        /// no full `releaseDate` from the catalog.
+        var yearText: String? = nil
         var trackCount: Int? = nil
         var recordLabel: String? = nil
         /// "Explicit" / "Clean" when rated.
@@ -32,9 +35,12 @@ enum MusicKitCatalog {
         /// lyrics publicly), shown in the details when present.
         var lyrics: String? = nil
 
-        /// Four-digit release year derived from `releaseDate`.
+        /// Four-digit release year, from `releaseDate` or the explicit `yearText`.
         var year: String? {
-            releaseDate.map { String(Calendar.current.component(.year, from: $0)) }
+            if let releaseDate {
+                return String(Calendar.current.component(.year, from: releaseDate))
+            }
+            return yearText
         }
         /// Primary genre.
         var genre: String? { genres.first }
@@ -42,7 +48,7 @@ enum MusicKitCatalog {
         /// Whether there's anything worth showing in a details panel.
         var hasDisplayableDetails: Bool {
             albumTitle != nil || artistName != nil || !genres.isEmpty || releaseDate != nil
-                || trackCount != nil || recordLabel != nil || contentRating != nil
+                || yearText != nil || trackCount != nil || recordLabel != nil || contentRating != nil
                 || editorialNotes != nil || copyright != nil || lyrics != nil
         }
     }

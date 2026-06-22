@@ -42,32 +42,20 @@ struct ContentView: View {
 
             NavigationSplitView {
                 sidebar
-                    .safeAreaInset(edge: .bottom) { barClearance }
             } detail: {
+                // The floating bar lives over the detail (list) column only, so it
+                // doesn't straddle the sidebar. It's an overlay (always drawn on
+                // top of a long list); the detail's lists reserve bottom clearance
+                // via .nowPlayingBarClearance() so their last rows scroll clear.
                 detail
-                    .safeAreaInset(edge: .bottom) { barClearance }
+                    .overlay(alignment: .bottom) { nowPlayingBar }
             }
         }
-        // The bar floats as an overlay (always drawn on top, so a long list can
-        // never cover it) and shows over every screen — including the sidebar on
-        // iPhone. The per-column clearance spacer above keeps list rows from
-        // sitting under it.
-        .overlay(alignment: .bottom) {
-            if player.currentTrack != nil {
-                NowPlayingBar(
-                    onTap: { showingPlayer = true },
-                    onShowQueue: showQueue
-                )
-            }
-        }
-        .onChange(of: selection) { _, newValue in
+        .onChange(of: selection) { _, _ in
             if pendingLocate {
                 pendingLocate = false
             } else {
                 locateFilePath = nil
-            }
-            if case .source(let id) = newValue {
-                validateSavedPath(for: id)
             }
         }
         .sheet(isPresented: $showingFolderPicker) {
@@ -105,13 +93,15 @@ struct ContentView: View {
         }
     }
 
-    /// Bottom spacer matching the floating bar's height, so a list's last rows
-    /// scroll clear of the bar instead of hiding under it. Empty when nothing is
-    /// playing (the bar is hidden then).
+
+    /// The floating Now Playing bar, shown when something is loaded.
     @ViewBuilder
-    private var barClearance: some View {
+    private var nowPlayingBar: some View {
         if player.currentTrack != nil {
-            Color.clear.frame(height: 72)
+            NowPlayingBar(
+                onTap: { showingPlayer = true },
+                onShowQueue: showQueue
+            )
         }
     }
 
@@ -330,27 +320,26 @@ struct ContentView: View {
         return routes
     }
 
-    /// Confirms a source's remembered folder still exists; if it's gone, resets to
-    /// the source root so re-selecting it starts from the top.
-    ///
-    /// Only resets when the source itself is reachable (its root lists) but the
-    /// saved folder is missing. A transient/connection failure (common for SMB
-    /// right after connecting or during playback) must NOT wipe the saved
-    /// location — otherwise re-selecting the source wrongly drops to the root.
-    private func validateSavedPath(for id: String) {
-        guard let deepest = sourcePaths[id]?.last,
-              let source = registry.source(for: id) else { return }
-        Task {
-            do {
-                _ = try await source.list(path: deepest.path)
-            } catch {
-                // Folder failed to list. Reset only if the root is reachable
-                // (so the source is up and the folder is truly gone).
-                guard (try? await source.list(path: "")) != nil else { return }
-                await MainActor.run { sourcePaths[id] = [] }
+}
+
+/// Reserves bottom space inside a scrollable list so its last rows scroll clear
+/// of the floating Now Playing bar (applied directly to each list, since the
+/// inset doesn't propagate through NavigationStack into the list's scroll
+/// content). No-op when nothing is playing.
+private struct NowPlayingClearance: ViewModifier {
+    @EnvironmentObject private var player: AudioPlayer
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            if player.currentTrack != nil {
+                Color.clear.frame(height: 84)
             }
         }
     }
+}
+
+extension View {
+    /// Keeps a list's last rows from hiding under the floating Now Playing bar.
+    func nowPlayingBarClearance() -> some View { modifier(NowPlayingClearance()) }
 }
 
 /// Presents the full player as a full-screen cover (iPad / Mac, so it covers the
