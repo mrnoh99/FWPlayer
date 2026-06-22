@@ -26,10 +26,13 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
     /// The SMB server currently being edited (presents the edit sheet).
     @State private var editingSMB: SMBServerConfig?
-    /// Each source's current folder stack, so re-selecting a library returns to
-    /// the most recent location it was left at. Retained per source because the
-    /// detail's NavigationStack is persistent (binding-driven).
+    /// Each source's current folder stack (manual navigation, like the remote),
+    /// so re-selecting a source returns to where it was left.
     @State private var sourcePaths: [String: [FolderRoute]] = [:]
+    /// Per-folder memory of the sub-folder last opened from it (keyed by
+    /// sourceID+path), so backing out scrolls to it. Held here so it survives the
+    /// browser being recreated on navigation.
+    @State private var openedChild: [String: String] = [:]
     /// The file "Locate File" should scroll to, once its folder is open.
     @State private var locateFilePath: String?
     /// Set briefly while a "Locate File" action drives the selection change so we
@@ -247,29 +250,7 @@ struct ContentView: View {
             }
         case .source(let id):
             if let source = registry.source(for: id) {
-                // The NavigationStack is persistent (no .id on it): switching
-                // sources just swaps the bound path, so each source's folder stack
-                // (sourcePaths[id]) is retained and restored — there's no
-                // recreation/teardown to drop it. The root carries .id(id) so it
-                // still gets fresh state per source; deep navigation within one
-                // source is unaffected (its id is stable while browsing).
-                NavigationStack(path: pathBinding(for: id)) {
-                    FolderBrowserView(
-                        source: source, path: "", title: source.displayName,
-                        focusFilePath: locateFilePath, pushFolder: pushFolder
-                    )
-                    .id(id)
-                    .navigationDestination(for: FolderRoute.self) { route in
-                        if let routeSource = registry.source(for: route.sourceID) {
-                            FolderBrowserView(
-                                source: routeSource, path: route.path, title: route.title,
-                                focusFilePath: locateFilePath, pushFolder: pushFolder
-                            )
-                            .environmentObject(player)
-                            .environmentObject(playlists)
-                        }
-                    }
-                }
+                sourceDetail(source: source, id: id)
             } else {
                 NavigationStack { unavailable }
             }
@@ -292,21 +273,46 @@ struct ContentView: View {
 
     // MARK: - Folder navigation memory & Locate File
 
-    /// Binds a source's navigation stack. With the persistent NavigationStack,
-    /// sourcePaths[id] is retained across source switches, so re-selecting a
-    /// source restores its folder location.
-    private func pathBinding(for id: String) -> Binding<[FolderRoute]> {
-        Binding(
-            get: { sourcePaths[id] ?? [] },
-            set: { sourcePaths[id] = $0 }
-        )
+    /// One source's folder browser, driven by the manual `sourcePaths[id]` array
+    /// (like the remote's library) rather than a value-based NavigationStack —
+    /// which sidesteps the push/restore quirks. Showing the *current* (last)
+    /// folder and recreating the view when it changes; the path array persists
+    /// per source, so re-selecting a source returns to where it was left.
+    @ViewBuilder
+    private func sourceDetail(source: any FileSource, id: String) -> some View {
+        let routes = sourcePaths[id] ?? []
+        let current = routes.last
+        NavigationStack {
+            FolderBrowserView(
+                source: source,
+                path: current?.path ?? "",
+                title: current?.title ?? source.displayName,
+                focusFilePath: locateFilePath,
+                canGoBack: !routes.isEmpty,
+                onOpenFolder: { route in sourcePaths[id, default: []].append(route) },
+                onGoBack: {
+                    if var r = sourcePaths[id], !r.isEmpty {
+                        r.removeLast()
+                        sourcePaths[id] = r
+                    }
+                },
+                lastOpenedChild: openedChildBinding(id, current?.path ?? "")
+            )
+            .id(current?.path ?? "__root__")
+            .environmentObject(player)
+            .environmentObject(playlists)
+        }
+        .id(id)
     }
 
-    /// Pushes a sub-folder (used by Catalyst's programmatic open).
-    private func pushFolder(_ route: FolderRoute) {
-        var paths = sourcePaths[route.sourceID] ?? []
-        paths.append(route)
-        sourcePaths[route.sourceID] = paths
+    /// Stable per-folder memory of the sub-folder last opened from it, so the
+    /// browser (recreated on every navigation) can scroll back to it.
+    private func openedChildBinding(_ id: String, _ path: String) -> Binding<String?> {
+        let key = id + "\n" + path
+        return Binding(
+            get: { openedChild[key] },
+            set: { openedChild[key] = $0 }
+        )
     }
 
     /// "Locate File": switch to the track's source and open the folder that holds

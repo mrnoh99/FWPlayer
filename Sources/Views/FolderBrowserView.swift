@@ -18,15 +18,20 @@ struct FolderBrowserView: View {
     /// When this folder is the one containing `focusFilePath`, that file is
     /// highlighted and scrolled into view on load (used by "Locate File").
     var focusFilePath: String? = nil
-    /// Pushes a sub-folder onto the navigation stack (Catalyst's programmatic
-    /// open; iOS uses value-based `NavigationLink`s instead).
-    var pushFolder: ((FolderRoute) -> Void)? = nil
+    /// Whether this folder has a parent to go back to.
+    var canGoBack: Bool = false
+    /// Opens a sub-folder — manual array-driven navigation (like the remote),
+    /// instead of a value-based NavigationStack push.
+    var onOpenFolder: (FolderRoute) -> Void = { _ in }
+    /// Goes up one folder level.
+    var onGoBack: () -> Void = {}
+    /// The sub-folder last opened from here, held by the parent (ContentView) so
+    /// it survives this view being recreated on navigation; returning scrolls
+    /// back to it instead of jumping to the top.
+    @Binding var lastOpenedChild: String?
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
-    #if targetEnvironment(macCatalyst)
-    @Environment(\.dismiss) private var dismiss
-    #endif
 
     @State private var items: [FileItem] = []
     @State private var isLoading = true
@@ -35,9 +40,6 @@ struct FolderBrowserView: View {
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
-    /// The sub-folder last opened from here, so returning scrolls back to it
-    /// instead of jumping to the top.
-    @State private var lastOpenedChildPath: String?
 
     private var audioItems: [FileItem] { items.filter { $0.kind == .audio } }
 
@@ -63,10 +65,15 @@ struct FolderBrowserView: View {
             }
         }
         .navigationTitle(title)
-        // The detail's value-based NavigationStack already supplies a standard
-        // back button; an extra custom one here showed up as a second chevron
-        // (bumped to the trailing edge inside the split view). The in-list parent
-        // row below covers the explicit "go up" affordance on Catalyst.
+        .toolbar {
+            if canGoBack {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onGoBack) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                }
+            }
+        }
         .task(id: path) {
             await reload()
         }
@@ -136,14 +143,15 @@ struct FolderBrowserView: View {
 
     @ViewBuilder
     private var listRows: some View {
-        #if targetEnvironment(macCatalyst)
-        if canGoToParent {
-            Button { dismiss() } label: {
-                Label(parentFolderLabel, systemImage: "arrow.turn.up.left")
+        if canGoBack {
+            Button(action: onGoBack) {
+                Label(parentFolderLabel, systemImage: "chevron.left")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .tag("__parent__")
         }
-        #endif
         if items.isEmpty {
             Text("No audio files in this folder.")
                 .foregroundStyle(.secondary)
@@ -151,20 +159,13 @@ struct FolderBrowserView: View {
         ForEach(items) { item in
             switch item.kind {
             case .directory:
-                #if targetEnvironment(macCatalyst)
-                PlaybackRowInteraction(
-                    isHighlighted: isFocused(item),
-                    onPlay: { openFolder(at: item.path, name: item.name) }
-                ) {
-                    FolderRow(name: item.name)
-                }
-                .tag(item.path)
-                #else
-                NavigationLink(value: FolderRoute(sourceID: source.id, path: item.path, title: item.name)) {
+                Button { openFolder(item) } label: {
                     Label(item.name, systemImage: "folder")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                .simultaneousGesture(TapGesture().onEnded { lastOpenedChildPath = item.path })
-                #endif
+                .buttonStyle(.plain)
+                .id(item.path)
             case .audio:
                 audioRow(item)
             case .other:
@@ -252,14 +253,19 @@ struct FolderBrowserView: View {
         (path as NSString).lastPathComponent
     }
 
-    private var canGoToParent: Bool { !path.isEmpty }
-
     private var parentPath: String {
         (path as NSString).deletingLastPathComponent
     }
 
     private var parentFolderLabel: String {
         parentPath.isEmpty ? source.displayName : folderName(for: parentPath)
+    }
+
+    /// Opens a sub-folder (records it so returning scrolls back).
+    private func openFolder(_ item: FileItem) {
+        ListFocusBehavior.cancelRevert(task: &focusRevertTask)
+        lastOpenedChild = item.path
+        onOpenFolder(FolderRoute(sourceID: source.id, path: item.path, title: item.name))
     }
 
     #if targetEnvironment(macCatalyst)
@@ -269,14 +275,8 @@ struct FolderBrowserView: View {
               item.kind == .directory else {
             return .ignored
         }
-        openFolder(at: item.path, name: item.name)
+        openFolder(item)
         return .handled
-    }
-
-    private func openFolder(at path: String, name: String) {
-        ListFocusBehavior.cancelRevert(task: &focusRevertTask)
-        lastOpenedChildPath = path
-        pushFolder?(FolderRoute(sourceID: source.id, path: path, title: name))
     }
     #endif
 
@@ -385,7 +385,7 @@ struct FolderBrowserView: View {
     /// On returning from a sub-folder, scrolls back to the folder that was opened
     /// so the list resumes where it was rather than at the top.
     private func restoreLastOpenedChild(using proxy: ScrollViewProxy) {
-        guard let child = lastOpenedChildPath,
+        guard let child = lastOpenedChild,
               items.contains(where: { $0.path == child }) else { return }
         // Retry a few times: the rows may not be laid out on the first frame
         // after the folder (re)appears.
@@ -410,16 +410,6 @@ struct FolderBrowserView: View {
         }
     }
 }
-
-#if targetEnvironment(macCatalyst)
-private struct FolderRow: View {
-    let name: String
-
-    var body: some View {
-        Label(name, systemImage: "folder")
-    }
-}
-#endif
 
 private struct TrackRow: View {
     let item: FileItem
