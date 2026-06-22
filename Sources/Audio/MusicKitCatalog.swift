@@ -76,13 +76,16 @@ enum MusicKitCatalog {
 
     /// Searches the catalog for an album and returns its artwork URL, release
     /// year, and primary genre. `nil` when unsupported/unauthorized/not found.
+    /// Set once a developer-token request fails, so we don't keep hammering
+    /// MusicKit (and falling back to iTunes) for every track this session.
+    private static var tokenUnavailable = false
+
     static func album(artist: String?, album: String?) async -> AlbumInfo? {
         #if canImport(MusicKit)
-        if #available(iOS 15.0, macCatalyst 15.0, *) {
+        if #available(iOS 15.0, macCatalyst 15.0, *), !tokenUnavailable {
             return await catalogAlbum(artist: artist, album: album)
         }
         #endif
-        print("[MusicKit] unavailable on this build / OS")
         return nil
     }
 
@@ -123,8 +126,14 @@ enum MusicKitCatalog {
             )
         } catch {
             // Most commonly a missing developer token (the app/App ID isn't set up
-            // with the MusicKit capability) even when the user has authorized.
-            print("[MusicKit] catalog request failed for \"\(term)\": \(error)")
+            // with the MusicKit capability, or the profile hasn't propagated yet)
+            // even when the user has authorized. Stop trying MusicKit this session.
+            if "\(error)".contains("developerToken") {
+                tokenUnavailable = true
+                print("[MusicKit] developer token unavailable — using iTunes for the rest of this session")
+            } else {
+                print("[MusicKit] catalog request failed for \"\(term)\": \(error)")
+            }
             return nil
         }
     }
