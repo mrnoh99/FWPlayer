@@ -32,6 +32,11 @@ settings:
     SWIFT_VERSION: "5.9"
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: Apple Development
+    # Automatic signing reconciles the entitlements against the provisioning
+    # profile during the build (e.g. after setting a team / enabling MusicKit),
+    # which otherwise fails with "entitlements file was modified during the
+    # build". Allow it so dev builds proceed.
+    CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
 
 targets:
   FWPlayer:
