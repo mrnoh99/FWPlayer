@@ -47,12 +47,15 @@ struct ContentView: View {
             NavigationSplitView {
                 sidebar
             } detail: {
-                // The floating bar lives on the detail (list) column only, so it's
-                // centred over the list and never straddles the sidebar. As a
-                // bottom safeAreaInset it both draws on top (a long list can't
-                // cover it) and reserves space so the list's last rows scroll clear.
-                detail
-                    .safeAreaInset(edge: .bottom) { nowPlayingBar }
+                // Float the bar over the detail (list) column with a ZStack — it
+                // stays on top (a long list can't cover it) and never scrolls
+                // away, and it's over the list only (not the sidebar). The lists
+                // reserve bottom clearance via .nowPlayingBarClearance() so their
+                // last rows scroll clear of it.
+                ZStack(alignment: .bottom) {
+                    detail
+                    nowPlayingBar
+                }
             }
         }
         .onChange(of: selection) { _, newValue in
@@ -300,10 +303,13 @@ struct ContentView: View {
         Binding(
             get: { sourcePaths[id] ?? [] },
             set: { newValue in
+                let old = sourcePaths[id] ?? []
                 sourcePaths[id] = newValue
-                // Remember any non-empty stack so the teardown's empty write
-                // (on source switch) can't erase the saved location.
-                if !newValue.isEmpty { rememberedSourcePaths[id] = newValue }
+                // Remember only when navigating deeper (the path grows). The
+                // teardown on a source switch pops/clears the path, and recording
+                // those shrinks would leave the saved location one level too
+                // shallow (or empty).
+                if newValue.count > old.count { rememberedSourcePaths[id] = newValue }
             }
         )
     }
@@ -338,6 +344,25 @@ struct ContentView: View {
         return routes
     }
 
+}
+
+/// Reserves bottom space inside a scrollable list so its last rows scroll clear
+/// of the floating Now Playing bar that's layered over the detail column. No-op
+/// when nothing is playing.
+private struct NowPlayingClearance: ViewModifier {
+    @EnvironmentObject private var player: AudioPlayer
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            if player.currentTrack != nil {
+                Color.clear.frame(height: 84)
+            }
+        }
+    }
+}
+
+extension View {
+    /// Keeps a list's last rows from hiding under the floating Now Playing bar.
+    func nowPlayingBarClearance() -> some View { modifier(NowPlayingClearance()) }
 }
 
 /// Presents the full player as a full-screen cover (iPad / Mac, so it covers the

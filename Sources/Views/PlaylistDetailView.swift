@@ -82,6 +82,7 @@ struct PlaylistDetailView: View {
             #if targetEnvironment(macCatalyst)
             .listStyle(.inset)
             #endif
+            .nowPlayingBarClearance()
         }
         .scrollPosition(id: $scrollTarget, anchor: .center)
     }
