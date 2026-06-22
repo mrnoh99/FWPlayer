@@ -32,6 +32,8 @@ struct FolderBrowserView: View {
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var trackToAdd: Track?
+    /// The track whose action sheet (opened by tapping its row) is showing.
+    @State private var actionsItem: FileItem?
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
@@ -92,6 +94,21 @@ struct FolderBrowserView: View {
         #endif
         .sheet(item: $trackToAdd) { track in
             AddToPlaylistView(track: track)
+        }
+        .confirmationDialog(
+            actionsItem.map { ($0.name as NSString).deletingPathExtension } ?? "",
+            isPresented: Binding(get: { actionsItem != nil },
+                                 set: { if !$0 { actionsItem = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let item = actionsItem {
+                let track = Track(sourceID: source.id, item: item)
+                Button("Play Now") { player.play(tracks: [track], startAt: 0) }
+                Button("Play Next") { player.playNext(track) }
+                Button("Add to Queue") { player.enqueue(tracks: [track]) }
+                Button("Play Folder from Here") { playFromQueue(startingAt: item) }
+                Button("Add to Playlist") { trackToAdd = track }
+            }
         }
     }
 
@@ -165,7 +182,7 @@ struct FolderBrowserView: View {
             case .audio:
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
-                    onPlay: { player.playNext(Track(sourceID: source.id, item: item)) }
+                    onPlay: { actionsItem = item }
                 ) {
                     TrackRow(
                         item: item,
