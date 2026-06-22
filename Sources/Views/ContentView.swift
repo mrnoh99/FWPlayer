@@ -267,16 +267,6 @@ struct ContentView: View {
                     }
                 }
                 .id(id)
-                // Restore the remembered folder AFTER the (freshly recreated) stack
-                // appears: setting the bound path here is a normal binding-driven
-                // push, which restores reliably — unlike a non-empty *initial*
-                // path on a recreated NavigationStack, which SwiftUI drops.
-                .onAppear {
-                    if (sourcePaths[id]?.isEmpty ?? true),
-                       let remembered = rememberedSourcePaths[id], !remembered.isEmpty {
-                        DispatchQueue.main.async { sourcePaths[id] = remembered }
-                    }
-                }
             } else {
                 NavigationStack { unavailable }
             }

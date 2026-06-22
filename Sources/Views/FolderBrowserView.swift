@@ -165,7 +165,7 @@ struct FolderBrowserView: View {
             case .audio:
                 PlaybackRowInteraction(
                     isHighlighted: isFocused(item),
-                    onPlay: { playFromQueue(startingAt: item) }
+                    onPlay: { player.playNext(Track(sourceID: source.id, item: item)) }
                 ) {
                     TrackRow(
                         item: item,
