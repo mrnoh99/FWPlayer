@@ -133,6 +133,12 @@ struct PlayerView: View {
                 detailRow("Released", releasedText(info))
                 detailRow("Tracks", info.trackCount.map { String($0) })
                 detailRow("Label", info.recordLabel)
+
+                Label(info.isFromAppleMusic ? "via Apple Music" : "from file tags",
+                      systemImage: info.isFromAppleMusic ? "music.note" : "doc.text")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)

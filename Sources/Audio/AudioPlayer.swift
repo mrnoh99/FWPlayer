@@ -726,6 +726,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 : nil
             let lyrics = await lyricsTask
             var info = catalog ?? MusicKitCatalog.AlbumInfo()
+            info.isFromAppleMusic = (catalog != nil)
             info.lyrics = lyrics
             // Fall back to the file's own tags so the details panel still shows
             // album / artist / year even when MusicKit isn't configured or finds

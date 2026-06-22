@@ -341,7 +341,8 @@ final class RemoteControlServer: ObservableObject {
             contentRating: info.contentRating,
             editorialNotes: info.editorialNotes,
             copyright: info.copyright,
-            lyrics: info.lyrics
+            lyrics: info.lyrics,
+            isFromAppleMusic: info.isFromAppleMusic
         )
     }
 

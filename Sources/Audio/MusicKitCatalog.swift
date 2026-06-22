@@ -34,6 +34,9 @@ enum MusicKitCatalog {
         /// Lyrics embedded in the audio file (MusicKit doesn't expose catalog
         /// lyrics publicly), shown in the details when present.
         var lyrics: String? = nil
+        /// True when the metadata came from the Apple Music catalog (MusicKit);
+        /// false when it's only from the file's own tags.
+        var isFromAppleMusic: Bool = false
 
         /// Four-digit release year, from `releaseDate` or the explicit `yearText`.
         var year: String? {
