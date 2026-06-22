@@ -27,12 +27,9 @@ struct ContentView: View {
     /// The SMB server currently being edited (presents the edit sheet).
     @State private var editingSMB: SMBServerConfig?
     /// Each source's current folder stack, so re-selecting a library returns to
-    /// the most recent location it was left at.
+    /// the most recent location it was left at. Retained per source because the
+    /// detail's NavigationStack is persistent (binding-driven).
     @State private var sourcePaths: [String: [FolderRoute]] = [:]
-    /// The deepest folder stack seen per source. Survives the NavigationStack
-    /// teardown (which writes an empty path back through the live binding when a
-    /// source is switched away), so re-selecting a source can restore it.
-    @State private var rememberedSourcePaths: [String: [FolderRoute]] = [:]
     /// The file "Locate File" should scroll to, once its folder is open.
     @State private var locateFilePath: String?
     /// Set briefly while a "Locate File" action drives the selection change so we
@@ -250,11 +247,18 @@ struct ContentView: View {
             }
         case .source(let id):
             if let source = registry.source(for: id) {
+                // The NavigationStack is persistent (no .id on it): switching
+                // sources just swaps the bound path, so each source's folder stack
+                // (sourcePaths[id]) is retained and restored — there's no
+                // recreation/teardown to drop it. The root carries .id(id) so it
+                // still gets fresh state per source; deep navigation within one
+                // source is unaffected (its id is stable while browsing).
                 NavigationStack(path: pathBinding(for: id)) {
                     FolderBrowserView(
                         source: source, path: "", title: source.displayName,
                         focusFilePath: locateFilePath, pushFolder: pushFolder
                     )
+                    .id(id)
                     .navigationDestination(for: FolderRoute.self) { route in
                         if let routeSource = registry.source(for: route.sourceID) {
                             FolderBrowserView(
@@ -266,7 +270,6 @@ struct ContentView: View {
                         }
                     }
                 }
-                .id(id)
             } else {
                 NavigationStack { unavailable }
             }
@@ -289,20 +292,13 @@ struct ContentView: View {
 
     // MARK: - Folder navigation memory & Locate File
 
-    /// Binds a source's remembered navigation stack so browsing it updates the
-    /// stored location and re-selecting the source restores it.
+    /// Binds a source's navigation stack. With the persistent NavigationStack,
+    /// sourcePaths[id] is retained across source switches, so re-selecting a
+    /// source restores its folder location.
     private func pathBinding(for id: String) -> Binding<[FolderRoute]> {
         Binding(
             get: { sourcePaths[id] ?? [] },
-            set: { newValue in
-                let old = sourcePaths[id] ?? []
-                sourcePaths[id] = newValue
-                // Remember only when navigating deeper (the path grows). The
-                // teardown on a source switch pops/clears the path, and recording
-                // those shrinks would leave the saved location one level too
-                // shallow (or empty).
-                if newValue.count > old.count { rememberedSourcePaths[id] = newValue }
-            }
+            set: { sourcePaths[id] = $0 }
         )
     }
 
@@ -311,7 +307,6 @@ struct ContentView: View {
         var paths = sourcePaths[route.sourceID] ?? []
         paths.append(route)
         sourcePaths[route.sourceID] = paths
-        rememberedSourcePaths[route.sourceID] = paths
     }
 
     /// "Locate File": switch to the track's source and open the folder that holds
