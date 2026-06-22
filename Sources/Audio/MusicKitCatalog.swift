@@ -83,35 +83,52 @@ enum MusicKitCatalog {
             return await catalogAlbum(artist: artist, album: album)
         }
         #endif
+        print("[MusicKit] unavailable on this build / OS")
         return nil
     }
 
     #if canImport(MusicKit)
     @available(iOS 15.0, macCatalyst 15.0, *)
     private static func catalogAlbum(artist: String?, album: String?) async -> AlbumInfo? {
-        guard let album, !album.isEmpty else { return nil }
-        guard await isAuthorized() else { return nil }
+        guard let album, !album.isEmpty else {
+            print("[MusicKit] skip — no album tag to search")
+            return nil
+        }
+        guard await isAuthorized() else {
+            print("[MusicKit] not authorized (status=\(MusicAuthorization.currentStatus))")
+            return nil
+        }
 
         var term = album
         if let artist, !artist.isEmpty { term += " " + artist }
 
         var request = MusicCatalogSearchRequest(term: term, types: [Album.self])
         request.limit = 1
-        guard let response = try? await request.response(),
-              let match = response.albums.first else { return nil }
-
-        return AlbumInfo(
-            albumTitle: match.title,
-            artistName: match.artistName,
-            genres: match.genreNames,
-            releaseDate: match.releaseDate,
-            trackCount: match.trackCount,
-            recordLabel: match.recordLabelName,
-            contentRating: contentRatingText(match.contentRating),
-            editorialNotes: match.editorialNotes?.standard ?? match.editorialNotes?.short,
-            copyright: match.copyright,
-            artworkURL: match.artwork?.url(width: 1200, height: 1200)
-        )
+        do {
+            let response = try await request.response()
+            guard let match = response.albums.first else {
+                print("[MusicKit] no catalog match for \"\(term)\"")
+                return nil
+            }
+            print("[MusicKit] matched \"\(match.title)\" — \(match.artistName)")
+            return AlbumInfo(
+                albumTitle: match.title,
+                artistName: match.artistName,
+                genres: match.genreNames,
+                releaseDate: match.releaseDate,
+                trackCount: match.trackCount,
+                recordLabel: match.recordLabelName,
+                contentRating: contentRatingText(match.contentRating),
+                editorialNotes: match.editorialNotes?.standard ?? match.editorialNotes?.short,
+                copyright: match.copyright,
+                artworkURL: match.artwork?.url(width: 1200, height: 1200)
+            )
+        } catch {
+            // Most commonly a missing developer token (the app/App ID isn't set up
+            // with the MusicKit capability) even when the user has authorized.
+            print("[MusicKit] catalog request failed for \"\(term)\": \(error)")
+            return nil
+        }
     }
 
     @available(iOS 15.0, macCatalyst 15.0, *)
