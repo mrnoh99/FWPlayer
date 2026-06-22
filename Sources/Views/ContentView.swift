@@ -47,16 +47,14 @@ struct ContentView: View {
             NavigationSplitView {
                 sidebar
             } detail: {
-                // Float the bar over the detail (list) column with a ZStack — it
-                // stays on top (a long list can't cover it) and never scrolls
-                // away, and it's over the list only (not the sidebar). The lists
-                // reserve bottom clearance via .nowPlayingBarClearance() so their
-                // last rows scroll clear of it.
-                ZStack(alignment: .bottom) {
-                    detail
-                    nowPlayingBar
-                }
+                detail
             }
+
+            // The Now Playing bar is a real layout sibling docked at the bottom,
+            // below the split view — so it's always visible, can't be covered by a
+            // long list or slip under the sidebar, and needs no scroll-clearance
+            // hacks (the lists simply end above it).
+            nowPlayingBar
         }
         .onChange(of: selection) { _, newValue in
             if pendingLocate {
@@ -344,25 +342,6 @@ struct ContentView: View {
         return routes
     }
 
-}
-
-/// Reserves bottom space inside a scrollable list so its last rows scroll clear
-/// of the floating Now Playing bar that's layered over the detail column. No-op
-/// when nothing is playing.
-private struct NowPlayingClearance: ViewModifier {
-    @EnvironmentObject private var player: AudioPlayer
-    func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom) {
-            if player.currentTrack != nil {
-                Color.clear.frame(height: 84)
-            }
-        }
-    }
-}
-
-extension View {
-    /// Keeps a list's last rows from hiding under the floating Now Playing bar.
-    func nowPlayingBarClearance() -> some View { modifier(NowPlayingClearance()) }
 }
 
 /// Presents the full player as a full-screen cover (iPad / Mac, so it covers the

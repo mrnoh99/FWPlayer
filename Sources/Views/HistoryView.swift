@@ -28,7 +28,6 @@ struct HistoryView: View {
                     .onDelete { player.removeFromHistory(at: $0) }
                 }
                 .listStyle(.plain)
-                .nowPlayingBarClearance()
             }
         }
         .navigationTitle("History")
