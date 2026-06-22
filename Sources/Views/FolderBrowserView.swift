@@ -111,7 +111,10 @@ struct FolderBrowserView: View {
                     withAnimation { proxy.scrollTo(target, anchor: .center) }
                 }
                 .onChange(of: isLoading) { _, loading in
-                    if !loading { centerLocatedFile(using: proxy) }
+                    if !loading {
+                        centerLocatedFile(using: proxy)
+                        restoreLastOpenedChild(using: proxy)
+                    }
                 }
                 .onAppear {
                     centerLocatedFile(using: proxy)
@@ -384,9 +387,13 @@ struct FolderBrowserView: View {
     private func restoreLastOpenedChild(using proxy: ScrollViewProxy) {
         guard let child = lastOpenedChildPath,
               items.contains(where: { $0.path == child }) else { return }
+        // Retry a few times: the rows may not be laid out on the first frame
+        // after the folder (re)appears.
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            proxy.scrollTo(child, anchor: .center)
+            for delayMs in [80, 220, 400] {
+                try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+                proxy.scrollTo(child, anchor: .center)
+            }
         }
     }
 
