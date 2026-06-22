@@ -98,9 +98,7 @@ enum MusicKitCatalog {
             return nil
         }
 
-        var term = album
-        if let artist, !artist.isEmpty { term += " " + artist }
-
+        let term = searchTerm(artist: artist, album: album)
         var request = MusicCatalogSearchRequest(term: term, types: [Album.self])
         request.limit = 1
         do {
@@ -165,6 +163,19 @@ enum MusicKitCatalog {
         return !(value ?? "").isEmpty
     }
 
+    /// Builds a catalog search term, stripping edition/format clutter from the
+    /// album title so the search matches (e.g. "Thriller 25 (Super Deluxe Edition
+    /// 2018)" → "Thriller 25 Michael Jackson", "… (MFSL LP)" → "…").
+    static func searchTerm(artist: String?, album: String) -> String {
+        var a = album.replacingOccurrences(
+            of: "[\\(\\[][^\\)\\]]*[\\)\\]]", with: "", options: .regularExpression)
+        a = a.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if a.isEmpty { a = album }   // never strip down to nothing
+        if let artist, !artist.isEmpty { return a + " " + artist }
+        return a
+    }
+
     /// Rewrites an Apple artwork template/URL to request a square render of the
     /// given pixel side (Apple URLs embed `{w}x{h}` or a fixed `NNNxNNNbb`).
     private static func artworkURL(_ url: URL, side: Int) -> URL? {
@@ -185,8 +196,7 @@ enum MusicKitCatalog {
 enum ITunesCatalog {
     static func album(artist: String?, album: String?) async -> MusicKitCatalog.AlbumInfo? {
         guard let album, !album.isEmpty else { return nil }
-        var term = album
-        if let artist, !artist.isEmpty { term += " " + artist }
+        let term = MusicKitCatalog.searchTerm(artist: artist, album: album)
         guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://itunes.apple.com/search?media=music&entity=album&limit=1&term=\(encoded)")
         else { return nil }
