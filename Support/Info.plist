@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>FWPlayer looks up album artwork, release year, and genre in the Apple Music catalog for the tracks you play.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FWPlayer connects to SMB shares and advertises itself on your local network so FWPlayer Remote can control playback.</string>
 	<key>NSBonjourServices</key>
@@ -48,6 +50,21 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.fwplayer.track</string>
+			<key>UTTypeDescription</key>
+			<string>FWPlayer Track</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict/>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -66,6 +66,12 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.fwplayer.track
+            UTTypeDescription: FWPlayer Track
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification: {}
     settings:
       base:
         CODE_SIGN_STYLE: Automatic
