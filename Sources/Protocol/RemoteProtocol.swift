@@ -199,8 +199,8 @@ struct RemoteCatalogInfo: Codable, Hashable {
     var editorialNotes: String?
     var copyright: String?
     var lyrics: String?
-    /// True when the metadata came from the Apple Music catalog (vs. file tags).
-    var isFromAppleMusic: Bool?
+    /// Where the metadata came from: "Apple Music", "iTunes", or "file tags".
+    var source: String?
 }
 
 /// The envelope exchanged over the wire. Commands flow remote → player; state,

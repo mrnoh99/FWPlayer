@@ -34,9 +34,8 @@ enum MusicKitCatalog {
         /// Lyrics embedded in the audio file (MusicKit doesn't expose catalog
         /// lyrics publicly), shown in the details when present.
         var lyrics: String? = nil
-        /// True when the metadata came from the Apple Music catalog (MusicKit);
-        /// false when it's only from the file's own tags.
-        var isFromAppleMusic: Bool = false
+        /// Where the metadata came from: "Apple Music", "iTunes", or "file tags".
+        var source: String = "file tags"
 
         /// Four-digit release year, from `releaseDate` or the explicit `yearText`.
         var year: String? {
@@ -121,7 +120,8 @@ enum MusicKitCatalog {
                 contentRating: contentRatingText(match.contentRating),
                 editorialNotes: match.editorialNotes?.standard ?? match.editorialNotes?.short,
                 copyright: match.copyright,
-                artworkURL: match.artwork?.url(width: 1200, height: 1200)
+                artworkURL: match.artwork?.url(width: 1200, height: 1200),
+                source: "Apple Music"
             )
         } catch {
             // Most commonly a missing developer token (the app/App ID isn't set up
@@ -175,5 +175,49 @@ enum MusicKitCatalog {
                  .replacingOccurrences(of: "{f}", with: "jpg")
         }
         return URL(string: s)
+    }
+}
+
+/// Album metadata from the free iTunes Search API — no developer token or
+/// MusicKit capability required. Used as the fallback when MusicKit can't get a
+/// token (`.developerTokenRequestFailed`), so the details panel still fills with
+/// genre, release date, track count, etc.
+enum ITunesCatalog {
+    static func album(artist: String?, album: String?) async -> MusicKitCatalog.AlbumInfo? {
+        guard let album, !album.isEmpty else { return nil }
+        var term = album
+        if let artist, !artist.isEmpty { term += " " + artist }
+        guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://itunes.apple.com/search?media=music&entity=album&limit=1&term=\(encoded)")
+        else { return nil }
+
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]],
+              let first = results.first else {
+            print("[iTunes] request failed for \"\(term)\"")
+            return nil
+        }
+
+        var info = MusicKitCatalog.AlbumInfo()
+        info.albumTitle = first["collectionName"] as? String
+        info.artistName = first["artistName"] as? String
+        if let genre = first["primaryGenreName"] as? String, !genre.isEmpty { info.genres = [genre] }
+        if let releaseStr = first["releaseDate"] as? String {
+            info.releaseDate = ISO8601DateFormatter().date(from: releaseStr)
+        }
+        info.trackCount = first["trackCount"] as? Int
+        info.copyright = first["copyright"] as? String
+        if let art = first["artworkUrl100"] as? String {
+            info.artworkURL = URL(string: art.replacingOccurrences(of: "100x100bb", with: "1200x1200bb"))
+        }
+        info.source = "iTunes"
+
+        guard info.hasDisplayableDetails else {
+            print("[iTunes] no usable fields for \"\(term)\"")
+            return nil
+        }
+        print("[iTunes] matched \"\(info.albumTitle ?? term)\"")
+        return info
     }
 }

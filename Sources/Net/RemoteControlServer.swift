@@ -342,7 +342,7 @@ final class RemoteControlServer: ObservableObject {
             editorialNotes: info.editorialNotes,
             copyright: info.copyright,
             lyrics: info.lyrics,
-            isFromAppleMusic: info.isFromAppleMusic
+            source: info.source
         )
     }
 

@@ -733,12 +733,16 @@ final class AudioPlayer: NSObject, ObservableObject {
             // details section (remote).
             guard let lookup else { return }
             async let lyricsTask = EmbeddedLyrics.read(from: url)
-            let catalog = MusicKitCatalog.isSupported
+            // Apple Music (MusicKit) first; if it can't (e.g. no developer token),
+            // fall back to the free iTunes Search API so the details still fill.
+            var catalog = MusicKitCatalog.isSupported
                 ? await MusicKitCatalog.album(artist: lookup.artist, album: lookup.album)
                 : nil
+            if catalog == nil {
+                catalog = await ITunesCatalog.album(artist: lookup.artist, album: lookup.album)
+            }
             let lyrics = await lyricsTask
             var info = catalog ?? MusicKitCatalog.AlbumInfo()
-            info.isFromAppleMusic = (catalog != nil)
             info.lyrics = lyrics
             // Fall back to the file's own tags so the details panel still shows
             // album / artist / year even when MusicKit isn't configured or finds
