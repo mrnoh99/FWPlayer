@@ -696,6 +696,17 @@ final class AudioPlayer: NSObject, ObservableObject {
                 }
             }
             let sampleRate = await AudioFormatReader.readSampleRate(from: url)
+            // AVFoundation doesn't expose FLAC Vorbis comments, so read them
+            // directly (this is a FLAC library). Fills artist/album/year/genre
+            // the common-metadata pass missed.
+            var genre: String?
+            let flac = FlacTags.read(from: url)
+            if !flac.isEmpty {
+                if artist == nil { artist = flac["ARTIST"] ?? flac["ALBUMARTIST"] ?? flac["ALBUM ARTIST"] }
+                if album == nil { album = flac["ALBUM"] }
+                if year == nil { year = Self.releaseYear(from: flac["DATE"] ?? flac["YEAR"] ?? flac["ORIGINALDATE"]) }
+                genre = flac["GENRE"]
+            }
             // First pass: apply the file's embedded tags and start artwork resolution.
             let lookup: (artist: String?, album: String?)? = await MainActor.run {
                 guard let self,
@@ -704,6 +715,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if let artist { track.artist = artist }
                 if let album { track.album = album }
                 if let year { track.year = year }
+                if let genre, track.genre == nil { track.genre = genre }
                 if let sampleRate, track.sampleRate == nil { track.sampleRate = sampleRate }
                 // The file-name-derived title is kept; embedded title is only a fallback.
                 var updated = self.queue
@@ -733,6 +745,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             // nothing.
             if info.albumTitle == nil { info.albumTitle = album }
             if info.artistName == nil { info.artistName = artist }
+            if info.genres.isEmpty, let genre { info.genres = [genre] }
             if info.releaseDate == nil, info.yearText == nil { info.yearText = year }
             guard info.hasDisplayableDetails else { return }
             await MainActor.run {

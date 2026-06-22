@@ -19,7 +19,6 @@ struct QueueView: View {
             queueSection
         }
         .listStyle(.plain)
-        .nowPlayingBarClearance()
         .environment(\.editMode, $editMode)
         .navigationTitle("Queue")
         .navigationBarTitleDisplayMode(.inline)

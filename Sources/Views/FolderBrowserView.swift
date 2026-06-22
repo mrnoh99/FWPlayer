@@ -129,7 +129,6 @@ struct FolderBrowserView: View {
         List {
             listRows
         }
-        .nowPlayingBarClearance()
     }
 
     @ViewBuilder

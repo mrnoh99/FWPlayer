@@ -29,6 +29,10 @@ struct ContentView: View {
     /// Each source's current folder stack, so re-selecting a library returns to
     /// the most recent location it was left at.
     @State private var sourcePaths: [String: [FolderRoute]] = [:]
+    /// The deepest folder stack seen per source. Survives the NavigationStack
+    /// teardown (which writes an empty path back through the live binding when a
+    /// source is switched away), so re-selecting a source can restore it.
+    @State private var rememberedSourcePaths: [String: [FolderRoute]] = [:]
     /// The file "Locate File" should scroll to, once its folder is open.
     @State private var locateFilePath: String?
     /// Set briefly while a "Locate File" action drives the selection change so we
@@ -43,19 +47,27 @@ struct ContentView: View {
             NavigationSplitView {
                 sidebar
             } detail: {
-                // The floating bar lives over the detail (list) column only, so it
-                // doesn't straddle the sidebar. It's an overlay (always drawn on
-                // top of a long list); the detail's lists reserve bottom clearance
-                // via .nowPlayingBarClearance() so their last rows scroll clear.
+                // The floating bar lives on the detail (list) column only, so it's
+                // centred over the list and never straddles the sidebar. As a
+                // bottom safeAreaInset it both draws on top (a long list can't
+                // cover it) and reserves space so the list's last rows scroll clear.
                 detail
-                    .overlay(alignment: .bottom) { nowPlayingBar }
+                    .safeAreaInset(edge: .bottom) { nowPlayingBar }
             }
         }
-        .onChange(of: selection) { _, _ in
+        .onChange(of: selection) { _, newValue in
             if pendingLocate {
                 pendingLocate = false
             } else {
                 locateFilePath = nil
+            }
+            // Restore a source's remembered folder when it's (re-)selected — but
+            // only on the selection change, so popping to root within a source
+            // doesn't immediately re-push.
+            if case .source(let id) = newValue,
+               (sourcePaths[id]?.isEmpty ?? true),
+               let remembered = rememberedSourcePaths[id], !remembered.isEmpty {
+                sourcePaths[id] = remembered
             }
         }
         .sheet(isPresented: $showingFolderPicker) {
@@ -287,7 +299,12 @@ struct ContentView: View {
     private func pathBinding(for id: String) -> Binding<[FolderRoute]> {
         Binding(
             get: { sourcePaths[id] ?? [] },
-            set: { sourcePaths[id] = $0 }
+            set: { newValue in
+                sourcePaths[id] = newValue
+                // Remember any non-empty stack so the teardown's empty write
+                // (on source switch) can't erase the saved location.
+                if !newValue.isEmpty { rememberedSourcePaths[id] = newValue }
+            }
         )
     }
 
@@ -296,6 +313,7 @@ struct ContentView: View {
         var paths = sourcePaths[route.sourceID] ?? []
         paths.append(route)
         sourcePaths[route.sourceID] = paths
+        rememberedSourcePaths[route.sourceID] = paths
     }
 
     /// "Locate File": switch to the track's source and open the folder that holds
@@ -320,26 +338,6 @@ struct ContentView: View {
         return routes
     }
 
-}
-
-/// Reserves bottom space inside a scrollable list so its last rows scroll clear
-/// of the floating Now Playing bar (applied directly to each list, since the
-/// inset doesn't propagate through NavigationStack into the list's scroll
-/// content). No-op when nothing is playing.
-private struct NowPlayingClearance: ViewModifier {
-    @EnvironmentObject private var player: AudioPlayer
-    func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom) {
-            if player.currentTrack != nil {
-                Color.clear.frame(height: 84)
-            }
-        }
-    }
-}
-
-extension View {
-    /// Keeps a list's last rows from hiding under the floating Now Playing bar.
-    func nowPlayingBarClearance() -> some View { modifier(NowPlayingClearance()) }
 }
 
 /// Presents the full player as a full-screen cover (iPad / Mac, so it covers the
