@@ -32,8 +32,6 @@ struct FolderBrowserView: View {
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var trackToAdd: Track?
-    /// The track whose action sheet (opened by tapping its row) is showing.
-    @State private var actionsItem: FileItem?
     @State private var selectedItemPath: String?
     @State private var scrollTarget: String?
     @State private var focusRevertTask: Task<Void, Never>?
@@ -94,21 +92,6 @@ struct FolderBrowserView: View {
         #endif
         .sheet(item: $trackToAdd) { track in
             AddToPlaylistView(track: track)
-        }
-        .confirmationDialog(
-            actionsItem.map { ($0.name as NSString).deletingPathExtension } ?? "",
-            isPresented: Binding(get: { actionsItem != nil },
-                                 set: { if !$0 { actionsItem = nil } }),
-            titleVisibility: .visible
-        ) {
-            if let item = actionsItem {
-                let track = Track(sourceID: source.id, item: item)
-                Button("Play Now") { player.play(tracks: [track], startAt: 0) }
-                Button("Play Next") { player.playNext(track) }
-                Button("Add to Queue") { player.enqueue(tracks: [track]) }
-                Button("Play Folder from Here") { playFromQueue(startingAt: item) }
-                Button("Add to Playlist") { trackToAdd = track }
-            }
         }
     }
 
@@ -180,59 +163,85 @@ struct FolderBrowserView: View {
                 .simultaneousGesture(TapGesture().onEnded { lastOpenedChildPath = item.path })
                 #endif
             case .audio:
-                PlaybackRowInteraction(
-                    isHighlighted: isFocused(item),
-                    onPlay: { actionsItem = item }
-                ) {
-                    TrackRow(
-                        item: item,
-                        sourceID: source.id,
-                        isCurrent: isCurrent(item),
-                        isPlaying: player.isPlaying,
-                        directURL: source.directURL(forPath: item.path),
-                        isFavorite: playlists.isFavorite(Track(sourceID: source.id, item: item)),
-                        onToggleFavorite: { playlists.toggleFavorite(Track(sourceID: source.id, item: item)) },
-                        onPlayNow: { player.play(tracks: [Track(sourceID: source.id, item: item)], startAt: 0) },
-                        onPlayFromHere: { playFromQueue(startingAt: item) },
-                        onPlayNext: { player.playNext(Track(sourceID: source.id, item: item)) },
-                        onAddToQueue: { player.enqueue(tracks: [Track(sourceID: source.id, item: item)]) },
-                        onAddToPlaylist: { trackToAdd = Track(sourceID: source.id, item: item) }
-                    )
-                }
-                .id(item.path)
-                #if targetEnvironment(macCatalyst)
-                .tag(item.path)
-                #endif
-                .swipeActions(edge: .trailing) {
-                    Button {
-                        player.enqueue(tracks: [Track(sourceID: source.id, item: item)])
-                    } label: {
-                        Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
-                    }
-                    .tint(.blue)
-                    Button {
-                        trackToAdd = Track(sourceID: source.id, item: item)
-                    } label: {
-                        Label("Playlist", systemImage: "text.badge.plus")
-                    }
-                    .tint(.accentColor)
-                }
-                .draggable(Track(sourceID: source.id, item: item))
-                .contextMenu {
-                    Button {
-                        player.enqueue(tracks: [Track(sourceID: source.id, item: item)])
-                    } label: {
-                        Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
-                    }
-                    Button {
-                        trackToAdd = Track(sourceID: source.id, item: item)
-                    } label: {
-                        Label("Add to Playlist", systemImage: "text.badge.plus")
-                    }
-                }
+                audioRow(item)
             case .other:
                 EmptyView()
             }
+        }
+    }
+
+    /// A track row: tapping anywhere on it opens the action menu (Play Now / Play
+    /// from Here / Play Next / Add to Queue / Add to Playlist / Favorite). The
+    /// favorite star stays outside the menu so it's a one-tap toggle.
+    @ViewBuilder
+    private func audioRow(_ item: FileItem) -> some View {
+        let track = Track(sourceID: source.id, item: item)
+        HStack(spacing: 6) {
+            Button { playlists.toggleFavorite(track) } label: {
+                Image(systemName: playlists.isFavorite(track) ? "star.fill" : "star")
+                    .font(.footnote)
+                    .foregroundStyle(playlists.isFavorite(track) ? Color.yellow : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
+
+            Menu {
+                audioActions(item)
+            } label: {
+                TrackRow(
+                    item: item,
+                    sourceID: source.id,
+                    isCurrent: isCurrent(item),
+                    isPlaying: player.isPlaying,
+                    directURL: source.directURL(forPath: item.path)
+                )
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .listRowBackground(isFocused(item) ? Color.accentColor.opacity(0.15) : nil)
+        .id(item.path)
+        #if targetEnvironment(macCatalyst)
+        .tag(item.path)
+        #endif
+        .swipeActions(edge: .trailing) {
+            Button { player.enqueue(tracks: [track]) } label: {
+                Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            .tint(.blue)
+            Button { trackToAdd = track } label: {
+                Label("Playlist", systemImage: "text.badge.plus")
+            }
+            .tint(.accentColor)
+        }
+        .draggable(track)
+        .contextMenu { audioActions(item) }
+    }
+
+    /// The per-track actions shown by tapping the row (and in its context menu).
+    @ViewBuilder
+    private func audioActions(_ item: FileItem) -> some View {
+        let track = Track(sourceID: source.id, item: item)
+        Button { player.play(tracks: [track], startAt: 0) } label: {
+            Label("Play Now", systemImage: "play.fill")
+        }
+        Button { playFromQueue(startingAt: item) } label: {
+            Label("Play from Here", systemImage: "play.circle")
+        }
+        Button { player.playNext(track) } label: {
+            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+        Button { player.enqueue(tracks: [track]) } label: {
+            Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+        }
+        Button { trackToAdd = track } label: {
+            Label("Add to Playlist", systemImage: "text.badge.plus")
+        }
+        Button(role: playlists.isFavorite(track) ? .destructive : nil) {
+            playlists.toggleFavorite(track)
+        } label: {
+            Label(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites",
+                  systemImage: playlists.isFavorite(track) ? "star.slash" : "star")
         }
     }
 
