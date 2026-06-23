@@ -32,6 +32,7 @@ struct FolderBrowserView: View {
 
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var playlists: PlaylistManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var items: [FileItem] = []
     @State private var isLoading = true
@@ -66,7 +67,11 @@ struct FolderBrowserView: View {
         }
         .navigationTitle(title)
         .toolbar {
-            if canGoBack {
+            // Only on regular width (iPad / Mac). On iPhone the collapsed
+            // NavigationSplitView already shows its own back button, so a second
+            // custom one would be a duplicate arrow; the in-list parent row covers
+            // going up a folder there.
+            if canGoBack && horizontalSizeClass == .regular {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onGoBack) {
                         Label("Back", systemImage: "chevron.left")
