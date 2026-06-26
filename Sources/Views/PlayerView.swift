@@ -35,8 +35,8 @@ struct PlayerView: View {
     @State private var isWide = false
     /// Whether the Apple Music Catalog details panel is expanded.
     @State private var detailsExpanded = false
-    /// Ken Burns (slow zoom/pan) strength for the artwork, 0–100 %.
-    @AppStorage("kenBurnsIntensity") private var kenBurnsIntensity: Double = 0
+    /// Ken Burns (slow zoom/pan) strength for the artwork, 0–100 %. On by default.
+    @AppStorage("kenBurnsIntensity") private var kenBurnsIntensity: Double = 40
     @State private var kenBurnsOn = false
     @State private var showingArtMotion = false
 
