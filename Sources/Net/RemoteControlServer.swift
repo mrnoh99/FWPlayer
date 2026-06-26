@@ -29,7 +29,7 @@ final class RemoteControlServer: ObservableObject {
     private let bonjourName: String
     private let pairingPIN: String
 
-    /// Six-digit PIN shown on the player; remotes must enter it to connect.
+    /// Single-digit PIN shown on the player; remotes must enter it to connect.
     @Published private(set) var displayPIN: String
 
     private struct Client {
@@ -452,6 +452,6 @@ final class RemoteControlServer: ObservableObject {
     }
 
     private static func makePIN() -> String {
-        String(format: "%06d", Int.random(in: 0...999_999))
+        String(Int.random(in: 0...9))
     }
 }
