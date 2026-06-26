@@ -35,6 +35,10 @@ struct PlayerView: View {
     @State private var isWide = false
     /// Whether the Apple Music Catalog details panel is expanded.
     @State private var detailsExpanded = false
+    /// Ken Burns (slow zoom/pan) strength for the artwork, 0–100 %.
+    @AppStorage("kenBurnsIntensity") private var kenBurnsIntensity: Double = 0
+    @State private var kenBurnsOn = false
+    @State private var showingArtMotion = false
 
     var body: some View {
         GeometryReader { geo in
@@ -77,6 +81,19 @@ struct PlayerView: View {
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .accessibilityLabel("Close")
+        }
+        // Album-art motion (Ken Burns) intensity, in %.
+        .overlay(alignment: .topLeading) {
+            Button { showingArtMotion = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Album Art Motion")
+            .popover(isPresented: $showingArtMotion) { artMotionSettings }
         }
         .presentationDragIndicator(.hidden)
         .toolbar {
@@ -225,6 +242,8 @@ struct PlayerView: View {
         Group {
             if let cover = player.currentTrack.flatMap({ artwork.image(for: $0) }) {
                 Image(uiImage: cover).resizable().scaledToFill()
+                    .scaleEffect(kenBurnsScale)
+                    .offset(kenBurnsOffset)
             } else {
                 Image(systemName: "music.note")
                     .font(.system(size: 90))
@@ -237,6 +256,57 @@ struct PlayerView: View {
         .frame(maxWidth: 300, maxHeight: 300)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+        .onAppear { startKenBurns() }
+        .onChange(of: player.currentTrack?.id) { _, _ in startKenBurns() }
+        .onChange(of: kenBurnsIntensity) { _, _ in startKenBurns() }
+    }
+
+    // MARK: - Ken Burns (album-art motion)
+
+    /// 0…1 strength.
+    private var kenBurnsFraction: CGFloat { CGFloat(max(0, min(kenBurnsIntensity, 100)) / 100) }
+
+    private var kenBurnsScale: CGFloat {
+        guard kenBurnsFraction > 0 else { return 1 }
+        // Start zoomed in a touch so panning never reveals an edge.
+        return kenBurnsOn ? 1 + 0.20 * kenBurnsFraction : 1 + 0.06 * kenBurnsFraction
+    }
+
+    private var kenBurnsOffset: CGSize {
+        guard kenBurnsFraction > 0 else { return .zero }
+        let amount = 26 * kenBurnsFraction
+        return kenBurnsOn ? CGSize(width: amount, height: -amount)
+                          : CGSize(width: -amount, height: amount)
+    }
+
+    private func startKenBurns() {
+        kenBurnsOn = false
+        guard kenBurnsFraction > 0 else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 20).repeatForever(autoreverses: true)) {
+                kenBurnsOn = true
+            }
+        }
+    }
+
+    /// The album-art motion (Ken Burns) intensity control.
+    private var artMotionSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Album Art Motion").font(.headline)
+            Text("Slow Ken Burns zoom & pan on the artwork.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Image(systemName: "minus.magnifyingglass").foregroundStyle(.secondary)
+                Slider(value: $kenBurnsIntensity, in: 0...100, step: 5)
+                Image(systemName: "plus.magnifyingglass").foregroundStyle(.secondary)
+            }
+            Text(kenBurnsIntensity == 0 ? "Off" : "\(Int(kenBurnsIntensity))%")
+                .font(.subheadline.monospacedDigit())
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding()
+        .frame(width: 300)
+        .presentationCompactAdaptation(.popover)
     }
 
     private var infoRow: some View {
