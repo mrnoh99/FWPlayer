@@ -130,9 +130,14 @@ final class RemoteControlServer: ObservableObject {
             }
         }
 
-        clients[id] = Client(link: link)
+        // PIN-less: authenticate the client immediately and push the current
+        // state so the remote connects automatically (no pairing step).
+        clients[id] = Client(link: link, isAuthenticated: true)
         link.start()
-        link.send(.pairingRequired(PairingRequired(deviceName: deviceName)))
+        link.send(.authResult(AuthResult(success: true, message: nil)))
+        pushState(to: link)
+        if let art = currentArtworkMessage() { link.send(.artwork(art)) }
+        if let details = currentCatalogMessage() { link.send(.catalogInfo(details)) }
     }
 
     // MARK: - Commands
