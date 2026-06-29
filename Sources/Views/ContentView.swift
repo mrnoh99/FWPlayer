@@ -41,11 +41,15 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            RemotePairingBanner()
-                .environmentObject(remoteServer)
-
             NavigationSplitView {
                 sidebar
+                    .safeAreaInset(edge: .bottom) {
+                        Text("Developed by JaiSung NOH MD 2026")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 8)
+                    }
             } detail: {
                 detail
             }
