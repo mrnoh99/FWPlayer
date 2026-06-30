@@ -53,6 +53,11 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: FWPlayer
+        LSApplicationCategoryType: public.app-category.music
+        # Standard App Store export-compliance answer: the app uses only
+        # Apple-provided HTTPS (TLS) for catalog lookups, which is exempt, so
+        # no annual self-classification report is required.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
