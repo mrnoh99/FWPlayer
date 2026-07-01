@@ -119,7 +119,12 @@ two-pane player, now-playing details):
   (MusicKit, falling back to the public iTunes Search API). The optional
   FWPlayer Remote companion app controls playback over the local network —
   not required to review core playback. To test playback, add any FLAC/WAV/ALAC
-  file through the in-app file picker."
+  file through the in-app file picker. The app uses the `audio` background mode
+  so playback continues with the screen off. It also offers an optional,
+  user-toggleable 'Stay on in background' setting (Sidebar ▸ Remote, on by
+  default) that keeps the app reachable by the FWPlayer Remote while paused so
+  the user can resume playback from the companion app without unlocking this
+  device; the user can turn it off to save battery."
 
 ---
 

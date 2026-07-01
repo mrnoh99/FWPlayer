@@ -2,6 +2,9 @@ import Foundation
 import AVFoundation
 import MediaPlayer
 import Combine
+#if os(iOS)
+import UIKit
+#endif
 
 /// Repeat behavior, cycled Apple Music–style: off → all (loop queue) → one (loop track).
 enum RepeatMode: Int {
@@ -16,7 +19,9 @@ enum RepeatMode: Int {
 final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        didSet { updateBackgroundKeepAlive() }
+    }
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var isLoading = false
@@ -79,13 +84,39 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var recentlyPlayedOrder: [String] = []
     private let recentlyPlayedCap = 10
 
+    /// Whether the player should stay resident (and remote-controllable) while
+    /// backgrounded with the screen off, even when nothing is actively playing.
+    /// Persisted so the choice survives relaunch; defaults on so a remote can
+    /// wake the iPad's player without anyone touching it. Set to `false` to let
+    /// iOS suspend the app normally when paused (saves battery).
+    @Published var backgroundRemoteEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(backgroundRemoteEnabled, forKey: Self.backgroundRemoteKey)
+            updateBackgroundKeepAlive()
+        }
+    }
+    private static let backgroundRemoteKey = "backgroundRemoteEnabled"
+
+    /// Tracks whether the app is currently backgrounded (screen off / another
+    /// app foregrounded), so the keep-alive only runs when it's actually needed.
+    private var isInBackground = false
+    #if os(iOS)
+    private let keepAlive = BackgroundAudioKeepAlive()
+    #endif
+
     init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.registry = registry
         self.playlists = playlists
         self.artwork = artwork
+        if UserDefaults.standard.object(forKey: Self.backgroundRemoteKey) == nil {
+            self.backgroundRemoteEnabled = true
+        } else {
+            self.backgroundRemoteEnabled = UserDefaults.standard.bool(forKey: Self.backgroundRemoteKey)
+        }
         super.init()
         configureAudioSession()
         configureRemoteCommands()
+        observeAppLifecycle()
     }
 
     // MARK: - Public transport
@@ -801,6 +832,46 @@ final class AudioPlayer: NSObject, ObservableObject {
         #endif
     }
 
+    // MARK: - Background reachability (screen off, paused)
+
+    /// Watches app foreground/background transitions so the player can stay
+    /// remote-controllable with the screen off. While playing, the `audio`
+    /// background mode already keeps the app alive; the gap this covers is
+    /// "backgrounded + paused/idle", where iOS would otherwise suspend the
+    /// process and drop the remote's network link.
+    private func observeAppLifecycle() {
+        #if os(iOS)
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            Self.runOnMainActor {
+                self?.isInBackground = true
+                self?.updateBackgroundKeepAlive()
+            }
+        }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            Self.runOnMainActor {
+                self?.isInBackground = false
+                self?.updateBackgroundKeepAlive()
+            }
+        }
+        #endif
+    }
+
+    /// Starts the inaudible keep-alive stream only when it's needed — the app is
+    /// in the background, the feature is enabled, and real audio isn't already
+    /// playing (which keeps the app alive on its own) — and stops it otherwise.
+    private func updateBackgroundKeepAlive() {
+        #if os(iOS)
+        if backgroundRemoteEnabled && isInBackground && !isPlaying {
+            keepAlive.start()
+        } else {
+            keepAlive.stop()
+        }
+        #endif
+    }
+
     // MARK: - Remote commands & Now Playing
 
     private func configureRemoteCommands() {
@@ -876,3 +947,77 @@ extension AudioPlayer: AVAudioPlayerDelegate {
         }
     }
 }
+
+#if os(iOS)
+/// Keeps the app resident in the background — and therefore reachable by the
+/// FWPlayer Remote — when it would otherwise be suspended.
+///
+/// Once the app is backgrounded with the screen off and nothing is actively
+/// playing, iOS suspends the process within a few seconds, which tears down the
+/// remote-control network listener. Playing an inaudible, looping buffer through
+/// the app's already-active `.playback` audio session keeps iOS treating the app
+/// as "playing audio", so it stays alive and the remote can start/stop playback
+/// at any time without anyone touching the device. Real playback replaces this
+/// stream (there's no need to run both), and it's torn down the moment the app
+/// returns to the foreground.
+final class BackgroundAudioKeepAlive {
+    private var player: AVAudioPlayer?
+    private var active = false
+
+    func start() {
+        guard !active else { return }
+        active = true
+        if player == nil { player = Self.makeSilentPlayer() }
+        player?.numberOfLoops = -1
+        player?.volume = 0
+        if player?.isPlaying == false { player?.play() }
+    }
+
+    func stop() {
+        guard active else { return }
+        active = false
+        player?.stop()
+        // Keep the (cheap) player instance around for fast restarts.
+        player?.currentTime = 0
+    }
+
+    private static func makeSilentPlayer() -> AVAudioPlayer? {
+        guard let data = silentWAV(seconds: 1),
+              let player = try? AVAudioPlayer(data: data) else { return nil }
+        player.prepareToPlay()
+        return player
+    }
+
+    /// Synthesizes a short mono 16-bit PCM WAV of pure silence in memory, so no
+    /// audio asset needs to ship in the bundle.
+    private static func silentWAV(seconds: Double) -> Data? {
+        let sampleRate = 44_100
+        let channels = 1
+        let bitsPerSample = 16
+        let frameCount = max(1, Int(Double(sampleRate) * seconds))
+        let dataSize = frameCount * channels * bitsPerSample / 8
+        let byteRate = sampleRate * channels * bitsPerSample / 8
+        let blockAlign = channels * bitsPerSample / 8
+
+        var d = Data()
+        func appendLE32(_ v: Int) { var x = UInt32(truncatingIfNeeded: v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        func appendLE16(_ v: Int) { var x = UInt16(truncatingIfNeeded: v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+
+        d.append(contentsOf: Array("RIFF".utf8))
+        appendLE32(36 + dataSize)
+        d.append(contentsOf: Array("WAVE".utf8))
+        d.append(contentsOf: Array("fmt ".utf8))
+        appendLE32(16)                 // PCM fmt chunk size
+        appendLE16(1)                  // audio format = PCM
+        appendLE16(channels)
+        appendLE32(sampleRate)
+        appendLE32(byteRate)
+        appendLE16(blockAlign)
+        appendLE16(bitsPerSample)
+        d.append(contentsOf: Array("data".utf8))
+        appendLE32(dataSize)
+        d.append(Data(count: dataSize)) // silence
+        return d
+    }
+}
+#endif

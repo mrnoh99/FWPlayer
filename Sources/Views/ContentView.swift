@@ -208,6 +208,15 @@ struct ContentView: View {
                         .tag(SidebarSelection.playlist(playlist.id))
                 }
             }
+
+            Section("Remote") {
+                Toggle(isOn: $player.backgroundRemoteEnabled) {
+                    Label("Stay on in background", systemImage: "wifi")
+                }
+                Text("Keeps FWPlayer reachable by the remote with the screen off, so playback can be controlled without waking this device. Uses more battery.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .scrollContentBackground(.hidden)
         .background(sidebarGlass)
