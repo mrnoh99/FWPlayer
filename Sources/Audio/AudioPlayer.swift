@@ -117,6 +117,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         configureAudioSession()
         configureRemoteCommands()
         observeAppLifecycle()
+        observeAudioSessionEvents()
     }
 
     // MARK: - Public transport
@@ -845,8 +846,14 @@ final class AudioPlayer: NSObject, ObservableObject {
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
                            object: nil, queue: .main) { [weak self] _ in
             Self.runOnMainActor {
-                self?.isInBackground = true
-                self?.updateBackgroundKeepAlive()
+                guard let self else { return }
+                self.isInBackground = true
+                // Re-assert the audio session so active playback keeps going
+                // with the screen off, exactly like the Music app.
+                if self.isPlaying {
+                    try? AVAudioSession.sharedInstance().setActive(true)
+                }
+                self.updateBackgroundKeepAlive()
             }
         }
         center.addObserver(forName: UIApplication.willEnterForegroundNotification,
@@ -871,6 +878,90 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         #endif
     }
+
+    // MARK: - Audio session events (interruptions, route, reset)
+
+    /// Whether playback was interrupted by the system (a phone call, Siri,
+    /// another audio app) while it was playing, so it can be resumed when the
+    /// interruption ends — the behavior users expect from the Music app.
+    private var wasPlayingBeforeInterruption = false
+
+    private func observeAudioSessionEvents() {
+        #if os(iOS)
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        center.addObserver(forName: AVAudioSession.interruptionNotification,
+                           object: session, queue: .main) { [weak self] note in
+            Self.runOnMainActor { self?.handleInterruption(note) }
+        }
+        center.addObserver(forName: AVAudioSession.routeChangeNotification,
+                           object: session, queue: .main) { [weak self] note in
+            Self.runOnMainActor { self?.handleRouteChange(note) }
+        }
+        center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
+                           object: session, queue: .main) { [weak self] _ in
+            Self.runOnMainActor { self?.handleMediaServicesReset() }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private func handleInterruption(_ note: Notification) {
+        guard let info = note.userInfo,
+              let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        switch type {
+        case .began:
+            // The system has already paused our audio; mirror that in our state
+            // and remember we should resume when the interruption ends.
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying {
+                player?.pause()
+                isPlaying = false
+                updateNowPlaying()
+            }
+        case .ended:
+            let options: AVAudioSession.InterruptionOptions
+            if let rawOpts = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                options = AVAudioSession.InterruptionOptions(rawValue: rawOpts)
+            } else {
+                options = []
+            }
+            if options.contains(.shouldResume) && wasPlayingBeforeInterruption {
+                try? AVAudioSession.sharedInstance().setActive(true)
+                resumePlayback()
+            }
+            wasPlayingBeforeInterruption = false
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(_ note: Notification) {
+        guard let info = note.userInfo,
+              let raw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
+        // Headphones/Bluetooth device removed: pause instead of suddenly
+        // blasting the built-in speaker — matches the Music app.
+        if reason == .oldDeviceUnavailable, isPlaying {
+            pausePlayback()
+        }
+    }
+
+    private func handleMediaServicesReset() {
+        // The audio server crashed and restarted; every audio object is now
+        // invalid. Rebuild the session and player and resume where we were.
+        let resumeIndex = currentIndex
+        let wasPlaying = isPlaying
+        player?.delegate = nil
+        player?.stop()
+        player = nil
+        configureAudioSession()
+        if wasPlaying, let i = resumeIndex {
+            loadAndPlay(index: i)
+        }
+    }
+    #endif
 
     // MARK: - Remote commands & Now Playing
 
