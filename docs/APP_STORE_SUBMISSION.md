@@ -95,8 +95,8 @@ The entitlements include two temporary exceptions (`Support/FWPlayer.entitlement
   AVFoundation crashes the sandboxed Catalyst process the moment audio starts;
 - a read-only file exception for `/Volumes/` — so an inserted **audio CD**
   (mounted by macOS under `/Volumes` as `cddafs` AIFF tracks) can be
-  auto-detected and its tracks ripped to a temp file for playback, without
-  making the user pick the disc by hand each time.
+  auto-detected and its tracks streamed for playback, without making the user
+  pick the disc by hand each time.
 
 Keep both; if a reviewer questions them, explain they're required for audio
 playback under the App Sandbox and for the audio-CD feature respectively. (If

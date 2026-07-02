@@ -634,7 +634,13 @@ final class AudioPlayer: NSObject, ObservableObject {
             recordHistory(track)
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
-            loadMetadata(for: playable.url, trackID: track.id)
+            // Skip metadata for audio CDs: CDDA tracks carry no embedded tags or
+            // art (so the lookup finds nothing), and reading the file for tags
+            // would seek against AVAudioPlayer streaming the same track off the
+            // disc — needless drive contention during playback.
+            if registry.source(for: sourceID)?.kind != .audioCD {
+                loadMetadata(for: playable.url, trackID: track.id)
+            }
             prefetchUpcoming()   // get the next track(s) ready while this one plays
         } catch {
             playable.cleanup()
