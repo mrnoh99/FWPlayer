@@ -431,6 +431,10 @@ final class AudioPlayer: NSObject, ObservableObject {
             guard prefetched[track.id] == nil, prefetchTasks[track.id] == nil,
                   recentlyPlayed[track.id] == nil else { continue }   // already cached
             guard let source = registry.source(for: track.sourceID) else { continue }
+            // Never read ahead on an optical drive: ripping upcoming tracks while
+            // the current one plays makes the drive seek-thrash and macOS can
+            // eject the disc as unreadable. CD tracks are ripped just-in-time.
+            if source.kind == .audioCD { continue }
             if source.directURL(forPath: track.path) != nil { continue }   // local: no download
 
             prefetchTasks[track.id] = Task { [weak self] in

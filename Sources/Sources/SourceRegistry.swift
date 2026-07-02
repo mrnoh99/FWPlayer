@@ -24,6 +24,11 @@ final class SourceRegistry: ObservableObject {
     /// Polls for audio CD insertion/ejection (Mac Catalyst can't observe the
     /// AppKit volume-mount notifications).
     private var cdPollTimer: Timer?
+    /// Consecutive polls a known CD volume was missing from the mount list. A
+    /// disc busy being ripped can momentarily drop out of the listing, so we
+    /// only remove a CD source after it's been absent a couple of times rather
+    /// than yanking the disc the user is actively playing.
+    private var cdMissCounts: [String: Int] = [:]
     #endif
 
     /// Builds the source list from persisted bookmarks and SMB configs.
@@ -92,13 +97,29 @@ final class SourceRegistry: ObservableObject {
         let mounted = CDAudioSource.mountedAudioCDVolumes()
         let mountedIDs = Set(mounted.map { "cd:" + $0.path })
 
-        // Remove sources for discs that are gone.
-        sources.removeAll { $0.kind == .audioCD && !mountedIDs.contains($0.id) }
+        // Remove a CD source only after it's been missing from the mount list
+        // for two consecutive polls, so a disc that briefly drops out while it's
+        // being ripped isn't yanked mid-playback.
+        var toRemove: Set<String> = []
+        for source in sources where source.kind == .audioCD {
+            if mountedIDs.contains(source.id) {
+                cdMissCounts[source.id] = 0
+            } else {
+                let misses = (cdMissCounts[source.id] ?? 0) + 1
+                cdMissCounts[source.id] = misses
+                if misses >= 2 { toRemove.insert(source.id) }
+            }
+        }
+        if !toRemove.isEmpty {
+            sources.removeAll { toRemove.contains($0.id) }
+            for id in toRemove { cdMissCounts[id] = nil }
+        }
 
         // Add sources for newly mounted discs.
         let existingIDs = Set(sources.map { $0.id })
         for volume in mounted where !existingIDs.contains("cd:" + volume.path) {
             sources.append(CDAudioSource(volumeURL: volume))
+            cdMissCounts["cd:" + volume.path] = 0
         }
     }
     #endif
