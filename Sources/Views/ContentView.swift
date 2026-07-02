@@ -210,6 +210,22 @@ struct ContentView: View {
             }
 
             Section("Remote") {
+                Label {
+                    HStack {
+                        Text(remoteServer.isListening ? "Discoverable" : "Not advertising")
+                        Spacer()
+                        Circle()
+                            .fill(remoteServer.isListening ? Color.green : Color.orange)
+                            .frame(width: 8, height: 8)
+                    }
+                } icon: {
+                    Image(systemName: remoteServer.isListening ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                }
+                if let status = remoteServer.networkStatus {
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
                 Toggle(isOn: $player.backgroundRemoteEnabled) {
                     Label("Stay on in background", systemImage: "wifi")
                 }

@@ -32,6 +32,18 @@ final class RemoteControlServer: ObservableObject {
     /// Single-digit PIN shown on the player; remotes must enter it to connect.
     @Published private(set) var displayPIN: String
 
+    /// Whether the Bonjour listener is up and advertising. Surfaced in the UI so
+    /// a failure to advertise (e.g. Local Network permission not granted on
+    /// macOS) is visible instead of silent.
+    @Published private(set) var isListening = false
+    /// Human-readable reason the listener isn't ready, when it isn't.
+    @Published private(set) var networkStatus: String?
+
+    /// Set once the Combine/timer broadcasts are installed, so a listener
+    /// restart (after a failure) doesn't stack duplicate subscriptions.
+    private var didInstallBroadcasts = false
+    private var isRestarting = false
+
     private struct Client {
         let link: RemoteLink
         var isAuthenticated = false
@@ -50,7 +62,15 @@ final class RemoteControlServer: ObservableObject {
 
     func start() {
         guard listener == nil else { return }
+        startListener()
+        installBroadcasts()
+    }
 
+    /// Creates and starts the Bonjour listener. Split out from `start()` so it
+    /// can be retried on failure (e.g. after the user grants Local Network
+    /// permission on macOS) without re-installing the broadcast subscriptions.
+    private func startListener() {
+        guard listener == nil else { return }
         do {
             let tcpOptions = NWProtocolTCP.Options()
             tcpOptions.enableKeepalive = true
@@ -58,17 +78,69 @@ final class RemoteControlServer: ObservableObject {
             tcpOptions.keepaliveInterval = 2
             tcpOptions.keepaliveCount = 3
             let params = NWParameters(tls: nil, tcp: tcpOptions)
+            // Advertise on every available interface (Wi‑Fi *and* wired
+            // Ethernet on a multi-homed Mac) plus peer-to-peer, so a remote on
+            // any of them can find and reach the player.
             params.includePeerToPeer = true
             let listener = try NWListener(using: params)
             listener.service = NWListener.Service(name: bonjourName, type: fwRemoteServiceType)
+            listener.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor in self?.handleListenerState(state) }
+            }
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in self?.accept(connection) }
             }
             listener.start(queue: queue)
             self.listener = listener
         } catch {
-            return
+            NSLog("[RemoteServer] listener creation failed: \(error)")
+            networkStatus = "Couldn't start: \(error.localizedDescription)"
+            isListening = false
+            scheduleListenerRestart()
         }
+    }
+
+    /// Reacts to listener lifecycle. On macOS the listener sits in `.waiting`
+    /// until Local Network permission is granted, then flips to `.ready` on its
+    /// own; a hard `.failed` gets a delayed restart.
+    private func handleListenerState(_ state: NWListener.State) {
+        switch state {
+        case .ready:
+            isListening = true
+            networkStatus = nil
+            NSLog("[RemoteServer] advertising \"\(bonjourName)\" \(fwRemoteServiceType)")
+        case .waiting(let error):
+            isListening = false
+            networkStatus = "Waiting for network/permission: \(error.localizedDescription)"
+            NSLog("[RemoteServer] waiting: \(error)")
+        case .failed(let error):
+            isListening = false
+            networkStatus = "Network error: \(error.localizedDescription)"
+            NSLog("[RemoteServer] failed: \(error)")
+            scheduleListenerRestart()
+        case .cancelled:
+            isListening = false
+        default:
+            break
+        }
+    }
+
+    private func scheduleListenerRestart() {
+        guard !isRestarting else { return }
+        isRestarting = true
+        listener?.cancel()
+        listener = nil
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self else { return }
+            self.isRestarting = false
+            self.startListener()
+        }
+    }
+
+    private func installBroadcasts() {
+        guard !didInstallBroadcasts else { return }
+        didInstallBroadcasts = true
 
         player.objectWillChange
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
@@ -107,9 +179,12 @@ final class RemoteControlServer: ObservableObject {
     func stop() {
         listener?.cancel()
         listener = nil
+        isListening = false
+        networkStatus = nil
         clients.values.forEach { $0.link.cancel() }
         clients.removeAll()
         cancellables.removeAll()
+        didInstallBroadcasts = false
     }
 
     // MARK: - Connections
