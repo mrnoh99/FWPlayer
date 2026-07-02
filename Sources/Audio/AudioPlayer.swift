@@ -593,6 +593,8 @@ final class AudioPlayer: NSObject, ObservableObject {
             currentIndex = nil
             activePlaylistID = nil
             queue = []
+            // Fully stopped: let audio-CD detection resume touching the drive.
+            registry.setCDWatchSuspended(false)
         }
     }
 
@@ -609,6 +611,11 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func startPlayback(playable: PlayableAudio, sourceURL: URL, track: Track, sourceID: String, autoPlay: Bool = true) {
         cleanupTemp()
+        let isCD = registry.source(for: sourceID)?.kind == .audioCD
+        // Suspend the audio-CD detection poll BEFORE we touch the disc (the
+        // header read below, then streaming): probing the drive concurrently
+        // with reads ejects the disc.
+        if isCD { registry.setCDWatchSuspended(true) }
         do {
             // Match the hardware (USB DAC) to the file's native sample rate so the
             // system performs no resampling — bit-perfect output for the amp.
@@ -638,7 +645,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             // art (so the lookup finds nothing), and reading the file for tags
             // would seek against AVAudioPlayer streaming the same track off the
             // disc — needless drive contention during playback.
-            if registry.source(for: sourceID)?.kind != .audioCD {
+            if !isCD {
                 loadMetadata(for: playable.url, trackID: track.id)
             }
             prefetchUpcoming()   // get the next track(s) ready while this one plays

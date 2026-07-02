@@ -68,10 +68,13 @@ final class CDAudioSource: FileSource {
     // MARK: - Detection
 
     /// Scans mounted volumes and returns the ones that are audio CDs.
+    ///
+    /// Passes no resource keys so the enumeration reads only the in-memory mount
+    /// table; identification is done with `statfs` (also mount-table metadata),
+    /// so this never spins or probes the optical drive.
     static func mountedAudioCDVolumes() -> [URL] {
-        let keys: [URLResourceKey] = [.volumeIsBrowsableKey]
         guard let volumes = FileManager.default.mountedVolumeURLs(
-            includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) else {
+            includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) else {
             return []
         }
         return volumes.filter { isAudioCDVolume($0) }

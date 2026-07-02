@@ -29,7 +29,20 @@ final class SourceRegistry: ObservableObject {
     /// only remove a CD source after it's been absent a couple of times rather
     /// than yanking the disc the user is actively playing.
     private var cdMissCounts: [String: Int] = [:]
+    /// While true, the poll doesn't touch the optical drive. Set while a CD track
+    /// is playing: probing the drive (even just for volume info) concurrently
+    /// with AVAudioPlayer streaming a track causes read errors that make macOS
+    /// eject the disc mid-song.
+    private var cdWatchSuspended = false
     #endif
+
+    /// Pauses/resumes audio-CD detection. The audio player suspends it while a CD
+    /// track is playing so the drive isn't probed underneath the playback stream.
+    func setCDWatchSuspended(_ suspended: Bool) {
+        #if targetEnvironment(macCatalyst)
+        cdWatchSuspended = suspended
+        #endif
+    }
 
     /// Builds the source list from persisted bookmarks and SMB configs.
     func loadPersisted() {
@@ -94,6 +107,10 @@ final class SourceRegistry: ObservableObject {
     /// Reconciles the source list with the audio CDs currently mounted: adds a
     /// source for a newly inserted disc and drops one that was ejected.
     func refreshAudioCDs() {
+        // Don't probe the drive while a CD track is streaming — the concurrent
+        // access ejects the disc.
+        guard !cdWatchSuspended else { return }
+
         let mounted = CDAudioSource.mountedAudioCDVolumes()
         let mountedIDs = Set(mounted.map { "cd:" + $0.path })
 
