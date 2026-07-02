@@ -90,11 +90,17 @@ In Xcode:
    Distribution** profile (Automatic signing handles it).
 
 ### Mac Catalyst review note
-The entitlements include a temporary mach-lookup exception for
-`com.apple.audioanalyticsd` (`Support/FWPlayer.entitlements`). Without it,
-AVFoundation crashes the sandboxed Catalyst process the moment audio starts.
-Keep it; if a reviewer questions it, explain it is required for audio playback
-under the App Sandbox. (`get-task-allow` is **not** in the entitlements file, so
+The entitlements include two temporary exceptions (`Support/FWPlayer.entitlements`):
+- a mach-lookup exception for `com.apple.audioanalyticsd` — without it,
+  AVFoundation crashes the sandboxed Catalyst process the moment audio starts;
+- a read-only file exception for `/Volumes/` — so an inserted **audio CD**
+  (mounted by macOS under `/Volumes` as `cddafs` AIFF tracks) can be
+  auto-detected and its tracks ripped to a temp file for playback, without
+  making the user pick the disc by hand each time.
+
+Keep both; if a reviewer questions them, explain they're required for audio
+playback under the App Sandbox and for the audio-CD feature respectively. (If
+the audio-CD feature is dropped, remove the `/Volumes/` exception.) (`get-task-allow` is **not** in the entitlements file, so
 release archives are correctly signed for distribution.)
 
 ---

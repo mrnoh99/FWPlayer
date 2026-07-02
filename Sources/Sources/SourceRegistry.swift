@@ -20,6 +20,12 @@ final class SourceRegistry: ObservableObject {
 
     private let documentsSourceID = "local:documents"
 
+    #if targetEnvironment(macCatalyst)
+    /// Polls for audio CD insertion/ejection (Mac Catalyst can't observe the
+    /// AppKit volume-mount notifications).
+    private var cdPollTimer: Timer?
+    #endif
+
     /// Builds the source list from persisted bookmarks and SMB configs.
     func loadPersisted() {
         var loaded: [any FileSource] = []
@@ -62,8 +68,40 @@ final class SourceRegistry: ObservableObject {
         // Mac: pre-scan SMB shares so browsing stays fast; local folders are read
         // on demand (prewarm itself skips non-SMB sources).
         for source in loaded { prewarm(source) }
+        // Detect any audio CD already inserted, and keep watching for changes.
+        refreshAudioCDs()
+        startAudioCDWatch()
         #endif
     }
+
+    // MARK: - Audio CD (Mac Catalyst)
+
+    #if targetEnvironment(macCatalyst)
+    private func startAudioCDWatch() {
+        guard cdPollTimer == nil else { return }
+        let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshAudioCDs() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cdPollTimer = timer
+    }
+
+    /// Reconciles the source list with the audio CDs currently mounted: adds a
+    /// source for a newly inserted disc and drops one that was ejected.
+    func refreshAudioCDs() {
+        let mounted = CDAudioSource.mountedAudioCDVolumes()
+        let mountedIDs = Set(mounted.map { "cd:" + $0.path })
+
+        // Remove sources for discs that are gone.
+        sources.removeAll { $0.kind == .audioCD && !mountedIDs.contains($0.id) }
+
+        // Add sources for newly mounted discs.
+        let existingIDs = Set(sources.map { $0.id })
+        for volume in mounted where !existingIDs.contains("cd:" + volume.path) {
+            sources.append(CDAudioSource(volumeURL: volume))
+        }
+    }
+    #endif
 
     func source(for id: String) -> (any FileSource)? {
         sources.first { $0.id == id }

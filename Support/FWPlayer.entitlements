@@ -15,6 +15,13 @@
     <true/>
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
+    <!-- Read mounted audio CDs (and other removable volumes) under /Volumes so
+         an inserted disc can be auto-detected and its AIFF tracks ripped for
+         playback, without making the user pick the volume by hand. -->
+    <key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+    <array>
+        <string>/Volumes/</string>
+    </array>
     <!-- AVFoundation's playback path reaches audioanalyticsd over a mach
          lookup. Under the Mac Catalyst App Sandbox that lookup is blocked by
          default, which trips a precondition failure and kills the process the

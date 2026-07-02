@@ -4,6 +4,9 @@ enum SourceKind {
     case localDocuments
     case localFolder
     case smb
+    /// An inserted audio CD (Mac Catalyst only), mounted by macOS as a volume of
+    /// AIFF tracks.
+    case audioCD
 }
 
 /// Abstraction over a browsable, playable file location. Concrete

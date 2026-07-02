@@ -186,7 +186,7 @@ struct ContentView: View {
                                     Label("Edit…", systemImage: "pencil")
                                 }
                             }
-                            if source.kind != .localDocuments {
+                            if source.kind != .localDocuments && source.kind != .audioCD {
                                 Button(role: .destructive) {
                                     registry.remove(source)
                                 } label: {
