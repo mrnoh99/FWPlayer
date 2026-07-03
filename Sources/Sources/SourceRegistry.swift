@@ -135,7 +135,11 @@ final class SourceRegistry: ObservableObject {
         // Add sources for newly mounted discs.
         let existingIDs = Set(sources.map { $0.id })
         for volume in mounted where !existingIDs.contains("cd:" + volume.path) {
-            sources.append(CDAudioSource(volumeURL: volume))
+            let cd = CDAudioSource(volumeURL: volume)
+            // Republish when the MusicBrainz lookup fills in the album/track
+            // titles so the sidebar name and browse listing update.
+            cd.onInfoLoaded = { [weak self] in self?.objectWillChange.send() }
+            sources.append(cd)
             cdMissCounts["cd:" + volume.path] = 0
         }
     }

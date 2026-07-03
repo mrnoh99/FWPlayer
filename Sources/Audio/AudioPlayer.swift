@@ -641,11 +641,15 @@ final class AudioPlayer: NSObject, ObservableObject {
             recordHistory(track)
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
-            // Skip metadata for audio CDs: CDDA tracks carry no embedded tags or
-            // art (so the lookup finds nothing), and reading the file for tags
+            // Audio CDs carry no embedded tags, and reading the file for tags
             // would seek against AVAudioPlayer streaming the same track off the
-            // disc — needless drive contention during playback.
-            if !isCD {
+            // disc. Instead pull album/artist/titles from the MusicBrainz disc
+            // lookup (network only, no disc read).
+            if isCD {
+                #if targetEnvironment(macCatalyst)
+                loadCDMetadata(trackID: track.id, sourceID: sourceID)
+                #endif
+            } else {
                 loadMetadata(for: playable.url, trackID: track.id)
             }
             prefetchUpcoming()   // get the next track(s) ready while this one plays
@@ -822,6 +826,51 @@ final class AudioPlayer: NSObject, ObservableObject {
             }
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Enriches a playing audio-CD track from the MusicBrainz disc lookup:
+    /// resolved track title, plus album/artist/year for the queue, the details
+    /// panel, and online (non-disc) artwork.
+    private func loadCDMetadata(trackID: String, sourceID: String) {
+        guard let cd = registry.source(for: sourceID) as? CDAudioSource else { return }
+        Task { [weak self] in
+            let info = await cd.awaitDiscInfo()
+            guard let self, let info, !info.isEmpty else { return }
+            await MainActor.run {
+                guard let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
+                let old = self.queue[idx]
+                // Track.title is immutable, so rebuild when the lookup resolved a
+                // real title; otherwise just fill artist/album/year.
+                var track: Track
+                if let title = cd.title(forPath: old.path) {
+                    track = Track(sourceID: old.sourceID, path: old.path, title: title)
+                    track.duration = old.duration
+                    track.sampleRate = old.sampleRate
+                } else {
+                    track = old
+                }
+                track.artist = info.artist
+                track.album = info.album
+                track.year = info.year
+                var updated = self.queue
+                updated[idx] = track
+                self.queue = updated
+
+                if self.currentIndex == idx {
+                    var album = MusicKitCatalog.AlbumInfo()
+                    album.albumTitle = info.album
+                    album.artistName = info.artist
+                    album.yearText = info.year
+                    album.trackCount = info.trackTitles.isEmpty ? nil : info.trackTitles.count
+                    album.source = "MusicBrainz"
+                    self.currentCatalogInfo = album
+                    self.updateNowPlaying()
+                    self.artwork.resolveOnline(track: track)
+                }
+            }
+        }
+    }
+    #endif
 
     /// Pulls a 4-digit release year out of a metadata date string such as
     /// "1986", "2019-05-01", or "2004-01-01T00:00:00Z".

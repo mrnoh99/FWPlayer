@@ -91,6 +91,25 @@ final class ArtworkStore: ObservableObject {
         }
     }
 
+    /// Online-only artwork (MusicKit → iTunes) from the track's artist/album,
+    /// for sources whose file must not be read here — e.g. an audio CD that's
+    /// streaming, where a second reader on the disc would disturb playback.
+    func resolveOnline(track: Track) {
+        let key = Self.key(for: track)
+        guard memory[key] == nil, !inFlight.contains(key) else { return }
+        if let disk = loadDisk(key) { cache(key, disk); return }
+        guard track.artist != nil || track.album != nil else { return }
+        inFlight.insert(key)
+        Task { [session] in
+            var data = await MusicKitCatalog.artwork(
+                artist: track.artist, album: track.album, maxDimension: 600, session: session)
+            if data == nil {
+                data = await AlbumArtwork.online(artist: track.artist, album: track.album, session: session)
+            }
+            self.finish(key: key, data: data, maxDimension: 600)
+        }
+    }
+
     private func finish(key: String, data: Data?, maxDimension: CGFloat) {
         inFlight.remove(key)
         guard let data, let image = UIImage(data: data) else { missing.insert(key); return }
