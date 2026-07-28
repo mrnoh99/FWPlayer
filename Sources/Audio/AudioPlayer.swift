@@ -25,6 +25,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var isLoading = false
+    /// Software output volume, 0.0…1.0. Defaults to unity (1.0) so the signal to
+    /// a DAC/amp is untouched until the user chooses to attenuate it, e.g. from
+    /// the remote. Applied to the active player and every new one.
+    @Published private(set) var volume: Double = {
+        if UserDefaults.standard.object(forKey: "outputVolume") == nil { return 1.0 }
+        return UserDefaults.standard.double(forKey: "outputVolume")
+    }()
     @Published var errorMessage: String?
     /// Bumped on play/pause, skip, seek, and stop so list views can snap focus back to the playing row.
     @Published private(set) var transportEventID = 0
@@ -356,6 +363,16 @@ final class AudioPlayer: NSObject, ObservableObject {
         noteTransportEvent()
     }
 
+    /// Sets the software output volume (0.0…1.0) and applies it to the current
+    /// player. Persisted so it survives relaunch.
+    func setVolume(_ newValue: Double) {
+        let clamped = min(max(newValue, 0), 1)
+        guard clamped != volume else { return }
+        volume = clamped
+        player?.volume = Float(clamped)
+        UserDefaults.standard.set(clamped, forKey: "outputVolume")
+    }
+
     func seek(to time: TimeInterval) {
         guard let player else { return }
         let duration = player.duration
@@ -623,7 +640,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
             let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             newPlayer.delegate = self
-            newPlayer.volume = 1.0       // unity gain; leave level control to the DAC/amp
+            newPlayer.volume = Float(volume)   // user-set level (defaults to unity)
             newPlayer.enableRate = false // no time-stretch/rate resampling in the path
             newPlayer.prepareToPlay()
             player = newPlayer

@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 7
+let fwRemoteProtocolVersion = 8
 
 /// The fixed id of the built-in Favorites playlist, so the remote can offer an
 /// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
@@ -62,6 +62,8 @@ struct PlaybackState: Codable, Hashable {
     var isShuffled: Bool = false
     /// Repeat mode: 0 = off, 1 = all, 2 = one (mirrors `RepeatMode.rawValue`).
     var repeatMode: Int = 0
+    /// Output volume, 0.0…1.0, so the remote can show and adjust the level.
+    var volume: Double = 1.0
 }
 
 /// Sent immediately after TCP connect; the remote must authenticate with the
@@ -145,6 +147,8 @@ enum RemoteCommand: Codable, Hashable {
     case toggleShuffle
     /// Cycle repeat: off → all → one → off.
     case cycleRepeat
+    /// Set the output volume, 0.0…1.0.
+    case setVolume(volume: Double)
     // Library browsing & queue construction.
     case requestLibrary
     case browse(sourceID: String, path: String)

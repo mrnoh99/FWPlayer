@@ -277,6 +277,9 @@ final class RemoteControlServer: ObservableObject {
         case .cycleRepeat:
             player.cycleRepeatMode()
 
+        case .setVolume(let volume):
+            player.setVolume(volume)
+
         case .requestLibrary:
             link.send(.library(buildLibrary()))
 
@@ -458,7 +461,8 @@ final class RemoteControlServer: ObservableObject {
                 track.sampleRate.map { AudioFormatReader.formatSampleRate($0) }
             },
             isShuffled: player.isShuffled,
-            repeatMode: player.repeatMode.rawValue
+            repeatMode: player.repeatMode.rawValue,
+            volume: player.volume
         )
     }
 
