@@ -39,16 +39,27 @@ struct ContentView: View {
     /// don't clear `locateFilePath` in the resulting `onChange`.
     @State private var pendingLocate = false
 
+    /// App marketing version and build number, e.g. "Version 1.0 (2)".
+    private static var versionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "Version \(version) (\(build))"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
                 sidebar
                     .safeAreaInset(edge: .bottom) {
-                        Text("Developed by JaiSung NOH MD 2026")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.bottom, 8)
+                        VStack(spacing: 1) {
+                            Text("Developed by JaiSung NOH MD 2026")
+                            Text(Self.versionString)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 8)
                     }
             } detail: {
                 detail
