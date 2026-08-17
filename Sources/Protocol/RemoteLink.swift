@@ -84,7 +84,17 @@ final class RemoteLink {
             guard buffer.count >= total else { break }
             let payload = buffer.subdata(in: 4..<total)
             buffer.removeSubrange(0..<total)
-            guard let message = try? decoder.decode(RemoteMessage.self, from: payload) else { continue }
+            let message: RemoteMessage
+            do {
+                message = try decoder.decode(RemoteMessage.self, from: payload)
+            } catch {
+                // A frame we can't decode is dropped (never corrupts the stream —
+                // the bytes were already consumed). Log it so a cross-version wire
+                // mismatch is diagnosable instead of silently vanishing.
+                let preview = String(data: payload.prefix(200), encoding: .utf8) ?? "<non-utf8>"
+                NSLog("[RemoteLink] dropped undecodable frame (\(payload.count) bytes): \(error) — \(preview)")
+                continue
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 MainActor.assumeIsolated { self.onMessage?(message) }
