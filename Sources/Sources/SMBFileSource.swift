@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 #if canImport(SMBClient)
 import SMBClient
@@ -357,6 +358,10 @@ private actor SMBConnection {
 
 private func smbShouldReconnect(_ error: Error) -> Bool {
     if error is FileSourceError { return true }
+    // A socket-level failure (e.g. NWError 54 "Connection reset by peer" when the
+    // server has dropped an idle SMB session) means the cached connection is dead
+    // — a fresh login recovers, so treat it as reconnectable.
+    if smbIsConnectionError(error) { return true }
     guard let err = error as? ErrorResponse else { return false }
     switch NTStatus(err.header.status) {
     case .objectNameNotFound, .userSessionDeleted, .networkNameDeleted, .connectionRefused,
@@ -365,5 +370,31 @@ private func smbShouldReconnect(_ error: Error) -> Bool {
     default:
         return false
     }
+}
+
+/// Whether `error` is a network-transport failure (the socket died), as opposed
+/// to an SMB-protocol status. Such errors mean the connection must be rebuilt.
+private func smbIsConnectionError(_ error: Error) -> Bool {
+    if error is NWError { return true }
+    let ns = error as NSError
+    if ns.domain == NSPOSIXErrorDomain {
+        switch Int32(ns.code) {
+        case ECONNRESET, EPIPE, ENOTCONN, ETIMEDOUT, ECONNABORTED,
+             ENETDOWN, ENETRESET, ECONNREFUSED, EHOSTUNREACH, EHOSTDOWN, ENETUNREACH:
+            return true
+        default:
+            return false
+        }
+    }
+    // Fallback for errors that only stringify their cause (keeps us resilient to
+    // however the SMB library surfaces a dropped socket).
+    let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    let lowered = text.lowercased()
+    return lowered.contains("reset by peer")
+        || lowered.contains("not connected")
+        || lowered.contains("broken pipe")
+        || lowered.contains("connection abort")
+        || lowered.contains("network is down")
+        || lowered.contains("software caused connection")
 }
 #endif
