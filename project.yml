@@ -53,6 +53,11 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: FWPlayer
+        # Wire the bundle version/build to the build settings so bumping
+        # CURRENT_PROJECT_VERSION / MARKETING_VERSION actually reaches the app
+        # (xcodegen otherwise hard-codes 1 / 1.0 when regenerating Info.plist).
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.music
         # Standard App Store export-compliance answer: the app uses only
         # Apple-provided HTTPS (TLS) for catalog lookups, which is exempt, so
