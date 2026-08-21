@@ -1,17 +1,19 @@
-# Generated Xcode project (run `xcodegen generate`)
-*.xcodeproj
-*.xcworkspace
+# The Xcode project (FWPlayer.xcodeproj) is COMMITTED so the repo can be cloned
+# and built without running xcodegen. It's still generated from project.yml —
+# run `xcodegen generate` only when you add/remove source files, then commit the
+# regenerated project.
 
-# Xcode user data / build
+# Xcode user-specific state (never commit — lives inside the .xcodeproj)
 xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Build output
 DerivedData/
 build/
-*.xcuserstate
-
-# Swift Package Manager
-.swiftpm/
 .build/
-Package.resolved
+.swiftpm/
 
 # macOS
 .DS_Store
