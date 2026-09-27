@@ -220,6 +220,18 @@ struct ContentView: View {
                 }
             }
 
+            Section("Output") {
+                Toggle(isOn: $player.bitPerfectMode) {
+                    Label("Bit-Perfect Mode", systemImage: "waveform")
+                }
+                Text("Locks FWPlayer's volume at 100% so samples reach your DAC unaltered; remote volume changes are ignored. Set the listening level on your DAC or amp, and keep the device volume at maximum.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if player.bitPerfectMode {
+                    bitPerfectStatus
+                }
+            }
+
             Section("Remote") {
                 Label {
                     HStack {
@@ -272,6 +284,34 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    /// Whether the hardware is running at the playing track's native rate.
+    @ViewBuilder
+    private var bitPerfectStatus: some View {
+        #if targetEnvironment(macCatalyst)
+        Text("On Mac, set your DAC's sample rate to match the track in Audio MIDI Setup.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        #else
+        if let output = player.outputSampleRate {
+            let outputText = AudioFormatReader.formatSampleRate(output)
+            if player.isOutputRateMismatched, let file = player.currentTrack?.sampleRate {
+                Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — iOS is resampling. Your DAC may not support this rate.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            } else if player.currentTrack?.sampleRate != nil {
+                Label("Output matches track (\(outputText))", systemImage: "checkmark.seal.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            } else {
+                Label("Output \(outputText)", systemImage: "speaker.wave.2")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        #endif
     }
 
     @ViewBuilder

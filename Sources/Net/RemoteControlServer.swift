@@ -279,6 +279,8 @@ final class RemoteControlServer: ObservableObject {
 
         case .setVolume(let volume):
             player.setVolume(volume)
+            // Refused in bit-perfect mode; resync so the remote's slider snaps back.
+            if player.bitPerfectMode { pushState(to: link) }
 
         case .requestLibrary:
             link.send(.library(buildLibrary()))
@@ -462,7 +464,7 @@ final class RemoteControlServer: ObservableObject {
             },
             isShuffled: player.isShuffled,
             repeatMode: player.repeatMode.rawValue,
-            volume: player.volume
+            volume: player.effectiveVolume
         )
     }
 

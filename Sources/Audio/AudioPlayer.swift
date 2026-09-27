@@ -104,6 +104,30 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let backgroundRemoteKey = "backgroundRemoteEnabled"
 
+    /// Pins the software volume at unity so samples reach the DAC unscaled; the
+    /// user's stored level is kept and restored when the mode is turned off.
+    @Published var bitPerfectMode: Bool {
+        didSet {
+            UserDefaults.standard.set(bitPerfectMode, forKey: Self.bitPerfectKey)
+            player?.volume = Float(effectiveVolume)
+        }
+    }
+    private static let bitPerfectKey = "bitPerfectMode"
+
+    /// The hardware output rate after the last format request. Nil on Mac
+    /// Catalyst, where the session doesn't reflect the output device's rate.
+    @Published private(set) var outputSampleRate: Double?
+
+    /// The gain actually applied to the signal.
+    var effectiveVolume: Double { bitPerfectMode ? 1.0 : volume }
+
+    /// True when the hardware isn't running at the track's native rate, i.e. the
+    /// system is resampling (usually because the DAC doesn't support that rate).
+    var isOutputRateMismatched: Bool {
+        guard let output = outputSampleRate, let file = currentTrack?.sampleRate else { return false }
+        return abs(output - file) > 1
+    }
+
     /// Tracks whether the app is currently backgrounded (screen off / another
     /// app foregrounded), so the keep-alive only runs when it's actually needed.
     private var isInBackground = false
@@ -120,6 +144,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         } else {
             self.backgroundRemoteEnabled = UserDefaults.standard.bool(forKey: Self.backgroundRemoteKey)
         }
+        self.bitPerfectMode = UserDefaults.standard.bool(forKey: Self.bitPerfectKey)
         super.init()
         configureAudioSession()
         configureRemoteCommands()
@@ -366,6 +391,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Sets the software output volume (0.0…1.0) and applies it to the current
     /// player. Persisted so it survives relaunch.
     func setVolume(_ newValue: Double) {
+        guard !bitPerfectMode else { return }
         let clamped = min(max(newValue, 0), 1)
         guard clamped != volume else { return }
         volume = clamped
@@ -640,7 +666,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
             let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             newPlayer.delegate = self
-            newPlayer.volume = Float(volume)   // user-set level (defaults to unity)
+            newPlayer.volume = Float(effectiveVolume)
             newPlayer.enableRate = false // no time-stretch/rate resampling in the path
             newPlayer.prepareToPlay()
             player = newPlayer
@@ -691,6 +717,13 @@ final class AudioPlayer: NSObject, ObservableObject {
             try? session.setPreferredOutputNumberOfChannels(min(channels, session.maximumOutputNumberOfChannels))
         }
         try? session.setActive(true)
+        #endif
+        refreshOutputSampleRate()
+    }
+
+    private func refreshOutputSampleRate() {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        outputSampleRate = AVAudioSession.sharedInstance().sampleRate
         #endif
     }
 
@@ -1021,6 +1054,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     private func handleRouteChange(_ note: Notification) {
+        // A DAC being plugged in or removed changes the hardware rate.
+        refreshOutputSampleRate()
         guard let info = note.userInfo,
               let raw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }

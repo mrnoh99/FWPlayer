@@ -14,6 +14,8 @@ over Wi‑Fi.
   are linked — see `project.yml`).
 - 🎚️ **Bit-perfect output for a USB DAC** — matches the audio hardware to each
   track's native sample rate (no resampling), unity gain, no time-stretch.
+  Turn on **Bit-Perfect Mode** (sidebar → Output) to lock the app volume at
+  100% and see whether the DAC is actually running at the track's rate.
 - 📡 **Remote control** — advertises a Bonjour `_fwplayer._tcp` service so the
   FWPlayer Remote app can discover and control playback on the local network.
 - 📂 **Local folders** — browse the app's on‑device folder (files added via
