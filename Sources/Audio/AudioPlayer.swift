@@ -6,6 +6,33 @@ import Combine
 import UIKit
 #endif
 
+/// Where audio is currently being sent (iPhone/iPad), so the UI can tell a USB
+/// DAC apart from outputs that can never be bit-perfect (speaker, Bluetooth, …).
+struct OutputRoute: Equatable {
+    enum Kind { case builtIn, usb, bluetooth, airPlay, hdmi, other }
+    var name: String
+    var kind: Kind
+
+    /// False for outputs that run at a fixed rate or through a lossy codec.
+    var canBeBitPerfect: Bool {
+        switch kind {
+        case .builtIn, .bluetooth, .airPlay: return false
+        case .usb, .hdmi, .other: return true
+        }
+    }
+
+    var kindDescription: String {
+        switch kind {
+        case .builtIn: return "built-in"
+        case .usb: return "USB"
+        case .bluetooth: return "Bluetooth"
+        case .airPlay: return "AirPlay"
+        case .hdmi: return "HDMI"
+        case .other: return "external"
+        }
+    }
+}
+
 /// Repeat behavior, cycled Apple Music–style: off → all (loop queue) → one (loop track).
 enum RepeatMode: Int {
     case off, all, one
@@ -129,6 +156,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// DACs that have no hardware volume, so anything below 1.0 alters the
     /// samples. Nil where it doesn't apply (Mac Catalyst).
     @Published private(set) var systemVolume: Float?
+    /// The current output route (iPhone/iPad). Nil on Mac Catalyst.
+    @Published private(set) var outputRoute: OutputRoute?
     /// "DSD64" / "DSD128" while a DSD file is playing as DoP, else nil. DoP only
     /// survives unity gain, so the volume is locked at 100% for these tracks and
     /// a system volume below maximum turns the stream into loud noise.
@@ -169,6 +198,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         super.init()
         configureAudioSession()
         observeSystemVolume()
+        refreshOutputRoute()
         configureRemoteCommands()
         observeAppLifecycle()
         observeAudioSessionEvents()
@@ -810,6 +840,27 @@ final class AudioPlayer: NSObject, ObservableObject {
         outputSampleRate = MacOutputDevice.currentRate()
         #elseif os(iOS)
         outputSampleRate = AVAudioSession.sharedInstance().sampleRate
+        #endif
+        refreshOutputRoute()
+    }
+
+    /// Reads where the session is currently routed (speaker, USB DAC, …).
+    private func refreshOutputRoute() {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        guard let port = AVAudioSession.sharedInstance().currentRoute.outputs.first else {
+            outputRoute = nil
+            return
+        }
+        let kind: OutputRoute.Kind
+        switch port.portType {
+        case .builtInSpeaker, .builtInReceiver, .headphones: kind = .builtIn
+        case .usbAudio: kind = .usb
+        case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP: kind = .bluetooth
+        case .airPlay: kind = .airPlay
+        case .HDMI: kind = .hdmi
+        default: kind = .other
+        }
+        outputRoute = OutputRoute(name: port.portName, kind: kind)
         #endif
     }
 

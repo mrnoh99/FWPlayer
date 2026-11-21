@@ -301,6 +301,18 @@ struct ContentView: View {
     /// Whether the hardware is running at the playing track's native rate.
     @ViewBuilder
     private var bitPerfectStatus: some View {
+        if let route = player.outputRoute {
+            if route.canBeBitPerfect {
+                Label("Output: \(route.name) (\(route.kindDescription))", systemImage: "cable.connector")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Output: \(route.name) (\(route.kindDescription)) — runs at a fixed rate or through a codec, so it can't be bit-perfect. Connect a USB DAC.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
         if let dop = player.dopLabel {
             Label("Playing \(dop) as DoP — volume is locked at 100%. Keep the system volume at maximum.",
                   systemImage: "waveform.circle")
@@ -316,10 +328,14 @@ struct ContentView: View {
         if let output = player.outputSampleRate {
             let outputText = AudioFormatReader.formatSampleRate(output)
             if player.isOutputRateMismatched, let file = player.currentTrack?.sampleRate {
-                Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate.",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                // On a speaker/Bluetooth route the route warning above already
+                // explains the fixed rate; only blame the DAC when it is one.
+                if player.outputRoute?.canBeBitPerfect ?? true {
+                    Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
             } else if player.currentTrack?.sampleRate != nil {
                 Label("Output matches track (\(outputText))", systemImage: "checkmark.seal.fill")
                     .font(.caption2)
