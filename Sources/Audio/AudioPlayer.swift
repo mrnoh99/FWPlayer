@@ -114,8 +114,15 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let bitPerfectKey = "bitPerfectMode"
 
-    /// The hardware output rate after the last format request. Nil on Mac
-    /// Catalyst, where the session doesn't reflect the output device's rate.
+    /// Mac only: switch the output device (e.g. a USB DAC) to each track's native
+    /// sample rate automatically. On by default.
+    @Published var autoSampleRate: Bool {
+        didSet { UserDefaults.standard.set(autoSampleRate, forKey: Self.autoSampleRateKey) }
+    }
+    private static let autoSampleRateKey = "autoSampleRate"
+
+    /// The hardware output rate after the last format request. On Mac Catalyst
+    /// this is the default output device's nominal rate (Core Audio).
     @Published private(set) var outputSampleRate: Double?
 
     /// The gain actually applied to the signal.
@@ -145,6 +152,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             self.backgroundRemoteEnabled = UserDefaults.standard.bool(forKey: Self.backgroundRemoteKey)
         }
         self.bitPerfectMode = UserDefaults.standard.bool(forKey: Self.bitPerfectKey)
+        self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
         super.init()
         configureAudioSession()
         configureRemoteCommands()
@@ -707,7 +715,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Requests that the audio hardware run at `url`'s native sample rate (and
     /// channel count), avoiding sample-rate conversion on the way to a USB DAC.
     private func applyPreferredHardwareFormat(for url: URL) {
-        #if os(iOS)
+        #if targetEnvironment(macCatalyst)
+        // AVAudioSession's preferred-rate API doesn't drive the Mac's output
+        // device: set its nominal rate through Core Audio instead.
+        if autoSampleRate, let file = try? AVAudioFile(forReading: url) {
+            MacOutputDevice.match(trackRate: file.fileFormat.sampleRate)
+        }
+        #elseif os(iOS)
         guard let file = try? AVAudioFile(forReading: url) else { return }
         let format = file.fileFormat
         let session = AVAudioSession.sharedInstance()
@@ -722,7 +736,9 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     private func refreshOutputSampleRate() {
-        #if os(iOS) && !targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst)
+        outputSampleRate = MacOutputDevice.currentRate()
+        #elseif os(iOS)
         outputSampleRate = AVAudioSession.sharedInstance().sampleRate
         #endif
     }

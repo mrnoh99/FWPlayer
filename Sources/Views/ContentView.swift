@@ -227,9 +227,21 @@ struct ContentView: View {
                 Text("Locks FWPlayer's volume at 100% so samples reach your DAC unaltered; remote volume changes are ignored. Set the listening level on your DAC or amp, and keep the device volume at maximum.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                #if targetEnvironment(macCatalyst)
+                Toggle(isOn: $player.autoSampleRate) {
+                    Label("Match DAC Sample Rate", systemImage: "dial.medium")
+                }
+                Text("Switches the Mac's output device to each track's sample rate automatically (a rate the DAC doesn't support falls back to a multiple of it, e.g. 44.1 → 88.2 kHz).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                #endif
+                #if targetEnvironment(macCatalyst)
+                bitPerfectStatus
+                #else
                 if player.bitPerfectMode {
                     bitPerfectStatus
                 }
+                #endif
             }
 
             Section("Remote") {
@@ -289,15 +301,10 @@ struct ContentView: View {
     /// Whether the hardware is running at the playing track's native rate.
     @ViewBuilder
     private var bitPerfectStatus: some View {
-        #if targetEnvironment(macCatalyst)
-        Text("On Mac, set your DAC's sample rate to match the track in Audio MIDI Setup.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        #else
         if let output = player.outputSampleRate {
             let outputText = AudioFormatReader.formatSampleRate(output)
             if player.isOutputRateMismatched, let file = player.currentTrack?.sampleRate {
-                Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — iOS is resampling. Your DAC may not support this rate.",
+                Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.orange)
@@ -311,7 +318,6 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        #endif
     }
 
     @ViewBuilder
