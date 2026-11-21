@@ -159,6 +159,10 @@
 			isa = PBXBuildFile;
 			fileRef = 05E108B0C2B5425B852E8B7A /* EmbeddedLyrics.swift */;
 		};
+		3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */;
+		};
 		7C2E91A04B6D4F18A3D5E0B1 /* MacOutputDevice.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */;
@@ -297,6 +301,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = text.plist.xml;
 			path = PrivacyInfo.xcprivacy;
+			sourceTree = "<group>";
+		};
+		6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = DSDDoPDecoder.swift;
 			sourceTree = "<group>";
 		};
 		2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */ = {
@@ -525,6 +535,7 @@
 				955532C972634AB6A1E8A3C0 /* AudioFormatReader.swift */,
 				3AD6BA6D364B4A64942FD697 /* AudioPlayer.swift */,
 				05E108B0C2B5425B852E8B7A /* EmbeddedLyrics.swift */,
+				6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */,
 				2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */,
 				8B87615A1D104B909447182C /* MusicKitCatalog.swift */,
 				4A07ACE8BBA64F118C21CE9A /* OggAudioDecoder.swift */,
@@ -763,6 +774,7 @@
 				AE96820B09C84C8D8BAD0D36 /* AudioPlayer.swift in Sources */,
 				AEC36D378A89474590536AB7 /* EmbeddedLyrics.swift in Sources */,
 				22D20CC3C5434891ACE40F0A /* MusicKitCatalog.swift in Sources */,
+				3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */,
 				7C2E91A04B6D4F18A3D5E0B1 /* MacOutputDevice.swift in Sources */,
 				BF84E43FAFCE4ED781B3AF09 /* OggAudioDecoder.swift in Sources */,
 				18701BE8B2494CE69E94B316 /* FileItem.swift in Sources */,

@@ -24,6 +24,9 @@ struct PlayableAudio {
     let url: URL
     /// Non-nil when `url` is a decoder-produced temp file owned by us.
     let temporaryURL: URL?
+    /// True when `url` carries DSD over PCM (DoP), which only survives playback
+    /// at unity gain with no sample-rate conversion.
+    var isDoP = false
 
     func cleanup() {
         if let temporaryURL { try? FileManager.default.removeItem(at: temporaryURL) }
@@ -36,15 +39,23 @@ protocol AudioDecoder: Sendable {
     static var supportedExtensions: Set<String> { get }
     /// Decodes `sourceURL` to a temporary WAV file and returns its URL.
     func decode(sourceURL: URL) throws -> URL
+    /// True when the produced PCM carries DSD over PCM (DoP) rather than audio.
+    static var producesDoP: Bool { get }
+}
+
+extension AudioDecoder {
+    static var producesDoP: Bool { false }
 }
 
 enum AudioDecoderError: LocalizedError {
     case openFailed
     case decodeFailed
     case unsupported
+    case dsdUnsupported(String)
 
     var errorDescription: String? {
         switch self {
+        case .dsdUnsupported(let reason): return reason
         case .openFailed: return "Couldn't open the audio file for decoding."
         case .decodeFailed: return "Couldn't decode the audio file."
         case .unsupported: return "No decoder is available for this format."
@@ -59,7 +70,7 @@ final class AudioDecoderRegistry: Sendable {
     private let decoders: [any AudioDecoder]
 
     init() {
-        var list: [any AudioDecoder] = []
+        var list: [any AudioDecoder] = [DSDDoPDecoder()]
         #if canImport(COpus) || canImport(CVorbis)
         list.append(OggAudioDecoder())
         #endif
@@ -84,7 +95,7 @@ final class AudioDecoderRegistry: Sendable {
         let decoded = try await Task.detached(priority: .userInitiated) {
             try decoder.decode(sourceURL: sourceURL)
         }.value
-        return PlayableAudio(url: decoded, temporaryURL: decoded)
+        return PlayableAudio(url: decoded, temporaryURL: decoded, isDoP: type(of: decoder).producesDoP)
     }
 }
 
@@ -93,11 +104,11 @@ final class AudioDecoderRegistry: Sendable {
 /// only marks these files playable when they actually are.
 enum ExternalAudioFormats {
     static let extensions: Set<String> = {
+        var exts = DSDDoPDecoder.supportedExtensions
         #if canImport(COpus) || canImport(CVorbis)
-        return OggAudioDecoder.supportedExtensions
-        #else
-        return []
+        exts.formUnion(OggAudioDecoder.supportedExtensions)
         #endif
+        return exts
     }()
 }
 

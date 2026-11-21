@@ -129,12 +129,17 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// DACs that have no hardware volume, so anything below 1.0 alters the
     /// samples. Nil where it doesn't apply (Mac Catalyst).
     @Published private(set) var systemVolume: Float?
+    /// "DSD64" / "DSD128" while a DSD file is playing as DoP, else nil. DoP only
+    /// survives unity gain, so the volume is locked at 100% for these tracks and
+    /// a system volume below maximum turns the stream into loud noise.
+    @Published private(set) var dopLabel: String?
+    var isDoPPlayback: Bool { dopLabel != nil }
     #if os(iOS) && !targetEnvironment(macCatalyst)
     private var systemVolumeObservation: NSKeyValueObservation?
     #endif
 
     /// The gain actually applied to the signal.
-    var effectiveVolume: Double { bitPerfectMode ? 1.0 : volume }
+    var effectiveVolume: Double { (bitPerfectMode || isDoPPlayback) ? 1.0 : volume }
 
     /// True when the hardware isn't running at the track's native rate, i.e. the
     /// system is resampling (usually because the DAC doesn't support that rate).
@@ -242,11 +247,22 @@ final class AudioPlayer: NSObject, ObservableObject {
             return
         }
         guard !player.isPlaying else { return }
+        if let problem = doPVolumeProblem() {
+            errorMessage = problem
+            return
+        }
         player.play()
         isPlaying = true
         startTicker()
         updateNowPlaying()
         noteTransportEvent()
+    }
+
+    /// Non-nil when DSD (DoP) can't be played safely: below-maximum system volume
+    /// corrupts the markers and the DAC plays the data as loud PCM noise.
+    private func doPVolumeProblem() -> String? {
+        guard isDoPPlayback, let volume = systemVolume, volume < 0.999 else { return nil }
+        return "DSD (DoP) needs the system volume at maximum — otherwise it plays as loud noise. Raise the volume to 100% and try again."
     }
 
     func pausePlayback() {
@@ -408,7 +424,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Sets the software output volume (0.0…1.0) and applies it to the current
     /// player. Persisted so it survives relaunch.
     func setVolume(_ newValue: Double) {
-        guard !bitPerfectMode else { return }
+        guard !bitPerfectMode, !isDoPPlayback else { return }
         let clamped = min(max(newValue, 0), 1)
         guard clamped != volume else { return }
         volume = clamped
@@ -644,6 +660,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         player?.stop()
         player?.delegate = nil
         player = nil
+        dopLabel = nil
         ticker?.cancel()
         cleanupTemp()
         isPlaying = false
@@ -680,6 +697,18 @@ final class AudioPlayer: NSObject, ObservableObject {
             // Match the hardware (USB DAC) to the file's native sample rate so the
             // system performs no resampling — bit-perfect output for the amp.
             applyPreferredHardwareFormat(for: playable.url)
+
+            // DSD arrives as DoP inside 24-bit PCM: refuse to start it where the
+            // system volume would corrupt the stream (loud noise).
+            dopLabel = playable.isDoP ? Self.dsdLabel(forDoPFileAt: playable.url) : nil
+            if let problem = doPVolumeProblem() {
+                dopLabel = nil
+                playable.cleanup()
+                registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+                isLoading = false
+                errorMessage = problem
+                return
+            }
 
             let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             newPlayer.delegate = self
@@ -756,6 +785,15 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         #endif
         refreshOutputSampleRate()
+    }
+
+    /// "DSD64" / "DSD128" for a DoP carrier file, from its PCM rate.
+    private static func dsdLabel(forDoPFileAt url: URL) -> String {
+        guard let rate = (try? AVAudioFile(forReading: url))?.fileFormat.sampleRate else { return "DSD" }
+        let multiple = Int((rate * 16 / 2_822_400).rounded())      // 44.1 kHz family
+        let multiple48 = Int((rate * 16 / 3_072_000).rounded())    // 48 kHz family
+        let isFamily44 = abs(rate * 16 - 2_822_400 * Double(multiple)) < 1
+        return isFamily44 ? "DSD\(64 * multiple)" : "DSD\(64 * multiple48) (48 kHz)"
     }
 
     /// Re-reads the hardware rate shortly after playback starts: a USB DAC can
@@ -1004,7 +1042,15 @@ final class AudioPlayer: NSObject, ObservableObject {
         systemVolumeObservation = AVAudioSession.sharedInstance()
             .observe(\.outputVolume, options: [.initial, .new]) { [weak self] session, _ in
                 let volume = session.outputVolume
-                Self.runOnMainActor { self?.systemVolume = volume }
+                Self.runOnMainActor {
+                    guard let self else { return }
+                    self.systemVolume = volume
+                    // Lowering the volume mid-DSD would blast noise: stop it.
+                    if self.isPlaying, let problem = self.doPVolumeProblem() {
+                        self.pausePlayback()
+                        self.errorMessage = problem
+                    }
+                }
             }
         #endif
     }
