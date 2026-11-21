@@ -12,9 +12,17 @@ actor FolderListingCache {
             ?? FileManager.default.temporaryDirectory
         let dir = base.appendingPathComponent(subdirectory, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // v3: hidden/AppleDouble files ("._*", .DS_Store) are filtered out, so old
-        // caches that listed them are discarded.
-        self.fileURL = dir.appendingPathComponent("\(sourceID)-v3.json")
+        // The cache only holds entries FWPlayer recognised as audio when it was built, so
+        // it is keyed by the set of playable formats: adding a format (DSF/DFF, SACD
+        // images, …) discards old caches and the library is scanned again — otherwise
+        // files of the new format would never show up in already-cached folders.
+        // (v3 → v4: also filtered hidden/AppleDouble files before; kept for history.)
+        var fingerprint: UInt64 = 5381
+        for byte in FileItem.audioExtensions.sorted().joined(separator: ",").utf8 {
+            fingerprint = fingerprint &* 33 &+ UInt64(byte)
+        }
+        self.fileURL = dir.appendingPathComponent("\(sourceID)-v4-\(String(fingerprint, radix: 16)).json")
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(sourceID)-v3.json"))
 
         if let data = try? Data(contentsOf: fileURL),
            let loaded = try? JSONDecoder().decode([String: [FileItem]].self, from: data) {
