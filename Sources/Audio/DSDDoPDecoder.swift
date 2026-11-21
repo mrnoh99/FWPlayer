@@ -51,7 +51,8 @@ struct DSDDoPDecoder: AudioDecoder {
 
     /// Converts a DSF/DFF file to a temporary 24-bit WAV. `.dop` falls back to
     /// PCM for rates DoP can't carry (DSD256+ would need a 705.6 kHz carrier).
-    static func convert(sourceURL: URL, mode: DSDOutputMode) throws -> DSDConversion {
+    static func convert(sourceURL: URL, mode: DSDOutputMode,
+                        progress: (@Sendable (Double) -> Void)? = nil) throws -> DSDConversion {
         var handle: FileHandle?
         defer { try? handle?.close() }
 
@@ -94,14 +95,20 @@ struct DSDDoPDecoder: AudioDecoder {
                 let silence = [UInt8](repeating: dsdSilenceByte,
                                       count: Int((Double(rate / 16) * silenceSeconds).rounded()) * 2)
                 try writer.append(encoder.encode(left: silence, right: silence))
+                var lastPercent = -1
                 while let chunk = try reader.next() {
                     try writer.append(encoder.encode(left: chunk.left, right: chunk.right))
+                    let percent = Int(reader.progress * 100)
+                    if percent != lastPercent { lastPercent = percent; progress?(reader.progress) }
                 }
                 try writer.append(encoder.encode(left: silence, right: silence))
             } else {
                 let converter = DSDToPCMConverter(dsdRate: rate, multiple: multiple)
+                var lastPercent = -1
                 while let chunk = try reader.next() {
                     try writer.append(converter.convert(left: chunk.left, right: chunk.right))
+                    let percent = Int(reader.progress * 100)
+                    if percent != lastPercent { lastPercent = percent; progress?(reader.progress) }
                 }
             }
             try writer.finish()
@@ -324,6 +331,8 @@ protocol DSDStreamReader: AnyObject {
     var channels: Int { get }
     /// The next run of audio, or nil at the end of the stream.
     func next() throws -> DSDChunk?
+    /// How much of the stream has been read, 0…1 (for progress display).
+    var progress: Double { get }
 }
 
 /// DSD "silence" byte pattern, used to pad an odd trailing byte.
@@ -374,7 +383,10 @@ private final class DSFReader: DSDStreamReader {
     private let lsbFirst: Bool
     private var dataOffset: UInt64
     private var groupsRemaining: Int
+    private let groupsTotal: Int
     private var bytesPerChannelRemaining: Int
+
+    var progress: Double { groupsTotal > 0 ? 1 - Double(groupsRemaining) / Double(groupsTotal) : 1 }
 
     init(handle: FileHandle) throws {
         self.handle = handle
@@ -418,6 +430,7 @@ private final class DSFReader: DSDStreamReader {
         blockSize = block
         dataOffset = dataStart
         groupsRemaining = Int(dataLength) / (block * channelCount)
+        groupsTotal = groupsRemaining
         bytesPerChannelRemaining = Int(truncatingIfNeeded: (sampleCount &+ 7) / 8)
     }
 
@@ -448,8 +461,15 @@ private final class DSFReader: DSDStreamReader {
             right.removeSubrange(take...)
         }
         if lsbFirst {
-            for i in left.indices { left[i] = bitReversed[Int(left[i])] }
-            for i in right.indices { right[i] = bitReversed[Int(right[i])] }
+            // Hot loop: pointers instead of checked array indexing.
+            bitReversed.withUnsafeBufferPointer { table in
+                left.withUnsafeMutableBufferPointer { l in
+                    for i in 0..<l.count { l[i] = table[Int(l[i])] }
+                }
+                right.withUnsafeMutableBufferPointer { r in
+                    for i in 0..<r.count { r[i] = table[Int(r[i])] }
+                }
+            }
         }
         if left.count % 2 == 1 {                            // DoP needs byte pairs
             left.append(dsdSilenceByte)
@@ -467,6 +487,9 @@ private final class DFFReader: DSDStreamReader {
     private let handle: FileHandle
     private var dataOffset: UInt64 = 0
     private var dataRemaining: UInt64 = 0
+    private var dataTotal: UInt64 = 0
+
+    var progress: Double { dataTotal > 0 ? 1 - Double(dataRemaining) / Double(dataTotal) : 1 }
 
     init(handle: FileHandle) throws {
         self.handle = handle
@@ -503,6 +526,7 @@ private final class DFFReader: DSDStreamReader {
             } else if id == "DSD " {
                 dataOffset = body
                 dataRemaining = min(size, fileSize - body)
+                dataTotal = dataRemaining
                 break
             }
             offset = body + size + (size % 2)

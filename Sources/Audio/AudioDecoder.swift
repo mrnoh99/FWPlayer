@@ -91,10 +91,11 @@ final class AudioDecoderRegistry: Sendable {
     /// Returns a `PlayableAudio` for `sourceURL`. Natively supported formats pass
     /// straight through; others are decoded to a temporary WAV off the main thread.
     func prepare(sourceURL: URL, fileExtension ext: String,
-                 dsdMode: DSDOutputMode = .dop) async throws -> PlayableAudio {
+                 dsdMode: DSDOutputMode = .dop,
+                 progress: (@Sendable (Double) -> Void)? = nil) async throws -> PlayableAudio {
         if DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension {
             let result = try await Task.detached(priority: .userInitiated) {
-                try DSDDoPDecoder.convert(sourceURL: sourceURL, mode: dsdMode)
+                try DSDDoPDecoder.convert(sourceURL: sourceURL, mode: dsdMode, progress: progress)
             }.value
             return PlayableAudio(url: result.url, temporaryURL: result.url,
                                  isDoP: result.isDoP, dsdLabel: result.label)

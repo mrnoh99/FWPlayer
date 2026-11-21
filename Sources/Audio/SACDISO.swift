@@ -473,6 +473,11 @@ final class SACDTrackReader: DSDStreamReader {
     private var finished = false
     private var frameNumber = 0
     private var pending = [[UInt8]]()                                // decoded frames (interleaved)
+
+    var progress: Double {
+        let total = endSector - track.startLSN
+        return total > 0 ? min(1, Double(nextSector - track.startLSN) / Double(total)) : 1
+    }
     #if canImport(CDST) || FWDST_BRIDGED
     private var dstDecoder: OpaquePointer?
     #endif

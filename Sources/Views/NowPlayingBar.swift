@@ -17,6 +17,7 @@ struct NowPlayingBar: View {
     @State private var artist: String?
     @State private var sampleRate: Double?
     @State private var isLoading = false
+    @State private var loadingDetail: String?
     @State private var isPlaying = false
     @State private var canGoPrevious = false
     @State private var canGoNext = false
@@ -181,6 +182,7 @@ struct NowPlayingBar: View {
     /// Artist and the sampling rate (the rate is always shown — it matters for a
     /// bit-perfect/lossless player).
     private var subtitle: String? {
+        if isLoading, let loadingDetail { return loadingDetail }
         var parts: [String] = []
         if let artist { parts.append(artist) }
         if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
@@ -192,6 +194,7 @@ struct NowPlayingBar: View {
         artist = player.currentTrack?.artist
         sampleRate = player.currentTrack?.sampleRate
         isLoading = player.isLoading
+        loadingDetail = player.loadingDetail
         isPlaying = player.isPlaying
         canGoPrevious = player.canGoPrevious
         canGoNext = player.canGoNext

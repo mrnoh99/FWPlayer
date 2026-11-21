@@ -51,7 +51,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
-    @Published private(set) var isLoading = false
+    @Published private(set) var isLoading = false {
+        didSet { if !isLoading { loadingDetail = nil } }
+    }
+    /// What a long load is doing (e.g. "Converting DSD… 42%"); nil otherwise.
+    @Published private(set) var loadingDetail: String?
     /// Software output volume, 0.0…1.0. Defaults to unity (1.0) so the signal to
     /// a DAC/amp is untouched until the user chooses to attenuate it, e.g. from
     /// the remote. Applied to the active player and every new one.
@@ -696,8 +700,13 @@ final class AudioPlayer: NSObject, ObservableObject {
                     // DSD goes out as DoP only to a USB DAC at full volume;
                     // anywhere else it's converted to PCM (safe on any output).
                     let dsdMode: DSDOutputMode = self.doPPlaybackProblem(assumingDoP: true) == nil ? .dop : .pcm
+                    let isDSD = DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension
+                    if isDSD { self.loadingDetail = "Converting DSD…" }
                     playable = try await AudioDecoderRegistry.shared.prepare(sourceURL: sourceURL, fileExtension: ext,
-                                                                              dsdMode: dsdMode)
+                                                                              dsdMode: dsdMode) { [weak self] fraction in
+                        let percent = Int(fraction * 100)
+                        Task { @MainActor in self?.loadingDetail = "Converting DSD… \(percent)%" }
+                    }
                 } catch {
                     source.releaseTemporaryURL(sourceURL)
                     throw error
