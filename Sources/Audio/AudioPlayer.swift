@@ -163,6 +163,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// a system volume below maximum turns the stream into loud noise.
     @Published private(set) var dopLabel: String?
     var isDoPPlayback: Bool { dopLabel != nil }
+    /// "DSD64" etc. while a DSD file plays converted to PCM (no DoP), else nil.
+    @Published private(set) var dsdPCMLabel: String?
+    /// Length of the DSD-silence padding inside the current DoP file (0 otherwise);
+    /// the player's visible timeline starts after it.
+    private var timeOffset: TimeInterval = 0
     #if os(iOS) && !targetEnvironment(macCatalyst)
     private var systemVolumeObservation: NSKeyValueObservation?
     #endif
@@ -482,7 +487,9 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     func seek(to time: TimeInterval) {
         guard let player else { return }
-        let duration = player.duration
+        // DoP files carry DSD silence before and after the music; the track's own
+        // timeline excludes it.
+        let duration = max(0, player.duration - 2 * timeOffset)
         guard duration.isFinite, duration > 0 else {
             player.currentTime = 0
             currentTime = 0
@@ -491,8 +498,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         let clamped = max(0, min(time, duration))
         guard clamped.isFinite else { return }
-        player.currentTime = clamped
-        currentTime = player.currentTime
+        player.currentTime = clamped + timeOffset
+        currentTime = max(0, player.currentTime - timeOffset)
         updateNowPlaying()
         noteTransportEvent()
     }
@@ -661,16 +668,6 @@ final class AudioPlayer: NSObject, ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        // Refuse DSD up front (before downloading and converting a large file)
-        // when it can't be sent to a USB DAC safely.
-        let fileExtension = (track.path as NSString).pathExtension.lowercased()
-        if DSDDoPDecoder.supportedExtensions.contains(fileExtension),
-           let problem = doPPlaybackProblem(assumingDoP: true) {
-            isLoading = false
-            errorMessage = problem
-            return
-        }
-
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -696,7 +693,11 @@ final class AudioPlayer: NSObject, ObservableObject {
                 let ext = (track.path as NSString).pathExtension.lowercased()
                 let playable: PlayableAudio
                 do {
-                    playable = try await AudioDecoderRegistry.shared.prepare(sourceURL: sourceURL, fileExtension: ext)
+                    // DSD goes out as DoP only to a USB DAC at full volume;
+                    // anywhere else it's converted to PCM (safe on any output).
+                    let dsdMode: DSDOutputMode = self.doPPlaybackProblem(assumingDoP: true) == nil ? .dop : .pcm
+                    playable = try await AudioDecoderRegistry.shared.prepare(sourceURL: sourceURL, fileExtension: ext,
+                                                                              dsdMode: dsdMode)
                 } catch {
                     source.releaseTemporaryURL(sourceURL)
                     throw error
@@ -719,6 +720,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         player?.delegate = nil
         player = nil
         dopLabel = nil
+        dsdPCMLabel = nil
+        timeOffset = 0
         ticker?.cancel()
         cleanupTemp()
         isPlaying = false
@@ -758,7 +761,9 @@ final class AudioPlayer: NSObject, ObservableObject {
 
             // DSD arrives as DoP inside 24-bit PCM: refuse to start it where the
             // system volume would corrupt the stream (loud noise).
-            dopLabel = playable.isDoP ? Self.dsdLabel(forDoPFileAt: playable.url) : nil
+            dopLabel = playable.isDoP ? (playable.dsdLabel ?? Self.dsdLabel(forDoPFileAt: playable.url)) : nil
+            dsdPCMLabel = playable.isDoP ? nil : playable.dsdLabel
+            timeOffset = playable.isDoP ? DSDDoPDecoder.silenceSeconds : 0
             if let problem = doPPlaybackProblem() {
                 dopLabel = nil
                 playable.cleanup()
@@ -774,7 +779,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             newPlayer.enableRate = false // no time-stretch/rate resampling in the path
             newPlayer.prepareToPlay()
             player = newPlayer
-            duration = newPlayer.duration
+            duration = max(0, newPlayer.duration - 2 * timeOffset)
             currentTime = 0
             isLoading = false
             activeResource = (sourceID, sourceURL, playable.temporaryURL, track.id)
@@ -799,7 +804,9 @@ final class AudioPlayer: NSObject, ObservableObject {
                 loadCDMetadata(trackID: track.id, sourceID: sourceID)
                 #endif
             } else {
-                loadMetadata(for: playable.url, trackID: track.id)
+                // DSD tags live in the source file (the converted WAV has none).
+                let isDSD = DSDDoPDecoder.supportedExtensions.contains(sourceURL.pathExtension.lowercased())
+                loadMetadata(for: isDSD ? sourceURL : playable.url, trackID: track.id)
             }
             prefetchUpcoming()   // get the next track(s) ready while this one plays
         } catch {
@@ -898,7 +905,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self, let player = self.player else { return }
-                self.currentTime = player.currentTime
+                self.currentTime = max(0, player.currentTime - self.timeOffset)
             }
     }
 
@@ -949,7 +956,9 @@ final class AudioPlayer: NSObject, ObservableObject {
     private func loadMetadata(for url: URL, trackID: String) {
         Task { [weak self] in
             let asset = AVURLAsset(url: url)
-            guard let metadata = try? await asset.load(.commonMetadata) else { return }
+            // AVFoundation can't open every format (e.g. DSD); carry on with the
+            // tags we read ourselves below.
+            let metadata = (try? await asset.load(.commonMetadata)) ?? []
             var artist: String?
             var album: String?
             var year: String?
@@ -974,6 +983,14 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if album == nil { album = flac["ALBUM"] }
                 if year == nil { year = Self.releaseYear(from: flac["DATE"] ?? flac["YEAR"] ?? flac["ORIGINALDATE"]) }
                 genre = flac["GENRE"]
+            }
+            // DSD (DSF/DFF) files carry ID3v2 tags.
+            let dsd = DSDTags.read(from: url)
+            if !dsd.isEmpty {
+                if artist == nil { artist = dsd["ARTIST"] ?? dsd["ALBUMARTIST"] }
+                if album == nil { album = dsd["ALBUM"] }
+                if year == nil { year = Self.releaseYear(from: dsd["DATE"]) }
+                if genre == nil { genre = dsd["GENRE"] }
             }
             // First pass: apply the file's embedded tags and start artwork resolution.
             let lookup: (artist: String?, album: String?)? = await MainActor.run {
@@ -1110,6 +1127,9 @@ final class AudioPlayer: NSObject, ObservableObject {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
+        // Hi-res USB output is steadier with a larger I/O buffer; latency doesn't
+        // matter for playback.
+        try? session.setPreferredIOBufferDuration(0.1)
         try? session.setActive(true)
         #endif
     }

@@ -238,7 +238,7 @@ struct ContentView: View {
                 #if targetEnvironment(macCatalyst)
                 bitPerfectStatus
                 #else
-                if player.bitPerfectMode || player.isDoPPlayback {
+                if player.bitPerfectMode || player.isDoPPlayback || player.dsdPCMLabel != nil {
                     bitPerfectStatus
                 }
                 #endif
@@ -312,6 +312,12 @@ struct ContentView: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
+        }
+        if let pcm = player.dsdPCMLabel {
+            Label("Playing \(pcm) converted to PCM. DoP (bit-exact DSD) needs a USB DAC with the system volume at maximum.",
+                  systemImage: "waveform")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         if let dop = player.dopLabel {
             Label("Playing \(dop) as DoP — volume is locked at 100%. Keep the system volume at maximum.",

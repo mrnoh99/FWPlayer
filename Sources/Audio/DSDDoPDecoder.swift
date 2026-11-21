@@ -19,25 +19,39 @@ import Foundation
 // must be at maximum. DoP that isn't recognised (or is attenuated) plays as
 // loud noise — see `AudioPlayer`'s guards.
 
+/// How a DSD file is turned into something Core Audio can play.
+enum DSDOutputMode {
+    /// DSD over PCM: bit-exact, only for a USB DAC that recognises the markers.
+    case dop
+    /// Ordinary PCM (filtered and decimated), safe on any output.
+    case pcm
+}
+
+/// The result of converting a DSD file.
+struct DSDConversion {
+    let url: URL
+    /// True when `url` carries DoP rather than audio.
+    let isDoP: Bool
+    /// "DSD64", "DSD128", "DSD256" (plus " (48 kHz)" for the 48 kHz family).
+    let label: String
+}
+
 struct DSDDoPDecoder: AudioDecoder {
     static let supportedExtensions: Set<String> = ["dsf", "dff"]
     static let producesDoP = true
 
-    /// DSD sampling rates that map to a PCM rate the DAC accepts (≤ 384 kHz).
-    private static func pcmRate(forDSDRate rate: Int) throws -> Int {
-        switch rate {
-        case 2_822_400: return 176_400     // DSD64
-        case 5_644_800: return 352_800     // DSD128
-        case 3_072_000: return 192_000     // DSD64, 48 kHz family
-        case 6_144_000: return 384_000     // DSD128, 48 kHz family
-        case 11_289_600, 12_288_000:
-            throw AudioDecoderError.dsdUnsupported("DSD256 can't be sent as DoP (it would need a 705.6 kHz PCM carrier).")
-        default:
-            throw AudioDecoderError.dsdUnsupported("Unsupported DSD sampling rate (\(rate) Hz).")
-        }
-    }
+    /// DoP files start and end with this much DSD silence, so the DAC has locked
+    /// onto the DoP markers before the music begins and stays locked until after
+    /// it ends (avoids a click at start/stop). `AudioPlayer` hides the offset.
+    static let silenceSeconds: TimeInterval = 0.3
 
     func decode(sourceURL: URL) throws -> URL {
+        try Self.convert(sourceURL: sourceURL, mode: .dop).url
+    }
+
+    /// Converts a DSF/DFF file to a temporary 24-bit WAV. `.dop` falls back to
+    /// PCM for rates DoP can't carry (DSD256+ would need a 705.6 kHz carrier).
+    static func convert(sourceURL: URL, mode: DSDOutputMode) throws -> DSDConversion {
         let handle: FileHandle
         do { handle = try FileHandle(forReadingFrom: sourceURL) } catch { throw AudioDecoderError.openFailed }
         defer { try? handle.close() }
@@ -51,20 +65,203 @@ struct DSDDoPDecoder: AudioDecoder {
         guard reader.channels == 2 else {
             throw AudioDecoderError.dsdUnsupported("Only stereo DSD files are supported.")
         }
-        let pcmRate = try Self.pcmRate(forDSDRate: reader.dsdRate)
 
-        let writer = try WAVStreamWriter(sampleRate: pcmRate, channels: 2, bitsPerSample: 24)
-        let encoder = DoPEncoder()
+        // 44.1 kHz family (2.8224 MHz × m) or 48 kHz family (3.072 MHz × m).
+        let rate = reader.dsdRate
+        let family44 = rate % 2_822_400 == 0
+        let family48 = rate % 3_072_000 == 0
+        let multiple = family44 ? rate / 2_822_400 : (family48 ? rate / 3_072_000 : 0)
+        guard multiple == 1 || multiple == 2 || multiple == 4 else {
+            throw AudioDecoderError.dsdUnsupported("Unsupported DSD sampling rate (\(rate) Hz).")
+        }
+        let label = "DSD\(64 * multiple)" + (family48 ? " (48 kHz)" : "")
+        let useDoP = mode == .dop && multiple <= 2
+
+        let writer = try WAVStreamWriter(sampleRate: useDoP ? rate / 16 : (family44 ? 176_400 : 192_000),
+                                         channels: 2, bitsPerSample: 24)
         do {
-            while let chunk = try reader.next() {
-                try writer.append(encoder.encode(left: chunk.left, right: chunk.right))
+            if useDoP {
+                let encoder = DoPEncoder()
+                let silence = [UInt8](repeating: dsdSilenceByte,
+                                      count: Int((Double(rate / 16) * silenceSeconds).rounded()) * 2)
+                try writer.append(encoder.encode(left: silence, right: silence))
+                while let chunk = try reader.next() {
+                    try writer.append(encoder.encode(left: chunk.left, right: chunk.right))
+                }
+                try writer.append(encoder.encode(left: silence, right: silence))
+            } else {
+                let converter = DSDToPCMConverter(dsdRate: rate, multiple: multiple)
+                while let chunk = try reader.next() {
+                    try writer.append(converter.convert(left: chunk.left, right: chunk.right))
+                }
             }
             try writer.finish()
         } catch {
             writer.abort()
             throw error
         }
-        return writer.url
+        return DSDConversion(url: writer.url, isDoP: useDoP, label: label)
+    }
+}
+
+// MARK: - DSD → PCM (any output)
+//
+// For outputs that can't take DoP (speaker, Bluetooth, AirPlay, a non-DSD DAC) and
+// for DSD256, the 1-bit stream is low-pass filtered and decimated to 176.4 kHz
+// (192 kHz for the 48 kHz family), 24-bit. Two stages:
+//   1. a Kaiser-window FIR evaluated with per-byte lookup tables (8 bits per
+//      table lookup), decimating by 8·m down to 352.8 kHz (384 kHz);
+//   2. a short float FIR decimating by 2.
+// 0 dB on the SACD reference (50 % modulation) maps to PCM full scale (×2).
+
+private func besselI0(_ x: Double) -> Double {
+    var sum = 1.0, term = 1.0
+    let q = x * x / 4
+    var k = 1.0
+    while term > 1e-12 * sum {
+        term *= q / (k * k)
+        sum += term
+        k += 1
+    }
+    return sum
+}
+
+/// Kaiser-windowed-sinc low-pass; `cutoff` is normalised to the sampling rate
+/// (0…0.5). Normalised to unity gain at DC.
+private func kaiserLowpass(taps: Int, cutoff: Double, beta: Double) -> [Double] {
+    let mid = Double(taps - 1) / 2
+    var h = (0..<taps).map { n -> Double in
+        let x = Double(n) - mid
+        let sinc = x == 0 ? 2 * cutoff : sin(2 * Double.pi * cutoff * x) / (Double.pi * x)
+        let r = mid > 0 ? x / mid : 0
+        let window = besselI0(beta * (1 - r * r).squareRoot()) / besselI0(beta)
+        return sinc * window
+    }
+    let sum = h.reduce(0, +)
+    for i in h.indices { h[i] /= sum }
+    return h
+}
+
+/// Stage 1 for one channel: 1-bit input, byte-wise table FIR.
+private final class DSDDecimator {
+    private let m: Int                // bytes consumed per output sample
+    private let k: Int                // bytes spanned by the filter
+    private let table: [Float]        // k × 256 partial sums
+    private var state: [UInt8]        // last (k-1) bytes + not-yet-consumed bytes
+
+    init(dsdRate: Int, multiple: Int) {
+        let bytes = 10 * multiple     // 80·m taps
+        m = multiple
+        k = bytes
+        let taps = 8 * bytes
+        let h = kaiserLowpass(taps: taps, cutoff: 216_000 / Double(dsdRate), beta: 10)
+        var t = [Float](repeating: 0, count: bytes * 256)
+        for byteIndex in 0..<bytes {
+            for value in 0..<256 {
+                var sum = 0.0
+                for i in 0..<8 {
+                    // Bit i (0 = MSB = oldest) of the byte `byteIndex` back from the newest.
+                    let coefficient = h[8 * byteIndex + (7 - i)]
+                    sum += ((value >> (7 - i)) & 1) == 1 ? coefficient : -coefficient
+                }
+                t[byteIndex * 256 + value] = Float(sum * 2)      // ×2: SACD 0 dB → full scale
+            }
+        }
+        table = t
+        state = [UInt8](repeating: dsdSilenceByte, count: bytes - 1)
+    }
+
+    func process(_ input: [UInt8]) -> [Float] {
+        var buf = state
+        buf.append(contentsOf: input)
+        let usable = max(0, (buf.count - (k - 1)) / m * m)
+        let outCount = usable / m
+        var out = [Float](repeating: 0, count: outCount)
+        let k = self.k, m = self.m
+        buf.withUnsafeBufferPointer { b in
+            table.withUnsafeBufferPointer { t in
+                out.withUnsafeMutableBufferPointer { o in
+                    for j in 0..<outCount {
+                        let p = (k - 1) + j * m + (m - 1)
+                        var sum: Float = 0
+                        for back in 0..<k {
+                            sum += t[back * 256 + Int(b[p - back])]
+                        }
+                        o[j] = sum
+                    }
+                }
+            }
+        }
+        state = Array(buf[usable...])
+        return out
+    }
+}
+
+/// Stage 2 for one channel: float FIR, decimate by 2.
+private final class HalfBandDecimator {
+    private let h: [Float]
+    private var state: [Float]
+
+    init() {
+        let taps = 48
+        h = kaiserLowpass(taps: taps, cutoff: 0.25, beta: 10).map { Float($0) }
+        state = [Float](repeating: 0, count: taps - 1)
+    }
+
+    func process(_ input: [Float]) -> [Float] {
+        let n = h.count
+        var buf = state
+        buf.append(contentsOf: input)
+        let usable = max(0, (buf.count - (n - 1)) / 2 * 2)
+        let outCount = usable / 2
+        var out = [Float](repeating: 0, count: outCount)
+        buf.withUnsafeBufferPointer { b in
+            h.withUnsafeBufferPointer { c in
+                out.withUnsafeMutableBufferPointer { o in
+                    for j in 0..<outCount {
+                        let p = (n - 1) + j * 2 + 1
+                        var sum: Float = 0
+                        for t in 0..<n { sum += c[t] * b[p - t] }
+                        o[j] = sum
+                    }
+                }
+            }
+        }
+        state = Array(buf[usable...])
+        return out
+    }
+}
+
+private final class DSDToPCMConverter {
+    private let stage1: (left: DSDDecimator, right: DSDDecimator)
+    private let stage2: (left: HalfBandDecimator, right: HalfBandDecimator)
+
+    init(dsdRate: Int, multiple: Int) {
+        stage1 = (DSDDecimator(dsdRate: dsdRate, multiple: multiple),
+                  DSDDecimator(dsdRate: dsdRate, multiple: multiple))
+        stage2 = (HalfBandDecimator(), HalfBandDecimator())
+    }
+
+    /// Returns interleaved 24-bit little-endian stereo PCM.
+    func convert(left: [UInt8], right: [UInt8]) -> Data {
+        let l = stage2.left.process(stage1.left.process(left))
+        let r = stage2.right.process(stage1.right.process(right))
+        let frames = min(l.count, r.count)
+        var out = [UInt8](repeating: 0, count: frames * 6)
+        out.withUnsafeMutableBufferPointer { o in
+            func put(_ value: Float, at base: Int) {
+                let scaled = (Double(value) * 8_388_607).rounded()
+                let v = Int32(max(-8_388_607, min(8_388_607, scaled)))
+                o[base] = UInt8(truncatingIfNeeded: v)
+                o[base + 1] = UInt8(truncatingIfNeeded: v >> 8)
+                o[base + 2] = UInt8(truncatingIfNeeded: v >> 16)
+            }
+            for f in 0..<frames {
+                put(l[f], at: f * 6)
+                put(r[f], at: f * 6 + 3)
+            }
+        }
+        return Data(out)
     }
 }
 
@@ -329,6 +526,105 @@ private final class DFFReader: DSDStreamReader {
             right.append(dsdSilenceByte)
         }
         return DSDChunk(left: left, right: right)
+    }
+}
+
+// MARK: - Tags (ID3v2 in DSF / DFF)
+
+/// Reads the basic text tags (title, artist, album, date, genre) from the ID3v2
+/// block that DSF files point to (and DFF files carry in an "ID3 " chunk).
+enum DSDTags {
+    /// Keys: TITLE, ARTIST, ALBUMARTIST, ALBUM, DATE, GENRE. Empty for non-DSD
+    /// files or when there are no tags.
+    static func read(from url: URL) -> [String: String] {
+        let ext = url.pathExtension.lowercased()
+        guard DSDDoPDecoder.supportedExtensions.contains(ext),
+              let handle = try? FileHandle(forReadingFrom: url) else { return [:] }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return [:] }
+
+        var offset: UInt64 = 0
+        if ext == "dsf" {
+            guard let head = try? readExactly(handle, at: 0, count: 28), fourCC(head, 0) == "DSD " else { return [:] }
+            offset = le64(head, 20)                    // metadata pointer
+        } else {
+            offset = dffID3Offset(handle, fileSize: size)
+        }
+        guard offset > 0, offset + 10 < size else { return [:] }
+        return parseID3(handle, at: offset)
+    }
+
+    private static func dffID3Offset(_ handle: FileHandle, fileSize: UInt64) -> UInt64 {
+        guard let head = try? readExactly(handle, at: 0, count: 16),
+              fourCC(head, 0) == "FRM8" else { return 0 }
+        var offset: UInt64 = 16
+        while offset + 12 <= fileSize {
+            guard let chunk = try? readExactly(handle, at: offset, count: 12) else { return 0 }
+            let size = be64(chunk, 4)
+            guard size <= fileSize else { return 0 }
+            if fourCC(chunk, 0) == "ID3 " { return offset + 12 }
+            offset += 12 + size + (size % 2)
+        }
+        return 0
+    }
+
+    private static func syncsafe(_ b: [UInt8], _ o: Int) -> Int {
+        Int(b[o] & 0x7F) << 21 | Int(b[o + 1] & 0x7F) << 14 | Int(b[o + 2] & 0x7F) << 7 | Int(b[o + 3] & 0x7F)
+    }
+
+    private static func parseID3(_ handle: FileHandle, at offset: UInt64) -> [String: String] {
+        guard let header = try? readExactly(handle, at: offset, count: 10),
+              fourCC(header, 0).hasPrefix("ID3"),
+              header[3] == 3 || header[3] == 4 else { return [:] }
+        let version = Int(header[3])
+        let tagSize = min(syncsafe(header, 6), 16 << 20)
+        guard tagSize > 0, let tag = try? readExactly(handle, at: offset + 10, count: tagSize) else { return [:] }
+
+        var pos = 0
+        if header[5] & 0x40 != 0, tag.count >= 4 {          // extended header: skip it
+            pos = version == 4 ? syncsafe(tag, 0) : Int(be32(tag, 0)) + 4
+        }
+        var result: [String: String] = [:]
+        while pos >= 0, pos + 10 <= tag.count, tag[pos] != 0 {
+            let id = fourCC(tag, pos)
+            let size = version == 4 ? syncsafe(tag, pos + 4) : Int(be32(tag, pos + 4))
+            let body = pos + 10
+            guard size > 0, body + size <= tag.count else { break }
+            if let key = mappedKey(id), let text = decodeText(Array(tag[body..<(body + size)])), !text.isEmpty,
+               result[key] == nil {
+                result[key] = text
+            }
+            pos = body + size
+        }
+        return result
+    }
+
+    private static func mappedKey(_ id: String) -> String? {
+        switch id {
+        case "TIT2": return "TITLE"
+        case "TPE1": return "ARTIST"
+        case "TPE2": return "ALBUMARTIST"
+        case "TALB": return "ALBUM"
+        case "TDRC", "TYER", "TDRL": return "DATE"
+        case "TCON": return "GENRE"
+        default: return nil
+        }
+    }
+
+    /// ID3 text frame: an encoding byte, then the (possibly NUL-separated) text.
+    private static func decodeText(_ frame: [UInt8]) -> String? {
+        guard frame.count > 1 else { return nil }
+        let payload = Data(frame[1...])
+        let encoding: String.Encoding
+        switch frame[0] {
+        case 0: encoding = .isoLatin1
+        case 1: encoding = .utf16
+        case 2: encoding = .utf16BigEndian
+        default: encoding = .utf8
+        }
+        guard let text = String(data: payload, encoding: encoding) else { return nil }
+        let first = text.split(separator: "\u{0}", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+        return first.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

@@ -40,3 +40,36 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
+
+  tests:
+    name: Unit tests
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: swift test
+
+  protocol-sync:
+    name: Protocol matches FWPlayerRemote
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Informational: the wire protocol is kept byte-identical in both repos. This
+    # is expected to differ on a PR that changes it until the other repo's
+    # matching change is merged, so it never blocks the build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare with FWPlayerRemote main
+        run: |
+          status=0
+          for f in RemoteProtocol.swift RemoteLink.swift; do
+            curl -fsSL "https://raw.githubusercontent.com/mrnoh99/FWPlayerRemote/main/Sources/Protocol/$f" -o "/tmp/other-$f"
+            if ! diff -u "/tmp/other-$f" "Sources/Protocol/$f"; then
+              echo "::warning::$f differs from FWPlayerRemote main — copy the change to both repos"
+              status=1
+            fi
+          done
+          exit $status

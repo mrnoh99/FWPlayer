@@ -27,6 +27,8 @@ struct PlayableAudio {
     /// True when `url` carries DSD over PCM (DoP), which only survives playback
     /// at unity gain with no sample-rate conversion.
     var isDoP = false
+    /// For converted DSD files: "DSD64", "DSD128", … (DoP or PCM).
+    var dsdLabel: String?
 
     func cleanup() {
         if let temporaryURL { try? FileManager.default.removeItem(at: temporaryURL) }
@@ -88,7 +90,15 @@ final class AudioDecoderRegistry: Sendable {
 
     /// Returns a `PlayableAudio` for `sourceURL`. Natively supported formats pass
     /// straight through; others are decoded to a temporary WAV off the main thread.
-    func prepare(sourceURL: URL, fileExtension ext: String) async throws -> PlayableAudio {
+    func prepare(sourceURL: URL, fileExtension ext: String,
+                 dsdMode: DSDOutputMode = .dop) async throws -> PlayableAudio {
+        if DSDDoPDecoder.supportedExtensions.contains(ext) {
+            let result = try await Task.detached(priority: .userInitiated) {
+                try DSDDoPDecoder.convert(sourceURL: sourceURL, mode: dsdMode)
+            }.value
+            return PlayableAudio(url: result.url, temporaryURL: result.url,
+                                 isDoP: result.isDoP, dsdLabel: result.label)
+        }
         guard let decoder = decoder(for: ext) else {
             return PlayableAudio(url: sourceURL, temporaryURL: nil)
         }

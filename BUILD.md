@@ -48,6 +48,11 @@ Everyday code edits to existing files need **no** regeneration.
 
 ## Version / build number
 
+`scripts/bump-build.sh` bumps the build number in `project.yml` **and** the
+committed Xcode project in one step (no xcodegen needed): `scripts/bump-build.sh`
+for +1, or `scripts/bump-build.sh 12` to set it. The details below are what it
+edits.
+
 Set in `project.yml`:
 
 ```yaml

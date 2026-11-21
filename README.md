@@ -16,6 +16,18 @@ over Wi‑Fi.
   track's native sample rate (no resampling), unity gain, no time-stretch.
   Turn on **Bit-Perfect Mode** (sidebar → Output) to lock the app volume at
   100% and see whether the DAC is actually running at the track's rate.
+- 🔊 **DSD (DSF / DFF)** — DSD64 / DSD128 are sent **bit-exact over DoP** to a
+  USB DAC (volume locked at 100%; the system volume must be at maximum, and the
+  output must be a USB DAC). On any other output — or for DSD256 — the file is
+  filtered and converted to 24-bit PCM instead, so it's always safe to play.
+  Embedded ID3 tags are read. DST-compressed and multichannel files aren't
+  supported.
+- 🧭 **Output awareness** — the Output section shows where audio is going (e.g.
+  *iPad Speaker*, a USB DAC), warns when that route can't be bit-perfect
+  (speaker, Bluetooth, AirPlay) or when the system volume isn't at maximum, and
+  verifies that the hardware followed the track's sample rate. On **Mac** the
+  output device's sample rate is switched to each track's automatically
+  (*Match DAC Sample Rate*).
 - 📡 **Remote control** — advertises a Bonjour `_fwplayer._tcp` service so the
   FWPlayer Remote app can discover and control playback on the local network.
 - 📂 **Local folders** — browse the app's on‑device folder (files added via
@@ -46,6 +58,9 @@ A single application target ships to all three via Mac Catalyst.
 ## Project layout
 
 ```
+Package.swift              Test-only SwiftPM package (`swift test`) over the pure-logic sources
+Tests/                     Unit tests (DSD / DoP conversion, tags)
+scripts/bump-build.sh      Bumps the build number in project.yml and the Xcode project
 project.yml                 XcodeGen project definition (single Catalyst target)
 Support/
   Info.plist                Generated from project.yml `info.properties`
@@ -83,6 +98,14 @@ device, or choose **My Mac (Mac Catalyst)** for the desktop app. Set your
 signing team in Xcode (or `DEVELOPMENT_TEAM` in `project.yml`) before running
 on a device.
 
+## Tests
+
+```bash
+swift test        # on a Mac; no simulator needed
+```
+
+CI runs the unit tests and builds the app for the iOS Simulator and Mac Catalyst.
+
 ## SMB support
 
 Direct in‑app SMB connections are implemented with the pure‑Swift
@@ -111,6 +134,10 @@ preserved through a security‑scoped bookmark.
   optionally *Test Connection*, then *Save*.
 
 ## Playlists
+
+Two playlists are built in and can't be deleted: **Favorites** (star a track) and
+**Played** — every track you've played, oldest first (most recent last), kept
+across launches (up to 1000).
 
 - Create one with **＋ → New Playlist…** (or *New Playlist…* from the *Add to
   Playlist* sheet).
