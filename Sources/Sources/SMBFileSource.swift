@@ -59,6 +59,11 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         // The on-disk cache makes browsing instant after the one-time pre-scan
         // (and across app restarts).
         if let cached = await listingCache.listing(path: path) { return cached }
+        if SACDVirtualPath.isImage(path) {                         // an SACD image: list its tracks
+            let items = try await imageTracks(path: path)
+            await listingCache.store(path: path, items: items)
+            return items
+        }
         do {
             let files = try await listConnection.listDirectory(path: path)
             let items = Self.items(from: files, parent: path)
@@ -78,6 +83,11 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
 
     func refresh(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
+        if SACDVirtualPath.isImage(path) {
+            let items = try await imageTracks(path: path)
+            await listingCache.store(path: path, items: items)
+            return items
+        }
         let files = try await listConnection.listDirectory(path: path)
         let items = Self.items(from: files, parent: path)
         await listingCache.store(path: path, items: items)
@@ -96,8 +106,13 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         var stack = [""]
         while let path = stack.popLast() {
             do {
-                let files = try await listConnection.listDirectory(path: path)
-                let items = Self.items(from: files, parent: path)
+                let items: [FileItem]
+                if SACDVirtualPath.isImage(path) {
+                    items = try await imageTracks(path: path)
+                } else {
+                    let files = try await listConnection.listDirectory(path: path)
+                    items = Self.items(from: files, parent: path)
+                }
                 await listingCache.store(path: path, items: items, persist: false)
                 scanned += 1
                 await progress(scanned)
@@ -171,6 +186,9 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
 
     func fileURL(forPath path: String) async throws -> URL {
         #if canImport(SMBClient)
+        if let virtual = SACDVirtualPath.split(path) {
+            return try await extractTrack(image: virtual.image, track: virtual.track)
+        }
         let data = try await downloadConnection.download(path: path)
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fwplayer-smb", isDirectory: true)
@@ -186,9 +204,73 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
     func releaseTemporaryURL(_ url: URL) {
         // Only remove files inside our temp download directory.
         if url.path.contains("fwplayer-smb") {
-            try? FileManager.default.removeItem(at: url)
+            // (A track URL carries a "#track=N" fragment; remove by path.)
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path))
         }
     }
+
+    #if canImport(SMBClient)
+    // MARK: SACD images (ranged reads: no need to download the whole image)
+
+    private func readSectors(_ connection: SMBConnection, path: String, lsn: Int, count: Int) async throws -> [UInt8] {
+        [UInt8](try await connection.readRange(path: path,
+                                               offset: UInt64(lsn) * UInt64(SACDISO.sectorSize),
+                                               length: UInt32(count * SACDISO.sectorSize)))
+    }
+
+    /// The tracks of an image, from a few ranged reads of its table of contents.
+    private func imageTracks(path: String) async throws -> [FileItem] {
+        let toc = try await SACDTOCPrefetch.load { lsn, count in
+            try await self.readSectors(self.listConnection, path: path, lsn: lsn, count: count)
+        }
+        return SACDLibrary.trackItems(disc: try SACDISO.open(toc), imagePath: path)
+    }
+
+    /// Writes the TOC and one track's sectors into a sparse local copy of the image
+    /// (at their original positions) and returns a URL addressing that track.
+    private func extractTrack(image: String, track number: Int) async throws -> URL {
+        let toc = try await SACDTOCPrefetch.load { lsn, count in
+            try await self.readSectors(self.downloadConnection, path: image, lsn: lsn, count: count)
+        }
+        let disc = try SACDISO.open(toc)
+        guard let area = disc.stereo else {
+            throw SACDError.unsupported("This SACD has no stereo area (multichannel isn't supported).")
+        }
+        guard let track = area.tracks.first(where: { $0.number == number }) else {
+            throw SACDError.noSuchTrack(number)
+        }
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fwplayer-smb", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent("\(UUID().uuidString).iso")
+        guard FileManager.default.createFile(atPath: dest.path, contents: nil) else { throw SACDError.readFailed }
+        let handle = try FileHandle(forWritingTo: dest)
+        do {
+            for segment in toc.segments {
+                try handle.seek(toOffset: UInt64(segment.lsn) * UInt64(SACDISO.sectorSize))
+                try handle.write(contentsOf: Data(segment.bytes))
+            }
+            var lsn = track.startLSN
+            let end = track.startLSN + track.lengthLSN
+            while lsn < end {
+                try Task.checkCancellation()
+                let count = min(2048, end - lsn)                    // 4 MB per read
+                let bytes = try await readSectors(downloadConnection, path: image, lsn: lsn, count: count)
+                guard !bytes.isEmpty else { break }
+                try handle.seek(toOffset: UInt64(lsn) * UInt64(SACDISO.sectorSize))
+                try handle.write(contentsOf: Data(bytes))
+                lsn += bytes.count / SACDISO.sectorSize
+                if bytes.count < count * SACDISO.sectorSize { break }
+            }
+            try handle.close()
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: dest)
+            throw error
+        }
+        return SACDISOTrackURL.make(dest, track: number)
+    }
+    #endif
 
     /// Verifies that the configured credentials and share are reachable.
     func testConnection() async throws {
@@ -326,6 +408,34 @@ private actor SMBConnection {
                 return try await performListDirectory(path: path)
             }
             throw error
+        }
+    }
+
+    /// Reads `length` bytes at `offset` of a remote file.
+    func readRange(path: String, offset: UInt64, length: UInt32) async throws -> Data {
+        do {
+            return try await performReadRange(path: path, offset: offset, length: length)
+        } catch {
+            client = nil
+            if smbShouldReconnect(error) {
+                return try await performReadRange(path: path, offset: offset, length: length)
+            }
+            throw error
+        }
+    }
+
+    private func performReadRange(path: String, offset: UInt64, length: UInt32) async throws -> Data {
+        let client = try await connectedClient()
+        return try await withTimeout(downloadTimeout) {
+            let reader = client.fileReader(path: path)
+            do {
+                let data = try await reader.read(offset: offset, length: length)
+                try? await reader.close()
+                return data
+            } catch {
+                try? await reader.close()
+                throw error
+            }
         }
     }
 

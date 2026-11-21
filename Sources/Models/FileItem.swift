@@ -54,6 +54,8 @@ struct FileItem: Identifiable, Hashable, Codable {
         if name.hasPrefix(".") { return .other }
         if isDirectory { return .directory }
         let ext = (name as NSString).pathExtension.lowercased()
+        // An SACD image opens like a folder of tracks.
+        if ext == "iso" { return .directory }
         return audioExtensions.contains(ext) ? .audio : .other
     }
 }

@@ -153,6 +153,12 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
     private func listFromDisk(path: String) async throws -> [FileItem] {
         try ensureSecurityScopedAccess()
         let dir = url(forPath: path)
+        if SACDVirtualPath.isImage(path) {                         // an SACD image: list its tracks
+            return try await Task.detached(priority: .userInitiated) {
+                let disc = try SACDISO.open(try SACDFileSectorSource(url: dir))
+                return SACDLibrary.trackItems(disc: disc, imagePath: path)
+            }.value
+        }
         return try await Task.detached(priority: .userInitiated) {
             try Self.readDirectory(at: dir, parentPath: path)
         }.value
@@ -187,6 +193,13 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
 
     func fileURL(forPath path: String) async throws -> URL {
         try ensureSecurityScopedAccess()
+        if let virtual = SACDVirtualPath.split(path) {             // one track of an SACD image
+            let image = url(forPath: virtual.image)
+            guard FileManager.default.fileExists(atPath: image.path) else {
+                throw FileSourceError.fileNotFound(virtual.image)
+            }
+            return SACDISOTrackURL.make(image, track: virtual.track)
+        }
         let url = url(forPath: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw FileSourceError.fileNotFound(path)
@@ -196,6 +209,7 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
 
     func directURL(forPath path: String) -> URL? {
         guard (try? ensureSecurityScopedAccess()) != nil else { return nil }
+        if SACDVirtualPath.split(path) != nil { return nil }       // a virtual track has no file of its own
         // Return the URL without a `fileExists` check: this is called
         // synchronously for every visible row on the main thread, and for a
         // network-mounted folder that stat is a per-row round-trip to the server

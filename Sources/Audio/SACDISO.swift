@@ -68,6 +68,78 @@ final class SACDFileSectorSource: SACDSectorSource {
     }
 }
 
+/// A sector source backed by sector ranges already fetched into memory (e.g. the TOC
+/// of a remote image read with a few ranged reads).
+final class SACDMemorySectorSource: SACDSectorSource {
+    private(set) var segments: [(lsn: Int, bytes: [UInt8])] = []
+
+    func add(lsn: Int, bytes: [UInt8]) { segments.append((lsn, bytes)) }
+
+    func readSectors(_ lsn: Int, count: Int) throws -> [UInt8] {
+        let size = SACDISO.sectorSize
+        for segment in segments where lsn >= segment.lsn {
+            let start = (lsn - segment.lsn) * size
+            let end = start + count * size
+            if end <= segment.bytes.count { return Array(segment.bytes[start..<end]) }
+        }
+        throw SACDError.readFailed
+    }
+}
+
+/// Reads just the table-of-contents sectors of an image through an async ranged
+/// reader (`read(lsn, sectorCount)`), so a remote image needn't be downloaded to
+/// list or play a track.
+enum SACDTOCPrefetch {
+    static func load(read: (Int, Int) async throws -> [UInt8]) async throws -> SACDMemorySectorSource {
+        let master = try await read(SACDISO.masterTOCSector, 10)
+        guard master.count >= 10 * SACDISO.sectorSize,
+              String(decoding: master[0..<8], as: UTF8.self) == "SACDMTOC" else { throw SACDError.notAnSACD }
+        let memory = SACDMemorySectorSource()
+        memory.add(lsn: SACDISO.masterTOCSector, bytes: master)
+        for location in SACDISO.areaTOCLocations(master: master) {
+            for lsn in [location.toc1, location.toc2] where lsn > 0 {
+                if let bytes = try? await read(lsn, location.sectors), bytes.count >= location.sectors * SACDISO.sectorSize {
+                    memory.add(lsn: lsn, bytes: bytes)
+                }
+            }
+        }
+        return memory
+    }
+}
+
+// MARK: - Virtual paths
+
+/// How an image's tracks appear in a file browser: the `.iso` is shown as a folder
+/// whose entries are `NN Title.sacdtrack`.
+enum SACDVirtualPath {
+    static let trackExtension = "sacdtrack"
+
+    static func isImage(_ path: String) -> Bool {
+        (path as NSString).pathExtension.lowercased() == "iso"
+    }
+
+    static func trackName(number: Int, title: String?) -> String {
+        let cleaned = (title ?? "")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let shortened = String(cleaned.prefix(80))
+        let prefix = String(format: "%02d", number)
+        return (shortened.isEmpty ? prefix : prefix + " " + shortened) + "." + trackExtension
+    }
+
+    /// `("dir/disc.iso", 3)` for `dir/disc.iso/03 Title.sacdtrack`.
+    static func split(_ path: String) -> (image: String, track: Int)? {
+        let ns = path as NSString
+        guard ns.pathExtension.lowercased() == trackExtension else { return nil }
+        let image = ns.deletingLastPathComponent
+        guard isImage(image) else { return nil }
+        let digits = ns.lastPathComponent.prefix { $0.isASCII && $0.isNumber }
+        guard let number = Int(digits), number > 0 else { return nil }
+        return (image, number)
+    }
+}
+
 struct SACDTrack: Equatable {
     var number: Int                 // 1-based
     var startLSN: Int
@@ -180,6 +252,15 @@ enum SACDISO {
         }
         guard disc.stereo != nil || disc.multichannel != nil else { throw SACDError.notAnSACD }
         return disc
+    }
+
+    /// Where the Area TOCs (and their backups) live, per the Master TOC.
+    static func areaTOCLocations(master: [UInt8]) -> [(toc1: Int, toc2: Int, sectors: Int)] {
+        guard master.count >= 88 else { return [] }
+        return [
+            (be32(master, 64), be32(master, 68), be16(master, 84)),
+            (be32(master, 72), be32(master, 76), be16(master, 86)),
+        ].filter { $0.0 > 0 && $0.2 > 0 && $0.2 <= 96 }
     }
 
     private static func parseAreaTOC(_ data: [UInt8]) throws -> SACDArea? {

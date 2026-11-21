@@ -92,7 +92,7 @@ final class AudioDecoderRegistry: Sendable {
     /// straight through; others are decoded to a temporary WAV off the main thread.
     func prepare(sourceURL: URL, fileExtension ext: String,
                  dsdMode: DSDOutputMode = .dop) async throws -> PlayableAudio {
-        if DSDDoPDecoder.supportedExtensions.contains(ext) {
+        if DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension {
             let result = try await Task.detached(priority: .userInitiated) {
                 try DSDDoPDecoder.convert(sourceURL: sourceURL, mode: dsdMode)
             }.value
@@ -115,6 +115,7 @@ final class AudioDecoderRegistry: Sendable {
 enum ExternalAudioFormats {
     static let extensions: Set<String> = {
         var exts = DSDDoPDecoder.supportedExtensions
+        exts.insert(SACDVirtualPath.trackExtension)
         #if canImport(COpus) || canImport(CVorbis)
         exts.formUnion(OggAudioDecoder.supportedExtensions)
         #endif

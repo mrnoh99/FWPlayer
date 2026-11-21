@@ -255,6 +255,43 @@ final class SACDISOTests: XCTestCase {
         }
     }
 
+    func testVirtualPaths() {
+        XCTAssertEqual(SACDVirtualPath.trackName(number: 3, title: "A/B: C"), "03 A-B- C.sacdtrack")
+        XCTAssertEqual(SACDVirtualPath.trackName(number: 12, title: nil), "12.sacdtrack")
+        XCTAssertTrue(SACDVirtualPath.isImage("dir/Disc.ISO"))
+        XCTAssertFalse(SACDVirtualPath.isImage("dir/track.flac"))
+
+        let split = SACDVirtualPath.split("Jazz/Pure 2.iso/03 Title.sacdtrack")
+        XCTAssertEqual(split?.image, "Jazz/Pure 2.iso")
+        XCTAssertEqual(split?.track, 3)
+        XCTAssertNil(SACDVirtualPath.split("Jazz/song.flac"))
+        XCTAssertNil(SACDVirtualPath.split("Jazz/folder/03 Title.sacdtrack"))     // not inside an image
+        XCTAssertNil(SACDVirtualPath.split("Jazz/Pure 2.iso/Title.sacdtrack"))    // no track number
+    }
+
+    func testTOCPrefetchOpensAnImageWithoutReadingAudio() async throws {
+        let image = makeImage()
+        var reads = [(lsn: Int, count: Int)]()
+        let toc = try await SACDTOCPrefetch.load { lsn, count in
+            reads.append((lsn, count))
+            return Array(image[(lsn * 2048)..<((lsn + count) * 2048)])
+        }
+        let disc = try SACDISO.open(toc)
+        XCTAssertEqual(disc.stereo?.tracks.count, 2)
+        XCTAssertEqual(disc.stereo?.tracks.first?.title, "First Track")
+        XCTAssertTrue(reads.contains { $0.lsn == 510 })
+        XCTAssertTrue(reads.contains { $0.lsn == 540 })
+        XCTAssertTrue(reads.allSatisfy { $0.lsn < 600 }, "the audio area must not be read")
+    }
+
+    func testMemorySourceOnlyServesWhatItHolds() throws {
+        let memory = SACDMemorySectorSource()
+        memory.add(lsn: 10, bytes: [UInt8](repeating: 7, count: 2 * 2048))
+        XCTAssertEqual(try memory.readSectors(11, count: 1).count, 2048)
+        XCTAssertThrowsError(try memory.readSectors(12, count: 1))
+        XCTAssertThrowsError(try memory.readSectors(9, count: 1))
+    }
+
     func testDSTDecoderCanBeCreated() {
         #if canImport(CDST)
         let decoder = fwdst_create(2)

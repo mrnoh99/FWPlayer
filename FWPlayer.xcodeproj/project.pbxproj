@@ -235,6 +235,10 @@
 			isa = PBXBuildFile;
 			fileRef = 90785729520D48DD82783CD0 /* fwdst.c */;
 		};
+		7EAB32DDA2A34C2E9E0C9191 /* SACDLibrary.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 3239D6B94F4643F4B697C635 /* SACDLibrary.swift */;
+		};
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -653,6 +657,12 @@
 			path = "FWPlayer-Bridging-Header.h";
 			sourceTree = "<group>";
 		};
+		3239D6B94F4643F4B697C635 /* SACDLibrary.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SACDLibrary.swift;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -827,6 +837,7 @@
 				335902C848354F1E841F687E /* FileSource.swift */,
 				8C746EDE2D0747CF9A43FC0A /* LocalFileSource.swift */,
 				1EDFE5927E534AC4ADF96A55 /* PlaylistManager.swift */,
+				3239D6B94F4643F4B697C635 /* SACDLibrary.swift */,
 				D3520823EFC04FA19F3B5263 /* SMBFileSource.swift */,
 				205D1B0647894305B16ACD78 /* SourceRegistry.swift */,
 			);
@@ -952,6 +963,7 @@
 				22D20CC3C5434891ACE40F0A /* MusicKitCatalog.swift in Sources */,
 				3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */,
 				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
+				7EAB32DDA2A34C2E9E0C9191 /* SACDLibrary.swift in Sources */,
 				81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */,
 				727588A615DF4FF78A97C175 /* dst_ac.c in Sources */,
 				AB486BC540584F26B08FCEB9 /* dst_data.c in Sources */,
