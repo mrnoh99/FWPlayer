@@ -203,6 +203,38 @@
 			isa = PBXBuildFile;
 			fileRef = 1C601CC0DD77499E88B6385D /* PlaylistDetailView.swift */;
 		};
+		21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 61FEFB6356924F3AA8178187 /* SACDISO.swift */;
+		};
+		81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7257794E228044D69FEF1E4D /* ccp_calc.c */;
+		};
+		727588A615DF4FF78A97C175 /* dst_ac.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7D2276B502F742D6B5A04704 /* dst_ac.c */;
+		};
+		AB486BC540584F26B08FCEB9 /* dst_data.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7A347DD4B22542C9A5883653 /* dst_data.c */;
+		};
+		6351386493C14746B91931B2 /* dst_fram.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 33951ABE055C4B189CEDE2DA /* dst_fram.c */;
+		};
+		4BB26966167049648C4709C8 /* dst_init.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 8B37F37CA9E74D59BC3F76B7 /* dst_init.c */;
+		};
+		62125EAC5F8B4846A1C7D363 /* unpack_dst.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 68CAD0074F08489DAC89E32D /* unpack_dst.c */;
+		};
+		B59B0F1089EF45EB98234198 /* fwdst.c in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 90785729520D48DD82783CD0 /* fwdst.c */;
+		};
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -513,6 +545,114 @@
 			path = NowPlayingBar.swift;
 			sourceTree = "<group>";
 		};
+		61FEFB6356924F3AA8178187 /* SACDISO.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SACDISO.swift;
+			sourceTree = "<group>";
+		};
+		7257794E228044D69FEF1E4D /* ccp_calc.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = ccp_calc.c;
+			sourceTree = "<group>";
+		};
+		7D2276B502F742D6B5A04704 /* dst_ac.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = dst_ac.c;
+			sourceTree = "<group>";
+		};
+		7A347DD4B22542C9A5883653 /* dst_data.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = dst_data.c;
+			sourceTree = "<group>";
+		};
+		33951ABE055C4B189CEDE2DA /* dst_fram.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = dst_fram.c;
+			sourceTree = "<group>";
+		};
+		8B37F37CA9E74D59BC3F76B7 /* dst_init.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = dst_init.c;
+			sourceTree = "<group>";
+		};
+		68CAD0074F08489DAC89E32D /* unpack_dst.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = unpack_dst.c;
+			sourceTree = "<group>";
+		};
+		90785729520D48DD82783CD0 /* fwdst.c */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.c;
+			path = fwdst.c;
+			sourceTree = "<group>";
+		};
+		D6F45CDA37F14AA3BEC0FF70 /* ccp_calc.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = ccp_calc.h;
+			sourceTree = "<group>";
+		};
+		F87394EA08C444C5876DA9C4 /* conststr.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = conststr.h;
+			sourceTree = "<group>";
+		};
+		3E1589AC33EF47BFBC4ABC3C /* dst_ac.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = dst_ac.h;
+			sourceTree = "<group>";
+		};
+		4AD59096071248DD9C0D930F /* dst_data.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = dst_data.h;
+			sourceTree = "<group>";
+		};
+		DB0923E9E4854590A231F83E /* dst_fram.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = dst_fram.h;
+			sourceTree = "<group>";
+		};
+		0FD8BEF47EEB4DBAB5E1DDA0 /* dst_init.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = dst_init.h;
+			sourceTree = "<group>";
+		};
+		CA44EE324B4748249CC90011 /* types.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = types.h;
+			sourceTree = "<group>";
+		};
+		D4D1A085DC78447AAE35E8C8 /* unpack_dst.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = unpack_dst.h;
+			sourceTree = "<group>";
+		};
+		D6C70586AC76496486A717BF /* fwdst.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = include/fwdst.h;
+			sourceTree = "<group>";
+		};
+		4DF7E73E7903411D9E9F2473 /* FWPlayer-Bridging-Header.h */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			path = "FWPlayer-Bridging-Header.h";
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -536,6 +676,7 @@
 				3AD6BA6D364B4A64942FD697 /* AudioPlayer.swift */,
 				05E108B0C2B5425B852E8B7A /* EmbeddedLyrics.swift */,
 				6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */,
+				61FEFB6356924F3AA8178187 /* SACDISO.swift */,
 				2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */,
 				8B87615A1D104B909447182C /* MusicKitCatalog.swift */,
 				4A07ACE8BBA64F118C21CE9A /* OggAudioDecoder.swift */,
@@ -614,6 +755,8 @@
 			children = (
 				8EDF1AB8967D498FADC3431B /* App */,
 				0AD33B7212AE41A282E33E54 /* Audio */,
+				0E0E0FD1AD2345F4A34D45D2 /* Bridging */,
+				E566B43B59224EB39313296C /* DST */,
 				D2D0D179E66F4DA69996565B /* Models */,
 				ED8B0FFEF0634AA481330704 /* Net */,
 				C8995BE6CB8D4F9BB6D8F1C4 /* Protocol */,
@@ -689,6 +832,39 @@
 			);
 			name = Sources;
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		E566B43B59224EB39313296C /* DST */ = {
+			isa = PBXGroup;
+			children = (
+				7257794E228044D69FEF1E4D /* ccp_calc.c */,
+				7D2276B502F742D6B5A04704 /* dst_ac.c */,
+				7A347DD4B22542C9A5883653 /* dst_data.c */,
+				33951ABE055C4B189CEDE2DA /* dst_fram.c */,
+				8B37F37CA9E74D59BC3F76B7 /* dst_init.c */,
+				68CAD0074F08489DAC89E32D /* unpack_dst.c */,
+				90785729520D48DD82783CD0 /* fwdst.c */,
+				D6F45CDA37F14AA3BEC0FF70 /* ccp_calc.h */,
+				F87394EA08C444C5876DA9C4 /* conststr.h */,
+				3E1589AC33EF47BFBC4ABC3C /* dst_ac.h */,
+				4AD59096071248DD9C0D930F /* dst_data.h */,
+				DB0923E9E4854590A231F83E /* dst_fram.h */,
+				0FD8BEF47EEB4DBAB5E1DDA0 /* dst_init.h */,
+				CA44EE324B4748249CC90011 /* types.h */,
+				D4D1A085DC78447AAE35E8C8 /* unpack_dst.h */,
+				D6C70586AC76496486A717BF /* fwdst.h */,
+			);
+			name = DST;
+			path = DST;
+			sourceTree = "<group>";
+		};
+		0E0E0FD1AD2345F4A34D45D2 /* Bridging */ = {
+			isa = PBXGroup;
+			children = (
+				4DF7E73E7903411D9E9F2473 /* FWPlayer-Bridging-Header.h */,
+			);
+			name = Bridging;
+			path = Bridging;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -775,6 +951,14 @@
 				AEC36D378A89474590536AB7 /* EmbeddedLyrics.swift in Sources */,
 				22D20CC3C5434891ACE40F0A /* MusicKitCatalog.swift in Sources */,
 				3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */,
+				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
+				81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */,
+				727588A615DF4FF78A97C175 /* dst_ac.c in Sources */,
+				AB486BC540584F26B08FCEB9 /* dst_data.c in Sources */,
+				6351386493C14746B91931B2 /* dst_fram.c in Sources */,
+				4BB26966167049648C4709C8 /* dst_init.c in Sources */,
+				62125EAC5F8B4846A1C7D363 /* unpack_dst.c in Sources */,
+				B59B0F1089EF45EB98234198 /* fwdst.c in Sources */,
 				7C2E91A04B6D4F18A3D5E0B1 /* MacOutputDevice.swift in Sources */,
 				BF84E43FAFCE4ED781B3AF09 /* OggAudioDecoder.swift in Sources */,
 				18701BE8B2494CE69E94B316 /* FileItem.swift in Sources */,
@@ -829,6 +1013,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				ENABLE_PREVIEWS = YES;
+				OTHER_SWIFT_FLAGS = "-DFWDST_BRIDGED";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridging/FWPlayer-Bridging-Header.h";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Support/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -856,6 +1042,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				ENABLE_PREVIEWS = YES;
+				OTHER_SWIFT_FLAGS = "-DFWDST_BRIDGED";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Bridging/FWPlayer-Bridging-Header.h";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Support/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

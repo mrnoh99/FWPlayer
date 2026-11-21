@@ -52,15 +52,24 @@ struct DSDDoPDecoder: AudioDecoder {
     /// Converts a DSF/DFF file to a temporary 24-bit WAV. `.dop` falls back to
     /// PCM for rates DoP can't carry (DSD256+ would need a 705.6 kHz carrier).
     static func convert(sourceURL: URL, mode: DSDOutputMode) throws -> DSDConversion {
-        let handle: FileHandle
-        do { handle = try FileHandle(forReadingFrom: sourceURL) } catch { throw AudioDecoderError.openFailed }
-        defer { try? handle.close() }
+        var handle: FileHandle?
+        defer { try? handle?.close() }
 
         let reader: DSDStreamReader
-        switch sourceURL.pathExtension.lowercased() {
-        case "dsf": reader = try DSFReader(handle: handle)
-        case "dff": reader = try DFFReader(handle: handle)
-        default: throw AudioDecoderError.unsupported
+        let ext = sourceURL.pathExtension.lowercased()
+        switch ext {
+        case "dsf", "dff":
+            let opened: FileHandle
+            do { opened = try FileHandle(forReadingFrom: URL(fileURLWithPath: sourceURL.path)) }
+            catch { throw AudioDecoderError.openFailed }
+            handle = opened
+            reader = ext == "dsf" ? try DSFReader(handle: opened) : try DFFReader(handle: opened)
+        case "iso":
+            // One track of an SACD image: the track number rides in the URL fragment.
+            let source = try SACDFileSectorSource(url: URL(fileURLWithPath: sourceURL.path))
+            reader = try SACDTrackReader(source: source, trackNumber: SACDISOTrackURL.trackNumber(in: sourceURL))
+        default:
+            throw AudioDecoderError.unsupported
         }
         guard reader.channels == 2 else {
             throw AudioDecoderError.dsdUnsupported("Only stereo DSD files are supported.")
@@ -305,12 +314,12 @@ private final class DoPEncoder {
 
 /// A run of MSB-first DSD bytes for each channel; both arrays have the same,
 /// even length.
-private struct DSDChunk {
+struct DSDChunk {
     var left: [UInt8]
     var right: [UInt8]
 }
 
-private protocol DSDStreamReader: AnyObject {
+protocol DSDStreamReader: AnyObject {
     var dsdRate: Int { get }
     var channels: Int { get }
     /// The next run of audio, or nil at the end of the stream.

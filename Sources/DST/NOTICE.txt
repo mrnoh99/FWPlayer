@@ -1,0 +1,11 @@
+The DST decoder in this directory (ccp_calc, dst_ac, dst_data, dst_fram,
+dst_init, unpack_dst, types.h, conststr.h) is taken unmodified from SACD Ripper:
+
+    https://github.com/sacd-ripper/sacd-ripper  (libs/libdstdec)
+
+It is licensed under the GNU General Public License, version 2 (see the headers
+of each file) and derives from the ISO/IEC 14496-3 reference decoder. FWPlayer is
+a personal-use app that is not distributed, so the GPL's conditions on
+distribution don't apply; if you ever distribute FWPlayer, they do.
+
+fwdst.c / include/fwdst.h are a small single-threaded wrapper written for FWPlayer.

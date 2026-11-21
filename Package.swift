@@ -11,10 +11,19 @@ let package = Package(
         .library(name: "FWPlayerCore", targets: ["FWPlayerCore"]),
     ],
     targets: [
+        // C DST decoder (SACD Ripper, GPL v2 — see Sources/DST/NOTICE.txt). In the
+        // app it is compiled into the app target and reached via the bridging header.
+        .target(
+            name: "CDST",
+            path: "Sources/DST",
+            exclude: ["NOTICE.txt"],
+            publicHeadersPath: "include"
+        ),
         .target(
             name: "FWPlayerCore",
+            dependencies: ["CDST"],
             path: "Sources/Audio",
-            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift"]
+            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift"]
         ),
         .testTarget(
             name: "FWPlayerCoreTests",
