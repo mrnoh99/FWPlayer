@@ -322,6 +322,20 @@ final class RemoteControlServer: ObservableObject {
                 await playFolder(sourceID: sourceID, path: path, recursive: recursive)
             }
 
+        case .createPlaylist(let name, let tracks):
+            let playlist = playlists.create(name: name)
+            for remote in tracks {
+                playlists.add(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title), to: playlist.id)
+            }
+
+        case .renamePlaylist(let playlistID, let name):
+            guard let uuid = UUID(uuidString: playlistID), uuid != PlaylistManager.favoritesID else { return }
+            playlists.rename(uuid, to: name)
+
+        case .deletePlaylist(let playlistID):
+            guard let uuid = UUID(uuidString: playlistID) else { return }
+            playlists.delete(uuid)
+
         case .addToPlaylist(let playlistID, let tracks):
             guard let uuid = UUID(uuidString: playlistID) else { return }
             for remote in tracks {

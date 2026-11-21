@@ -166,6 +166,13 @@ enum RemoteCommand: Codable, Hashable {
     case moveQueue(from: [Int], to: Int)
     /// Play every audio file under a folder, optionally including subfolders.
     case playFolder(sourceID: String, path: String, recursive: Bool)
+    /// Create a new playlist named `name` (empty names become "New Playlist"),
+    /// optionally seeded with `tracks`.
+    case createPlaylist(name: String, tracks: [RemoteQueueTrack])
+    /// Rename a playlist (the built-in Favorites playlist is left alone).
+    case renamePlaylist(playlistID: String, name: String)
+    /// Delete a playlist (the built-in Favorites playlist can't be deleted).
+    case deletePlaylist(playlistID: String)
     /// Append `tracks` to the playlist with the given id.
     case addToPlaylist(playlistID: String, tracks: [RemoteQueueTrack])
     /// Move the playlist entries at `from` (zero-based) to before index `to`.
