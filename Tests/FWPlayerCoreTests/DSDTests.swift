@@ -260,12 +260,17 @@ final class DSDTests: XCTestCase {
         // Input amplitude 0.25 → ×2 (SACD 0 dB = full scale) = 0.5 peak → 0.3536 RMS.
         XCTAssertEqual(rms, 0.5 / 2.0.squareRoot(), accuracy: 0.02)
 
-        // A 1 kHz tone crosses zero about 2000 times a second (176.4 kHz rate).
-        var crossings = 0
-        var last = steady.first ?? 0
-        for s in steady { if (s >= 0) != (last >= 0) { crossings += 1 }; last = s }
-        let seconds = Double(steady.count) / 176_400
-        XCTAssertEqual(Double(crossings) / seconds, 2000, accuracy: 400)
+        // The 1 kHz component (correlation over 100 whole cycles = 17,640 frames)
+        // carries the expected amplitude: the tone survived at the right frequency.
+        let window = Array(samples[2000..<(2000 + 17_640)])
+        var inPhase = 0.0, quadrature = 0.0
+        for (n, value) in window.enumerated() {
+            let angle = 2 * Double.pi * 1000 * Double(n) / 176_400
+            inPhase += value * sin(angle)
+            quadrature += value * cos(angle)
+        }
+        let amplitude = 2 * (inPhase * inPhase + quadrature * quadrature).squareRoot() / Double(window.count)
+        XCTAssertEqual(amplitude, 0.5, accuracy: 0.02)
     }
 
     func testPCMConversionOfSilenceIsSilent() throws {
