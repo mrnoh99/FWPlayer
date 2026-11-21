@@ -13,9 +13,45 @@ final class PlaylistManager: ObservableObject {
     static let favoritesID = UUID(uuidString: "FA000000-0000-0000-0000-000000000001")!
     static let favoritesName = "Favorites"
 
+    /// The built-in Played playlist: every track you've played, oldest first
+    /// (most recent last). Always kept second and never deletable or renamable.
+    static let playedID = UUID(uuidString: "FA000000-0000-0000-0000-000000000002")!
+    static let playedName = "Played"
+    /// Most entries kept in Played; the oldest are dropped beyond this.
+    static let playedLimit = 1000
+
+    static func isBuiltIn(_ id: UUID) -> Bool { id == favoritesID || id == playedID }
+
     func load() {
         playlists = store.load()
         ensureFavoritesFirst()
+        ensurePlayedSecond()
+    }
+
+    /// Guarantees a Played playlist exists and sits right after Favorites.
+    private func ensurePlayedSecond() {
+        let target = min(1, playlists.count)
+        if let index = playlists.firstIndex(where: { $0.id == Self.playedID }) {
+            if index != target {
+                let played = playlists.remove(at: index)
+                playlists.insert(played, at: min(1, playlists.count))
+                persist()
+            }
+        } else {
+            playlists.insert(Playlist(id: Self.playedID, name: Self.playedName), at: target)
+            persist()
+        }
+    }
+
+    /// Records a track in Played: moved to the end if it was already there.
+    func recordPlayed(_ track: Track) {
+        guard let index = playlists.firstIndex(where: { $0.id == Self.playedID }) else { return }
+        let entry = PlaylistEntry(track: track)
+        playlists[index].entries.removeAll { $0.id == entry.id }
+        playlists[index].entries.append(entry)
+        let excess = playlists[index].entries.count - Self.playedLimit
+        if excess > 0 { playlists[index].entries.removeFirst(excess) }
+        persist()
     }
 
     /// Guarantees a Favorites playlist exists and is the first entry.
@@ -63,13 +99,13 @@ final class PlaylistManager: ObservableObject {
     func rename(_ id: UUID, to name: String) {
         guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, id != Self.playedID else { return }
         playlists[index].name = trimmed
         persist()
     }
 
     func delete(_ id: UUID) {
-        guard id != Self.favoritesID else { return }   // Favorites can't be deleted
+        guard !Self.isBuiltIn(id) else { return }   // Favorites and Played can't be deleted
         playlists.removeAll { $0.id == id }
         persist()
     }

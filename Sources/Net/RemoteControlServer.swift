@@ -329,7 +329,7 @@ final class RemoteControlServer: ObservableObject {
             }
 
         case .renamePlaylist(let playlistID, let name):
-            guard let uuid = UUID(uuidString: playlistID), uuid != PlaylistManager.favoritesID else { return }
+            guard let uuid = UUID(uuidString: playlistID), !PlaylistManager.isBuiltIn(uuid) else { return }
             playlists.rename(uuid, to: name)
 
         case .deletePlaylist(let playlistID):

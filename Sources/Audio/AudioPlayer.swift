@@ -690,6 +690,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 isPlaying = false
             }
             recordHistory(track)
+            playlists.recordPlayed(track)
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
             // Audio CDs carry no embedded tags, and reading the file for tags

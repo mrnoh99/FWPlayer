@@ -448,6 +448,7 @@ private struct PlaylistSidebarRow: View {
     @State private var isDropTarget = false
 
     private var isFavorites: Bool { playlist.id == PlaylistManager.favoritesID }
+    private var isPlayed: Bool { playlist.id == PlaylistManager.playedID }
 
     var body: some View {
         Label {
@@ -455,7 +456,7 @@ private struct PlaylistSidebarRow: View {
             Text("\(playlist.entries.count)")
                 .foregroundStyle(.secondary)
         } icon: {
-            Image(systemName: isFavorites ? "star.fill" : "music.note.list")
+            Image(systemName: isFavorites ? "star.fill" : isPlayed ? "clock.arrow.circlepath" : "music.note.list")
                 .foregroundStyle(isFavorites ? Color.yellow : Color.accentColor)
         }
         .listRowBackground(isDropTarget ? Color.accentColor.opacity(0.15) : nil)
@@ -466,7 +467,7 @@ private struct PlaylistSidebarRow: View {
             return true
         } isTargeted: { isDropTarget = $0 }
         .contextMenu {
-            if !isFavorites {
+            if !PlaylistManager.isBuiltIn(playlist.id) {
                 Button(role: .destructive) {
                     playlists.delete(playlist.id)
                 } label: {

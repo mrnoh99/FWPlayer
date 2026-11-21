@@ -209,16 +209,20 @@ struct PlaylistDetailView: View {
                         Label("Play", systemImage: "play.fill")
                     }
                 }
-                Button {
-                    renameText = playlist?.name ?? ""
-                    showingRename = true
-                } label: {
-                    Label("Rename", systemImage: "pencil")
+                if playlistID != PlaylistManager.playedID {
+                    Button {
+                        renameText = playlist?.name ?? ""
+                        showingRename = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
                 }
-                Button(role: .destructive) {
-                    playlists.delete(playlistID)
-                } label: {
-                    Label("Delete Playlist", systemImage: "trash")
+                if !PlaylistManager.isBuiltIn(playlistID) {
+                    Button(role: .destructive) {
+                        playlists.delete(playlistID)
+                    } label: {
+                        Label("Delete Playlist", systemImage: "trash")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
