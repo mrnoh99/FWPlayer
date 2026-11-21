@@ -22,6 +22,17 @@ enum MacOutputDevice {
         return (status == noErr && id != kAudioObjectUnknown) ? id : nil
     }
 
+    /// Whether the default output device is attached over USB. Nil if it can't
+    /// be determined.
+    static func isUSBOutput() -> Bool? {
+        guard let device = defaultDeviceID() else { return nil }
+        var transport = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = address(kAudioDevicePropertyTransportType)
+        guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &transport) == noErr else { return nil }
+        return transport == UInt32(kAudioDeviceTransportTypeUSB)
+    }
+
     /// The default output device's current nominal sample rate.
     static func currentRate() -> Double? {
         guard let device = defaultDeviceID() else { return nil }

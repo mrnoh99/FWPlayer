@@ -277,7 +277,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             return
         }
         guard !player.isPlaying else { return }
-        if let problem = doPVolumeProblem() {
+        if let problem = doPPlaybackProblem() {
             errorMessage = problem
             return
         }
@@ -288,12 +288,30 @@ final class AudioPlayer: NSObject, ObservableObject {
         noteTransportEvent()
     }
 
-    /// Non-nil when DSD (DoP) can't be played safely: below-maximum system volume
-    /// corrupts the markers and the DAC plays the data as loud PCM noise.
-    private func doPVolumeProblem() -> String? {
-        guard isDoPPlayback, let volume = systemVolume, volume < 0.999 else { return nil }
-        return "DSD (DoP) needs the system volume at maximum — otherwise it plays as loud noise. Raise the volume to 100% and try again."
+    /// Non-nil when DSD (DoP) can't be played safely. Unless a DAC recognises the
+    /// markers, DoP is just full-scale PCM noise, so it must only go to a USB DAC
+    /// (not a speaker, headphones, Bluetooth, AirPlay, …) and at unity gain —
+    /// below-maximum system volume corrupts the markers too.
+    private func doPPlaybackProblem(assumingDoP: Bool = false) -> String? {
+        guard isDoPPlayback || assumingDoP else { return nil }
+        #if targetEnvironment(macCatalyst)
+        if MacOutputDevice.isUSBOutput() != true {
+            return Self.doPRouteMessage
+        }
+        #elseif os(iOS)
+        refreshOutputRoute()
+        if outputRoute?.kind != .usb {
+            return Self.doPRouteMessage
+        }
+        #endif
+        if let volume = systemVolume, volume < 0.999 {
+            return "DSD (DoP) needs the system volume at maximum — otherwise it plays as loud noise. Raise the volume to 100% and try again."
+        }
+        return nil
     }
+
+    private static let doPRouteMessage = "DSD (DoP) can only be played to a USB DAC. On a speaker, headphones, Bluetooth or AirPlay it would play as loud noise — connect your DAC (input set to USB-DAC) and try again."
+
 
     func pausePlayback() {
         guard let player, player.isPlaying else { return }
@@ -643,6 +661,16 @@ final class AudioPlayer: NSObject, ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // Refuse DSD up front (before downloading and converting a large file)
+        // when it can't be sent to a USB DAC safely.
+        let fileExtension = (track.path as NSString).pathExtension.lowercased()
+        if DSDDoPDecoder.supportedExtensions.contains(fileExtension),
+           let problem = doPPlaybackProblem(assumingDoP: true) {
+            isLoading = false
+            errorMessage = problem
+            return
+        }
+
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -731,7 +759,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             // DSD arrives as DoP inside 24-bit PCM: refuse to start it where the
             // system volume would corrupt the stream (loud noise).
             dopLabel = playable.isDoP ? Self.dsdLabel(forDoPFileAt: playable.url) : nil
-            if let problem = doPVolumeProblem() {
+            if let problem = doPPlaybackProblem() {
                 dopLabel = nil
                 playable.cleanup()
                 registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
@@ -1097,7 +1125,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                     guard let self else { return }
                     self.systemVolume = volume
                     // Lowering the volume mid-DSD would blast noise: stop it.
-                    if self.isPlaying, let problem = self.doPVolumeProblem() {
+                    if self.isPlaying, let problem = self.doPPlaybackProblem() {
                         self.pausePlayback()
                         self.errorMessage = problem
                     }
@@ -1213,6 +1241,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     private func handleRouteChange(_ note: Notification) {
         // A DAC being plugged in or removed changes the hardware rate.
         refreshOutputSampleRate()
+        // DSD (DoP) must never reach anything but a USB DAC.
+        if isPlaying, let problem = doPPlaybackProblem() {
+            pausePlayback()
+            errorMessage = problem
+        }
         guard let info = note.userInfo,
               let raw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
