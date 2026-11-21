@@ -1,0 +1,6 @@
+// Code signing for the FWPlayer target.
+//
+// Put your Apple Developer team ID in Config/Local.xcconfig (git-ignored; copy
+// Local.xcconfig.example) and it is picked up here. Keeping it out of the project
+// file means `git pull` never conflicts with the team you chose in Xcode.
+#include? "Local.xcconfig"

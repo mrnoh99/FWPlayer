@@ -78,7 +78,8 @@ Sources/
 ## Building
 
 The generated Xcode project (`FWPlayer.xcodeproj`) is committed, so you can clone
-and build with no extra tooling (see [BUILD.md](BUILD.md)):
+(or pull) and build with no extra tooling. Put your signing team in
+`Config/Local.xcconfig` once — see [BUILD.md](BUILD.md):
 
 ```bash
 open FWPlayer.xcodeproj

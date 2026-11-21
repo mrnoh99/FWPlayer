@@ -9,6 +9,9 @@ xcuserdata/
 *.xcscmblueprint
 *.xccheckout
 
+# Your signing team (see Config/Local.xcconfig.example)
+Config/Local.xcconfig
+
 # Build output
 DerivedData/
 build/

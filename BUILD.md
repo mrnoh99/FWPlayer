@@ -1,18 +1,43 @@
 # Building FWPlayer
 
-Once the Xcode project has been committed (see the one-time step below), you can
-clone and build with **no extra tooling**:
+The generated Xcode project is committed, so a fresh clone (or a `git pull`)
+builds with **no extra tooling** — just Xcode 15 or later.
 
 ```bash
-git clone https://github.com/mrnoh99/FWPlayer.git
+git clone https://github.com/mrnoh99/FWPlayer.git     # or: git pull
 cd FWPlayer
 open FWPlayer.xcodeproj
 ```
 
-In Xcode: pick a destination (an iPhone/iPad, a Simulator, or **My Mac (Mac
-Catalyst)**), set your signing team on the target if prompted, and **Run**.
-Xcode fetches the Swift package dependency (SMBClient) automatically on first
-open.
+## One-time: your signing team
+
+Signing needs your Apple Developer team. Keep it in a git-ignored file instead of
+the project, so pulling never conflicts with it:
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig
+# edit Config/Local.xcconfig → DEVELOPMENT_TEAM = <your team ID>
+```
+
+(You can also pick the team in Xcode → target → Signing & Capabilities, but that
+edits the project file and will conflict on pulls.) Without any team the app still
+builds and runs in the **iOS Simulator**; the Mac build can run unsigned with
+`CODE_SIGN_IDENTITY[sdk=macosx*] = -` (see the example file).
+
+## Build and run
+
+1. Pick a destination: an iPhone/iPad, a Simulator, or **My Mac (Mac Catalyst)**.
+2. **Run** (⌘R). On first open Xcode fetches the SMBClient package (pinned to
+   0.3.1 in `Package.resolved`).
+
+That's all — the DSD/DST decoder is plain C compiled into the app, so nothing else
+needs to be installed.
+
+## Tests
+
+```bash
+swift test        # DSD / DoP / SACD image unit tests, no simulator needed
+```
 
 ---
 

@@ -1,0 +1,6 @@
+// Copy to Config/Local.xcconfig (git-ignored) and fill in your team ID
+// (Xcode → Settings → Accounts → your team, or developer.apple.com → Membership).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Optional: run the Mac (Catalyst) build without a developer account.
+// CODE_SIGN_IDENTITY[sdk=macosx*] = -

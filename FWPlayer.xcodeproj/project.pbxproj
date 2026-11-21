@@ -663,6 +663,12 @@
 			path = SACDLibrary.swift;
 			sourceTree = "<group>";
 		};
+		E941B07F5EC74C08A68DB4D9 /* Signing.xcconfig */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Signing.xcconfig;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -735,6 +741,7 @@
 		64E32F15723247A9903A03E2 = {
 			isa = PBXGroup;
 			children = (
+				C9FA529429134996B98A05B2 /* Config */,
 				958483701993472DA0D209DC /* Sources */,
 				CD297743D79A483FB7C0CBB7 /* Support */,
 				B895D1C1BCDA4C8F86503534 /* Products */,
@@ -878,6 +885,15 @@
 			path = Bridging;
 			sourceTree = "<group>";
 		};
+		C9FA529429134996B98A05B2 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				E941B07F5EC74C08A68DB4D9 /* Signing.xcconfig */,
+			);
+			name = Config;
+			path = Config;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1017,6 +1033,7 @@
 /* Begin XCBuildConfiguration section */
 		76AF29167D1F4449A7EA1D58 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = E941B07F5EC74C08A68DB4D9 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1046,6 +1063,7 @@
 		};
 		CD2FB3E0F37D4313B22BB88B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = E941B07F5EC74C08A68DB4D9 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

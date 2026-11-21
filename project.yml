@@ -47,6 +47,10 @@ targets:
       - path: Sources
     dependencies:
       - package: SMBClient
+    # Team ID comes from Config/Local.xcconfig (git-ignored) via Signing.xcconfig.
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     entitlements:
       path: Support/FWPlayer.entitlements
     info:
