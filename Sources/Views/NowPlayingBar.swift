@@ -18,6 +18,8 @@ struct NowPlayingBar: View {
     @State private var sampleRate: Double?
     @State private var isLoading = false
     @State private var loadingDetail: String?
+    /// "DSD128 DoP" while a DSD file is sent bit-exact (replaces the PCM carrier rate).
+    @State private var dopText: String?
     @State private var isPlaying = false
     @State private var canGoPrevious = false
     @State private var canGoNext = false
@@ -185,7 +187,11 @@ struct NowPlayingBar: View {
         if isLoading, let loadingDetail { return loadingDetail }
         var parts: [String] = []
         if let artist { parts.append(artist) }
-        if let sampleRate { parts.append(AudioFormatReader.formatSampleRate(sampleRate)) }
+        if let dopText {
+            parts.append(dopText)
+        } else if let sampleRate {
+            parts.append(AudioFormatReader.formatSampleRate(sampleRate))
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -195,6 +201,7 @@ struct NowPlayingBar: View {
         sampleRate = player.currentTrack?.sampleRate
         isLoading = player.isLoading
         loadingDetail = player.loadingDetail
+        dopText = player.dopLabel.map { "\($0) DoP" }
         isPlaying = player.isPlaying
         canGoPrevious = player.canGoPrevious
         canGoNext = player.canGoNext

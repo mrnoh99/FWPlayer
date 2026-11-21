@@ -802,7 +802,15 @@ final class AudioPlayer: NSObject, ObservableObject {
             recordHistory(track)
             playlists.recordPlayed(track)
             refreshOutputSampleRateSoon()
-            updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
+            // A DoP file's rate is its PCM carrier (e.g. 352.8 kHz for DSD128), which is
+            // what the hardware must match; AVAudioPlayer's own `format` can report a
+            // different (capped) processing rate, which made the rate check cry wolf.
+            var trackRate = newPlayer.format.sampleRate
+            if playable.isDoP, let carrier = (try? AVAudioFile(forReading: playable.url))?.fileFormat.sampleRate,
+               carrier > 0 {
+                trackRate = carrier
+            }
+            updateTrackSampleRate(trackID: track.id, sampleRate: trackRate)
             updateNowPlaying()
             // Audio CDs carry no embedded tags, and reading the file for tags
             // would seek against AVAudioPlayer streaming the same track off the
