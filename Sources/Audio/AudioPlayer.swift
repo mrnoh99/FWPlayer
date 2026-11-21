@@ -125,6 +125,14 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// this is the default output device's nominal rate (Core Audio).
     @Published private(set) var outputSampleRate: Double?
 
+    /// iPhone/iPad system output volume (0…1). iOS applies it digitally to USB
+    /// DACs that have no hardware volume, so anything below 1.0 alters the
+    /// samples. Nil where it doesn't apply (Mac Catalyst).
+    @Published private(set) var systemVolume: Float?
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    private var systemVolumeObservation: NSKeyValueObservation?
+    #endif
+
     /// The gain actually applied to the signal.
     var effectiveVolume: Double { bitPerfectMode ? 1.0 : volume }
 
@@ -155,6 +163,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
         super.init()
         configureAudioSession()
+        observeSystemVolume()
         configureRemoteCommands()
         observeAppLifecycle()
         observeAudioSessionEvents()
@@ -691,6 +700,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             }
             recordHistory(track)
             playlists.recordPlayed(track)
+            refreshOutputSampleRateSoon()
             updateTrackSampleRate(trackID: track.id, sampleRate: newPlayer.format.sampleRate)
             updateNowPlaying()
             // Audio CDs carry no embedded tags, and reading the file for tags
@@ -725,6 +735,9 @@ final class AudioPlayer: NSObject, ObservableObject {
         #elseif os(iOS)
         guard let file = try? AVAudioFile(forReading: url) else { return }
         let format = file.fileFormat
+        // The background keep-alive is a silent 44.1 kHz stream; left running it
+        // would pin the hardware to that rate (and block re-activation below).
+        keepAlive.stop()
         let session = AVAudioSession.sharedInstance()
         try? session.setPreferredSampleRate(format.sampleRate)
         let channels = Int(format.channelCount)
@@ -732,8 +745,26 @@ final class AudioPlayer: NSObject, ObservableObject {
             try? session.setPreferredOutputNumberOfChannels(min(channels, session.maximumOutputNumberOfChannels))
         }
         try? session.setActive(true)
+        // The rate change is applied when the route is reconfigured, so verify it.
+        // If the hardware didn't follow (e.g. a USB DAC still at the previous
+        // track's rate), re-activate the session — no player is running at this
+        // point — and ask again.
+        if abs(session.sampleRate - format.sampleRate) > 1 {
+            try? session.setActive(false)
+            try? session.setPreferredSampleRate(format.sampleRate)
+            try? session.setActive(true)
+        }
         #endif
         refreshOutputSampleRate()
+    }
+
+    /// Re-reads the hardware rate shortly after playback starts: a USB DAC can
+    /// take a moment to settle, so the value read before play() may be stale.
+    private func refreshOutputSampleRateSoon() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            self?.refreshOutputSampleRate()
+        }
     }
 
     private func refreshOutputSampleRate() {
@@ -963,6 +994,18 @@ final class AudioPlayer: NSObject, ObservableObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
         try? session.setActive(true)
+        #endif
+    }
+
+    /// Tracks the system output volume so bit-perfect mode can warn when it isn't
+    /// at maximum.
+    private func observeSystemVolume() {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        systemVolumeObservation = AVAudioSession.sharedInstance()
+            .observe(\.outputVolume, options: [.initial, .new]) { [weak self] session, _ in
+                let volume = session.outputVolume
+                Self.runOnMainActor { self?.systemVolume = volume }
+            }
         #endif
     }
 

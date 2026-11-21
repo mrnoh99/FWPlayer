@@ -301,6 +301,12 @@ struct ContentView: View {
     /// Whether the hardware is running at the playing track's native rate.
     @ViewBuilder
     private var bitPerfectStatus: some View {
+        if player.bitPerfectMode, let volume = player.systemVolume, volume < 0.999 {
+            Label("System volume is \(Int((volume * 100).rounded()))%. A USB DAC without hardware volume is attenuated digitally, so the signal isn't bit-perfect — raise the volume to maximum.",
+                  systemImage: "speaker.wave.1.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        }
         if let output = player.outputSampleRate {
             let outputText = AudioFormatReader.formatSampleRate(output)
             if player.isOutputRateMismatched, let file = player.currentTrack?.sampleRate {
