@@ -20,8 +20,15 @@ over Wi‑Fi.
   USB DAC (volume locked at 100%; the system volume must be at maximum, and the
   output must be a USB DAC). On any other output — or for DSD256 — the file is
   filtered and converted to 24-bit PCM instead, so it's always safe to play.
-  Embedded ID3 tags are read. DST-compressed and multichannel files aren't
-  supported.
+  Embedded ID3 tags are read, and a progress readout shows while a large file is
+  converted. DST-compressed DSDIFF and multichannel files aren't supported.
+- 💿 **SACD images (.iso)** — a decrypted SACD image opens like a folder of tracks
+  (named from the disc's text, including Shift-JIS discs) and plays through the
+  same DSD path, DST-compressed or not. On an SMB share only the table of contents
+  and the chosen track's sectors are read, so a multi-GB image is never
+  downloaded. Stereo area only, no multichannel; DST decoding is the SACD Ripper
+  decoder (GPL, see `Sources/DST/NOTICE.txt` — fine for personal use, not for
+  distribution) and is the least tested part.
 - 🧭 **Output awareness** — the Output section shows where audio is going (e.g.
   *iPad Speaker*, a USB DAC), warns when that route can't be bit-perfect
   (speaker, Bluetooth, AirPlay) or when the system volume isn't at maximum, and
@@ -59,7 +66,8 @@ A single application target ships to all three via Mac Catalyst.
 
 ```
 Package.swift              Test-only SwiftPM package (`swift test`) over the pure-logic sources
-Tests/                     Unit tests (DSD / DoP conversion, tags)
+Tests/                     Unit tests (DSD / DoP conversion, tags, SACD image parsing)
+Sources/DST/               C DST decoder (SACD Ripper, GPL v2) + small wrapper
 scripts/bump-build.sh      Bumps the build number in project.yml and the Xcode project
 project.yml                 XcodeGen project definition (single Catalyst target)
 Support/
