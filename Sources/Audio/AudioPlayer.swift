@@ -621,7 +621,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             // DSD from a share streams when it starts; don't download it ahead.
             let upcomingExt = (track.path as NSString).pathExtension.lowercased()
             if liveDSD, source is ByteStreamingSource, Self.isDSDPath(track.path, ext: upcomingExt) { continue }
-            if streamFLAC, source is ByteStreamingSource, upcomingExt == "flac" { continue }
+            if streamFLAC, source is ByteStreamingSource, StreamedPCM.extensions.contains(upcomingExt) { continue }
 
             prefetchTasks[track.id] = Task { [weak self] in
                 let url = try? await source.fileURL(forPath: track.path)
@@ -735,7 +735,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // Skipping through tracks quickly: let the last one win before any engine,
                 // decoder or network read is set up for the ones in between.
                 if source is ByteStreamingSource,
-                   (self.streamFLAC && streamExt == "flac") || (self.liveDSD && Self.isDSDPath(track.path, ext: streamExt)) {
+                   (self.streamFLAC && StreamedPCM.extensions.contains(streamExt)) || (self.liveDSD && Self.isDSDPath(track.path, ext: streamExt)) {
                     try await Task.sleep(nanoseconds: 250_000_000)
                 }
                 if self.liveDSD, let streaming = source as? ByteStreamingSource,
@@ -745,8 +745,9 @@ final class AudioPlayer: NSObject, ObservableObject {
                     try Task.checkCancellation()
                 }
 
-                // Experimental: FLAC from a share plays from ranged reads, with no download first.
-                if self.streamFLAC, let streaming = source as? ByteStreamingSource, streamExt == "flac",
+                // FLAC / WAV / AIFF from a share plays from ranged reads, with no download first.
+                if self.streamFLAC, let streaming = source as? ByteStreamingSource,
+                   StreamedPCM.extensions.contains(streamExt),
                    self.prefetched[track.id] == nil, self.recentlyPlayed[track.id] == nil {
                     if await self.startStreamedFLAC(source: source, streaming: streaming, track: track) { return }
                     try Task.checkCancellation()
@@ -1077,21 +1078,23 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
 
-    /// Starts a FLAC file straight from a share's ranged reads. False if it can't
-    /// (the caller then downloads the file as before).
+    /// Starts a FLAC / WAV / AIFF file straight from a share's ranged reads. False if it
+    /// can't (the caller then downloads the file as before).
     private func startStreamedFLAC(source: any FileSource, streaming: ByteStreamingSource, track: Track) async -> Bool {
-        let decoder: FLACDecoder
+        let decoder: StreamedPCMDecoder
+        let ext = (track.path as NSString).pathExtension.lowercased()
         do {
             let stream = try await streaming.openByteStream(forPath: track.path)
             decoder = try await Self.blocking {
-                try FLACDecoder(source: stream)
+                try StreamedPCM.open(source: stream, fileExtension: ext)
             }
         } catch {
             return false
         }
         guard !Task.isCancelled else { return false }
-        let rate = Double(decoder.info.sampleRate)
-        let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds, label: "FLAC",
+        let rate = Double(decoder.sampleRate)
+        let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds,
+                            label: StreamedPCM.label(forExtension: ext),
                             next: { try decoder.nextSamples() },
                             seek: { try decoder.seek(toSeconds: $0) })
         applyPreferredHardwareRate(rate, channels: 2)
@@ -1317,17 +1320,17 @@ final class AudioPlayer: NSObject, ObservableObject {
               let index = upcomingIndices().first, queue.indices.contains(index) else { return }
         let track = queue[index]
         let ext = (track.path as NSString).pathExtension.lowercased()
-        guard track.id != current.id, ext == "flac",
+        guard track.id != current.id, StreamedPCM.extensions.contains(ext),
               let source = registry.source(for: track.sourceID),
               let streaming = source as? ByteStreamingSource,
               prefetched[track.id] == nil, recentlyPlayed[track.id] == nil else { return }
         let currentID = current.id
         gaplessTask = Task { [weak self] in
             guard let stream = try? await streaming.openByteStream(forPath: track.path),
-                  let decoder = try? await Self.blocking({ try FLACDecoder(source: stream) }),
+                  let decoder = try? await Self.blocking({ try StreamedPCM.open(source: stream, fileExtension: ext) }),
                   !Task.isCancelled else { return }
-            let pcm = PCMSource(sampleRate: Double(decoder.info.sampleRate),
-                                durationSeconds: decoder.durationSeconds, label: "FLAC",
+            let pcm = PCMSource(sampleRate: Double(decoder.sampleRate),
+                                durationSeconds: decoder.durationSeconds, label: StreamedPCM.label(forExtension: ext),
                                 next: { try decoder.nextSamples() },
                                 seek: { try decoder.seek(toSeconds: $0) })
             await MainActor.run {
