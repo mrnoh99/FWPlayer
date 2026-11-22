@@ -288,9 +288,13 @@ final class DSDLivePlayback: PlaybackBackend {
         guard let format else { throw DSDLiveError.engine("no stream format") }
         let renderer = self.renderer
         let node = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList -> OSStatus in
-            let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard buffers.count >= 2,
-                  let l = buffers[0].mData?.assumingMemoryBound(to: Float.self),
+            // Non-interleaved stereo: two buffers, one per channel. (Read directly instead of
+            // through UnsafeMutableAudioBufferListPointer, which Mac Catalyst doesn't expose.)
+            guard audioBufferList.pointee.mNumberBuffers >= 2,
+                  let offset = MemoryLayout<AudioBufferList>.offset(of: \.mBuffers) else { return noErr }
+            let buffers = UnsafeMutableRawPointer(audioBufferList).advanced(by: offset)
+                .assumingMemoryBound(to: AudioBuffer.self)
+            guard let l = buffers[0].mData?.assumingMemoryBound(to: Float.self),
                   let r = buffers[1].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
             renderer.render(frames: Int(frameCount), left: l, right: r)
             return noErr
