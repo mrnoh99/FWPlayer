@@ -1060,7 +1060,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         guard !Task.isCancelled, let backend = makeLiveDSD(reader: reader, mode: mode) else { return false }
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !tags.isEmpty { applyStreamedTags(tags, trackID: track.id) }
-        loadStreamedMetadata(trackID: track.id, picture: nil)
+        loadStreamedMetadata(trackID: track.id, picture: nil, source: source, streaming: streaming,
+                             folderPath: SACDVirtualPath.split(track.path)?.image ?? track.path)
         return true
     }
 
@@ -1098,17 +1099,27 @@ final class AudioPlayer: NSObject, ObservableObject {
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !decoder.tags.isEmpty { applyStreamedTags(decoder.tags, trackID: track.id) }
         let picture = decoder.pictureBlock.flatMap { AlbumArtwork.parseFlacPicture($0) }
-        loadStreamedMetadata(trackID: track.id, picture: picture)
+        loadStreamedMetadata(trackID: track.id, picture: picture, source: source, streaming: streaming,
+                             folderPath: track.path)
         return true
     }
 
     /// Cover art and album details for a track streamed from a share: there's no local
     /// file to read, so use the cover embedded in the stream (FLAC) or look it up online
     /// by artist and album, and fill the details panel from the Apple Music / iTunes catalog.
-    private func loadStreamedMetadata(trackID: String, picture: Data?) {
+    private func loadStreamedMetadata(trackID: String, picture: Data?, source: any FileSource,
+                                      streaming: ByteStreamingSource, folderPath: String) {
         guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
         let track = queue[idx]
-        artwork.resolveStreamed(track: track, embedded: picture)
+        if let picture {
+            artwork.resolveStreamed(track: track, embedded: picture)
+        } else {
+            // No embedded cover: a cover.jpg / folder.jpg next to the file, then the online lookup.
+            Task { [weak self] in
+                let cover = await Self.sidecarCover(streaming: streaming, trackPath: folderPath)
+                self?.artwork.resolveStreamed(track: track, embedded: cover)
+            }
+        }
         guard track.artist != nil || track.album != nil else { return }
         Task { [weak self] in
             var catalog = MusicKitCatalog.isSupported
@@ -1138,6 +1149,28 @@ final class AudioPlayer: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    /// A cover image (cover / folder / front .jpg, .png) in the track's folder on
+    /// the share, read through ranged reads. Nil if there is none or it's over 16 MB.
+    private static func sidecarCover(streaming: ByteStreamingSource, trackPath: String) async -> Data? {
+        // The share's listings leave images out, so probe the usual names directly.
+        let parent = (trackPath as NSString).deletingLastPathComponent
+        var located: ByteSource?
+        search: for name in ["cover", "folder", "front", "Cover", "Folder", "Front"] {
+            for ext in ["jpg", "png", "jpeg"] {
+                if Task.isCancelled { return nil }
+                let path = parent.isEmpty ? "\(name).\(ext)" : "\(parent)/\(name).\(ext)"
+                if let found = try? await streaming.openByteStream(forPath: path) {
+                    located = found
+                    break search
+                }
+            }
+        }
+        guard let stream = located else { return nil }
+        let size = stream.size
+        guard size > 0, size <= 16 << 20 else { return nil }
+        return try? await Self.blocking { try stream.read(at: 0, length: Int(size)) }
     }
 
     /// Fills artist / album / year / genre from tags read over the stream.
