@@ -244,7 +244,7 @@ struct ContentView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Toggle(isOn: $player.streamFLAC) {
-                    Label("Stream FLAC (experimental)", systemImage: "arrow.down.circle.dashed")
+                    Label("Stream FLAC", systemImage: "arrow.down.circle.dashed")
                 }
                 Text("Plays FLAC from a network share while it is read, with no download first. The normal download is used if this can't start.")
                     .font(.caption2)

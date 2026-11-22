@@ -152,8 +152,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let liveDSDKey = "liveDSD"
 
-    /// Experimental: play FLAC from a network share while it is read, instead of
-    /// downloading the whole file first. Off by default; falls back to the download.
+    /// Play FLAC from a network share while it is read, instead of downloading the
+    /// whole file first. On by default; falls back to the download.
     @Published var streamFLAC: Bool {
         didSet { UserDefaults.standard.set(streamFLAC, forKey: Self.streamFLACKey) }
     }
@@ -220,7 +220,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
         // On unless the user has switched it off.
         self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
-        self.streamFLAC = UserDefaults.standard.bool(forKey: Self.streamFLACKey)
+        self.streamFLAC = UserDefaults.standard.object(forKey: Self.streamFLACKey) as? Bool ?? true
         super.init()
         configureAudioSession()
         observeSystemVolume()
