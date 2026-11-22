@@ -124,6 +124,9 @@ final class FLACDecoder: @unchecked Sendable {
     let info: FLACStreamInfo
     /// Vorbis comments (keys upper-cased): ARTIST, ALBUM, TITLE, DATE, GENRE, …
     let tags: [String: String]
+    /// The raw first PICTURE metadata block (cover art), if the file has one and it's
+    /// under 8 MB. Parse it with `AlbumArtwork`.
+    let pictureBlock: Data?
 
     var durationSeconds: Double {
         info.totalSamples > 0 ? Double(info.totalSamples) / Double(info.sampleRate) : 0
@@ -156,6 +159,7 @@ final class FLACDecoder: @unchecked Sendable {
         var streamInfo: FLACStreamInfo?
         var points = [(sample: UInt64, offset: UInt64)]()
         var comments = [String: String]()
+        var picture: Data?
         var last = false
         while !last {
             let head = [UInt8](try source.read(at: position, length: 4))
@@ -189,8 +193,12 @@ final class FLACDecoder: @unchecked Sendable {
                 }
             case 4:
                 comments = Self.parseVorbisComments([UInt8](try source.read(at: body, length: min(length, 1 << 20))))
+            case 6:
+                if picture == nil, length > 32, length <= 8 << 20 {
+                    picture = try? source.read(at: body, length: length)
+                }
             default:
-                break                                           // PADDING, PICTURE, …: skipped unread
+                break                                           // PADDING, …: skipped unread
             }
             position = body + UInt64(length)
         }
@@ -201,6 +209,7 @@ final class FLACDecoder: @unchecked Sendable {
 
         info = streamInfo
         tags = comments
+        pictureBlock = picture
         seekPoints = points.sorted { $0.sample < $1.sample }
         firstFrameOffset = position
         bufferStart = position

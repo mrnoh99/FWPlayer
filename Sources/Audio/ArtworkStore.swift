@@ -110,6 +110,20 @@ final class ArtworkStore: ObservableObject {
         }
     }
 
+    /// Artwork for a track streamed from a share (no local file to read): the cover
+    /// embedded in the file when the stream gave one, otherwise the online lookup.
+    func resolveStreamed(track: Track, embedded: Data?) {
+        let key = Self.key(for: track)
+        guard memory[key] == nil, !inFlight.contains(key) else { return }
+        if let disk = loadDisk(key) { cache(key, disk); return }
+        if let embedded {
+            inFlight.insert(key)
+            finish(key: key, data: embedded, maxDimension: 600)
+            if memory[key] != nil { return }
+        }
+        resolveOnline(track: track)
+    }
+
     private func finish(key: String, data: Data?, maxDimension: CGFloat) {
         inFlight.remove(key)
         guard let data, let image = UIImage(data: data) else { missing.insert(key); return }
@@ -182,7 +196,7 @@ enum AlbumArtwork {
         return nil
     }
 
-    private static func parseFlacPicture(_ data: Data) -> Data? {
+    static func parseFlacPicture(_ data: Data) -> Data? {
         let bytes = [UInt8](data)
         var i = 0
         func u32() -> Int? {
