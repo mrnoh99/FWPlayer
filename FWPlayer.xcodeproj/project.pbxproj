@@ -247,6 +247,10 @@
 			isa = PBXBuildFile;
 			fileRef = C18E9D321A1944B2BC1EF9C3 /* ByteSource.swift */;
 		};
+		3A7C1D9E5B2F4086A1C4D7E2 /* FLACDecoder.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7E4B2A6C9D1F43A58B0E3C61 /* FLACDecoder.swift */;
+		};
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -689,6 +693,12 @@
 			path = ByteSource.swift;
 			sourceTree = "<group>";
 		};
+		7E4B2A6C9D1F43A58B0E3C61 /* FLACDecoder.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = FLACDecoder.swift;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -714,6 +724,7 @@
 				6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */,
 				5DEA9FC666DB44AFA4A9DF2A /* DSDLivePlayback.swift */,
 				C18E9D321A1944B2BC1EF9C3 /* ByteSource.swift */,
+				7E4B2A6C9D1F43A58B0E3C61 /* FLACDecoder.swift */,
 				61FEFB6356924F3AA8178187 /* SACDISO.swift */,
 				2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */,
 				8B87615A1D104B909447182C /* MusicKitCatalog.swift */,
@@ -1002,6 +1013,7 @@
 				3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */,
 				C64081471E9640F694639577 /* DSDLivePlayback.swift in Sources */,
 				5FF8E0A6B1D84D53A2D3DE78 /* ByteSource.swift in Sources */,
+				3A7C1D9E5B2F4086A1C4D7E2 /* FLACDecoder.swift in Sources */,
 				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
 				7EAB32DDA2A34C2E9E0C9191 /* SACDLibrary.swift in Sources */,
 				81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */,

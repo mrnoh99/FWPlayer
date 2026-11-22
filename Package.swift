@@ -23,12 +23,13 @@ let package = Package(
             name: "FWPlayerCore",
             dependencies: ["CDST"],
             path: "Sources/Audio",
-            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift", "DSDLivePlayback.swift", "ByteSource.swift"]
+            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift", "DSDLivePlayback.swift", "ByteSource.swift", "FLACDecoder.swift"]
         ),
         .testTarget(
             name: "FWPlayerCoreTests",
             dependencies: ["FWPlayerCore"],
-            path: "Tests/FWPlayerCoreTests"
+            path: "Tests/FWPlayerCoreTests",
+            resources: [.copy("Fixtures")]
         ),
     ]
 )
