@@ -197,6 +197,16 @@ final class DSDLiveRenderer {
 
 // MARK: - Live playback (AVAudioEngine)
 
+/// A source of interleaved stereo float PCM for the live engine.
+struct PCMSource {
+    let sampleRate: Double
+    let durationSeconds: Double
+    let label: String
+    /// The next run of interleaved L,R samples, or nil at the end.
+    let next: () throws -> [Float]?
+    let seek: (Double) throws -> Void
+}
+
 enum DSDLiveError: LocalizedError {
     case rateMismatch(Double, Double)
     case engine(String)
@@ -213,7 +223,9 @@ enum DSDLiveError: LocalizedError {
 /// Plays a DSD stream live: no temporary file, playback starts at once.
 final class DSDLivePlayback: PlaybackBackend {
     let plan: DSDDoPDecoder.Plan
-    private let reader: DSDStreamReader
+    private let reader: DSDStreamReader?
+    /// Set instead of `reader` when this plays plain PCM (e.g. FLAC streamed from a share).
+    private let pcm: PCMSource?
     private let renderer: DSDLiveRenderer
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
@@ -230,9 +242,19 @@ final class DSDLivePlayback: PlaybackBackend {
 
     init(reader: DSDStreamReader, plan: DSDDoPDecoder.Plan) {
         self.reader = reader
+        self.pcm = nil
         self.plan = plan
         renderer = DSDLiveRenderer(isDoP: plan.useDoP, sampleRate: Double(plan.outputRate),
                                    silenceSeconds: DSDDoPDecoder.silenceSeconds)
+    }
+
+    /// Live PCM playback (no DSD): the same engine, ring buffer and seek handling.
+    init(pcm: PCMSource) {
+        self.reader = nil
+        self.pcm = pcm
+        let rate = Int(pcm.sampleRate)
+        self.plan = DSDDoPDecoder.Plan(dsdRate: 0, multiple: 0, useDoP: false, outputRate: rate, label: pcm.label)
+        renderer = DSDLiveRenderer(isDoP: false, sampleRate: pcm.sampleRate, silenceSeconds: 0)
     }
 
     deinit { shutDown() }
@@ -246,7 +268,7 @@ final class DSDLivePlayback: PlaybackBackend {
         set { seek(to: newValue) }
     }
 
-    var duration: TimeInterval { reader.durationSeconds }
+    var duration: TimeInterval { reader?.durationSeconds ?? pcm?.durationSeconds ?? 0 }
 
     var volume: Float {
         get { engine.mainMixerNode.outputVolume }
@@ -358,7 +380,7 @@ final class DSDLivePlayback: PlaybackBackend {
 
     private func produceLoop() {
         let bufferTarget = Int(renderer.sampleRate)               // keep ~1 s buffered
-        var converter = plan.useDoP ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
+        var converter = plan.useDoP || reader == nil ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
         var pendingSamples = [Float]()
 
         while true {
@@ -370,8 +392,9 @@ final class DSDLivePlayback: PlaybackBackend {
             if stop { return }
 
             if let seekTo {
-                try? reader.seek(toSeconds: seekTo)
-                converter = plan.useDoP ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
+                try? reader?.seek(toSeconds: seekTo)
+                try? pcm?.seek(seekTo)
+                converter = plan.useDoP || reader == nil ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
                 pendingSamples.removeAll()
                 renderer.flush(musicSeconds: seekTo)             // drop anything produced before the move
             }
@@ -385,7 +408,22 @@ final class DSDLivePlayback: PlaybackBackend {
                 Thread.sleep(forTimeInterval: 0.01)
                 continue
             }
-            guard let chunk = try? reader.next() else {
+            if let pcm {
+                if let samples = try? pcm.next(), !samples.isEmpty {
+                    pendingSamples = samples
+                    continue
+                }
+                renderer.markEnd()
+                while true {
+                    producerLock.lock()
+                    let done = stopRequested || pendingSeek != nil
+                    producerLock.unlock()
+                    if done { break }
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+                continue
+            }
+            guard let chunk = try? reader?.next() else {
                 renderer.markEnd()
                 // Wait for a seek (or stop) once the stream is exhausted.
                 while true {

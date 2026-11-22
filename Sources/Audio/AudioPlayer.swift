@@ -152,6 +152,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let liveDSDKey = "liveDSD"
 
+    /// Experimental: play FLAC from a network share while it is read, instead of
+    /// downloading the whole file first. Off by default; falls back to the download.
+    @Published var streamFLAC: Bool {
+        didSet { UserDefaults.standard.set(streamFLAC, forKey: Self.streamFLACKey) }
+    }
+    private static let streamFLACKey = "streamFLAC"
+
     /// Mac only: switch the output device (e.g. a USB DAC) to each track's native
     /// sample rate automatically. On by default.
     @Published var autoSampleRate: Bool {
@@ -213,6 +220,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
         // On unless the user has switched it off.
         self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
+        self.streamFLAC = UserDefaults.standard.bool(forKey: Self.streamFLACKey)
         super.init()
         configureAudioSession()
         observeSystemVolume()
@@ -581,8 +589,9 @@ final class AudioPlayer: NSObject, ObservableObject {
             if source.kind == .audioCD { continue }
             if source.directURL(forPath: track.path) != nil { continue }   // local: no download
             // DSD from a share streams when it starts; don't download it ahead.
-            if liveDSD, source is ByteStreamingSource,
-               Self.isDSDPath(track.path, ext: (track.path as NSString).pathExtension.lowercased()) { continue }
+            let upcomingExt = (track.path as NSString).pathExtension.lowercased()
+            if liveDSD, source is ByteStreamingSource, Self.isDSDPath(track.path, ext: upcomingExt) { continue }
+            if streamFLAC, source is ByteStreamingSource, upcomingExt == "flac" { continue }
 
             prefetchTasks[track.id] = Task { [weak self] in
                 let url = try? await source.fileURL(forPath: track.path)
@@ -697,6 +706,13 @@ final class AudioPlayer: NSObject, ObservableObject {
                    Self.isDSDPath(track.path, ext: streamExt),
                    self.prefetched[track.id] == nil, self.recentlyPlayed[track.id] == nil {
                     if await self.startStreamedDSD(source: source, streaming: streaming, track: track) { return }
+                    try Task.checkCancellation()
+                }
+
+                // Experimental: FLAC from a share plays from ranged reads, with no download first.
+                if self.streamFLAC, let streaming = source as? ByteStreamingSource, streamExt == "flac",
+                   self.prefetched[track.id] == nil, self.recentlyPlayed[track.id] == nil {
+                    if await self.startStreamedFLAC(source: source, streaming: streaming, track: track) { return }
                     try Task.checkCancellation()
                 }
 
@@ -1007,6 +1023,31 @@ final class AudioPlayer: NSObject, ObservableObject {
         return true
     }
 
+    /// Starts a FLAC file straight from a share's ranged reads. False if it can't
+    /// (the caller then downloads the file as before).
+    private func startStreamedFLAC(source: any FileSource, streaming: ByteStreamingSource, track: Track) async -> Bool {
+        let decoder: FLACDecoder
+        do {
+            let stream = try await streaming.openByteStream(forPath: track.path)
+            decoder = try await Task.detached(priority: .userInitiated) {
+                try FLACDecoder(source: stream)
+            }.value
+        } catch {
+            return false
+        }
+        guard !Task.isCancelled else { return false }
+        let rate = Double(decoder.info.sampleRate)
+        let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds, label: "FLAC",
+                            next: { try decoder.nextSamples() },
+                            seek: { try decoder.seek(toSeconds: $0) })
+        applyPreferredHardwareRate(rate, channels: 2)
+        let backend = DSDLivePlayback(pcm: pcm)
+        do { try backend.prepare() } catch { backend.stop(); return false }
+        beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
+        if !decoder.tags.isEmpty { applyStreamedTags(decoder.tags, trackID: track.id) }
+        return true
+    }
+
     /// Fills artist / album / year / genre from tags read over the stream.
     private func applyStreamedTags(_ tags: [String: String], trackID: String) {
         guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
@@ -1026,8 +1067,9 @@ final class AudioPlayer: NSObject, ObservableObject {
     private func beginLiveDSD(_ backend: DSDLivePlayback, sourceURL: URL?, track: Track, sourceID: String) {
         cleanupTemp()
         let plan = backend.plan
+        let isDSD = plan.dsdRate > 0
         dopLabel = plan.useDoP ? plan.label : nil
-        dsdPCMLabel = plan.useDoP ? nil : plan.label
+        dsdPCMLabel = isDSD && !plan.useDoP ? plan.label : nil
         timeOffset = 0
         if let problem = doPPlaybackProblem() {
             backend.stop()

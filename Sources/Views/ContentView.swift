@@ -243,6 +243,12 @@ struct ContentView: View {
                 Text("Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Toggle(isOn: $player.streamFLAC) {
+                    Label("Stream FLAC (experimental)", systemImage: "arrow.down.circle.dashed")
+                }
+                Text("Plays FLAC from a network share while it is read, with no download first. The normal download is used if this can't start.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 #if targetEnvironment(macCatalyst)
                 Toggle(isOn: $player.autoSampleRate) {
                     Label("Match DAC Sample Rate", systemImage: "dial.medium")
