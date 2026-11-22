@@ -434,8 +434,26 @@ struct PlayerView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            rateMatchBadge
         }
         .padding(.horizontal, 4)
+    }
+
+    /// Whether the DAC runs at the track's own sample rate (no resampling by the system).
+    @ViewBuilder
+    private var rateMatchBadge: some View {
+        if let output = player.outputSampleRate, let file = player.currentTrack?.sampleRate {
+            if !player.isOutputRateMismatched {
+                Label("Matches track · \(AudioFormatReader.formatSampleRate(output))", systemImage: "checkmark.seal.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            } else if player.outputRoute?.canBeBitPerfect ?? true {
+                Label("Output \(AudioFormatReader.formatSampleRate(output)) ≠ track \(AudioFormatReader.formatSampleRate(file))",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 
     // MARK: - Up Next (right)
