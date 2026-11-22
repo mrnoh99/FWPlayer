@@ -67,7 +67,30 @@ enum MacOutputDevice {
         for multiple in 2...8 where supports(trackRate * Double(multiple)) {
             return trackRate * Double(multiple)
         }
-        return nil
+        // The device can't reach the track's rate (e.g. a 192 kHz file on a DAC that stops
+        // at 96 kHz): run at the highest rate it does support up to the track's, so the
+        // system's conversion is as gentle as possible (192 → 96, not 192 → 48). An exact
+        // integer divisor is preferred, since that conversion is the simplest.
+        for divisor in [2.0, 4.0, 8.0] where supports(trackRate / divisor) {
+            return trackRate / divisor
+        }
+        let highest = ranges.map { $0.mMaximum }.filter { $0 <= trackRate + 0.5 }.max()
+        return highest.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// The default output device's name and the highest rate it offers, for the status
+    /// line ("Prodigy CUBE 2 (up to 96 kHz)"). Nil if it can't be read.
+    static func deviceSummary() -> String? {
+        guard let device = defaultDeviceID() else { return nil }
+        var name: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        var addr = address(kAudioObjectPropertyName)
+        let status = withUnsafeMutablePointer(to: &name) {
+            AudioObjectGetPropertyData(device, &addr, 0, nil, &size, $0)
+        }
+        let title = status == noErr ? (name as String) : "Output device"
+        guard let top = availableRates(of: device).map({ $0.mMaximum }).max(), top > 0 else { return title }
+        return "\(title) (up to \(AudioFormatReader.formatSampleRate(top)))"
     }
 
     /// Switches the default output device to the best rate for `trackRate`.

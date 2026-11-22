@@ -365,7 +365,8 @@ struct ContentView: View {
                 // On a speaker/Bluetooth route the route warning above already
                 // explains the fixed rate; only blame the DAC when it is one.
                 if player.outputRoute?.canBeBitPerfect ?? true {
-                    Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate.",
+                    Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate."
+                          + (player.outputDeviceSummary.map { " Device: \($0)." } ?? ""),
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.orange)

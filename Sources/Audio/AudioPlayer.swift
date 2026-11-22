@@ -190,6 +190,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// The hardware output rate after the last format request. On Mac Catalyst
     /// this is the default output device's nominal rate (Core Audio).
     @Published private(set) var outputSampleRate: Double?
+    /// Mac: the output device's name and its highest sample rate, for the mismatch notice.
+    @Published private(set) var outputDeviceSummary: String?
 
     /// iPhone/iPad system output volume (0…1). iOS applies it digitally to USB
     /// DACs that have no hardware volume, so anything below 1.0 alters the
@@ -1270,6 +1272,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     private func refreshOutputSampleRate() {
         #if targetEnvironment(macCatalyst)
         outputSampleRate = MacOutputDevice.currentRate()
+        outputDeviceSummary = MacOutputDevice.deviceSummary()
         #elseif os(iOS)
         outputSampleRate = AVAudioSession.sharedInstance().sampleRate
         #endif
