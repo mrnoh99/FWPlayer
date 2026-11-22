@@ -103,7 +103,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Album-artwork cache, used to enrich the playing track and feed the UI.
     let artwork: ArtworkStore
     private unowned let playlists: PlaylistManager
-    private var player: AVAudioPlayer?
+    private var player: (any PlaybackBackend)?
     private var ticker: AnyCancellable?
     /// Resources backing the current track: the source file (an SMB download, to
     /// be released) and any decoder-produced temp file (to be deleted).
@@ -144,6 +144,13 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
     private static let bitPerfectKey = "bitPerfectMode"
+
+    /// Play DSD while converting it (no temporary file, no wait), instead of
+    /// converting the whole file first. Experimental; falls back to the old path.
+    @Published var liveDSD: Bool {
+        didSet { UserDefaults.standard.set(liveDSD, forKey: Self.liveDSDKey) }
+    }
+    private static let liveDSDKey = "liveDSD"
 
     /// Mac only: switch the output device (e.g. a USB DAC) to each track's native
     /// sample rate automatically. On by default.
@@ -204,6 +211,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         self.bitPerfectMode = UserDefaults.standard.bool(forKey: Self.bitPerfectKey)
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
+        self.liveDSD = UserDefaults.standard.bool(forKey: Self.liveDSDKey)
         super.init()
         configureAudioSession()
         observeSystemVolume()
@@ -695,6 +703,19 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // Decode formats Core Audio can't play natively (e.g. Ogg/Opus)
                 // to a temporary PCM file off the main thread.
                 let ext = (track.path as NSString).pathExtension.lowercased()
+
+                // Instant DSD: play it while converting, with no temporary file.
+                if self.liveDSD,
+                   DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension {
+                    let mode: DSDOutputMode = self.doPPlaybackProblem(assumingDoP: true) == nil ? .dop : .pcm
+                    if let backend = await self.makeLiveDSD(sourceURL: sourceURL, mode: mode) {
+                        try Task.checkCancellation()
+                        self.beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: source.id)
+                        return
+                    }
+                    // Couldn't start live (e.g. the output can't carry it): convert instead.
+                }
+
                 let playable: PlayableAudio
                 do {
                     // DSD goes out as DoP only to a USB DAC at full volume;
@@ -726,7 +747,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Stops the active player without clearing the queue or current index.
     private func tearDownPlayback(keepQueue: Bool) {
         player?.stop()
-        player?.delegate = nil
+        player?.detach()
         player = nil
         dopLabel = nil
         dsdPCMLabel = nil
@@ -837,21 +858,24 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Requests that the audio hardware run at `url`'s native sample rate (and
     /// channel count), avoiding sample-rate conversion on the way to a USB DAC.
     private func applyPreferredHardwareFormat(for url: URL) {
+        guard let file = try? AVAudioFile(forReading: url) else { return }
+        applyPreferredHardwareRate(file.fileFormat.sampleRate, channels: Int(file.fileFormat.channelCount))
+    }
+
+    /// Asks the output hardware to run at `rate` (and `channels`), verifying that it did.
+    private func applyPreferredHardwareRate(_ rate: Double, channels: Int) {
         #if targetEnvironment(macCatalyst)
         // AVAudioSession's preferred-rate API doesn't drive the Mac's output
         // device: set its nominal rate through Core Audio instead.
-        if autoSampleRate, let file = try? AVAudioFile(forReading: url) {
-            MacOutputDevice.match(trackRate: file.fileFormat.sampleRate)
+        if autoSampleRate {
+            MacOutputDevice.match(trackRate: rate)
         }
         #elseif os(iOS)
-        guard let file = try? AVAudioFile(forReading: url) else { return }
-        let format = file.fileFormat
         // The background keep-alive is a silent 44.1 kHz stream; left running it
         // would pin the hardware to that rate (and block re-activation below).
         keepAlive.stop()
         let session = AVAudioSession.sharedInstance()
-        try? session.setPreferredSampleRate(format.sampleRate)
-        let channels = Int(format.channelCount)
+        try? session.setPreferredSampleRate(rate)
         if channels > 0 {
             try? session.setPreferredOutputNumberOfChannels(min(channels, session.maximumOutputNumberOfChannels))
         }
@@ -860,13 +884,75 @@ final class AudioPlayer: NSObject, ObservableObject {
         // If the hardware didn't follow (e.g. a USB DAC still at the previous
         // track's rate), re-activate the session — no player is running at this
         // point — and ask again.
-        if abs(session.sampleRate - format.sampleRate) > 1 {
+        if abs(session.sampleRate - rate) > 1 {
             try? session.setActive(false)
-            try? session.setPreferredSampleRate(format.sampleRate)
+            try? session.setPreferredSampleRate(rate)
             try? session.setActive(true)
         }
         #endif
         refreshOutputSampleRate()
+    }
+
+    // MARK: - Live DSD
+
+    /// Opens a DSD source and brings up the live engine; nil if it can't be played live.
+    private func makeLiveDSD(sourceURL: URL, mode: DSDOutputMode) async -> DSDLivePlayback? {
+        let reader: DSDStreamReader
+        do {
+            reader = try await Task.detached(priority: .userInitiated) {
+                try DSDDoPDecoder.makeReader(sourceURL: sourceURL)
+            }.value
+        } catch {
+            return nil
+        }
+        guard let plan = try? DSDDoPDecoder.plan(for: reader, mode: mode) else { return nil }
+        applyPreferredHardwareRate(Double(plan.outputRate), channels: 2)
+        let backend = DSDLivePlayback(reader: reader, plan: plan)
+        do {
+            try backend.prepare()
+        } catch {
+            backend.stop()
+            return nil
+        }
+        return backend
+    }
+
+    /// Makes `backend` the current playback and updates the player state like
+    /// `startPlayback` does for a converted file.
+    private func beginLiveDSD(_ backend: DSDLivePlayback, sourceURL: URL, track: Track, sourceID: String) {
+        cleanupTemp()
+        let plan = backend.plan
+        dopLabel = plan.useDoP ? plan.label : nil
+        dsdPCMLabel = plan.useDoP ? nil : plan.label
+        timeOffset = 0
+        if let problem = doPPlaybackProblem() {
+            backend.stop()
+            dopLabel = nil
+            dsdPCMLabel = nil
+            registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+            isLoading = false
+            errorMessage = problem
+            return
+        }
+        backend.onFinished = { [weak self] in
+            Task { @MainActor in self?.advanceAfterPlaybackEnded() }
+        }
+        backend.volume = Float(effectiveVolume)
+        player = backend
+        duration = backend.duration
+        currentTime = 0
+        isLoading = false
+        activeResource = (sourceID, sourceURL, nil, track.id)
+        backend.play()
+        isPlaying = true
+        startTicker()
+        recordHistory(track)
+        playlists.recordPlayed(track)
+        refreshOutputSampleRateSoon()
+        updateTrackSampleRate(trackID: track.id, sampleRate: Double(plan.outputRate))
+        updateNowPlaying()
+        loadMetadata(for: sourceURL, trackID: track.id)       // DSD tags live in the source file
+        prefetchUpcoming()
     }
 
     /// "DSD64" / "DSD128" for a DoP carrier file, from its PCM rate.
@@ -1298,7 +1384,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         // invalid. Rebuild the session and player and resume where we were.
         let resumeIndex = currentIndex
         let wasPlaying = isPlaying
-        player?.delegate = nil
+        player?.detach()
         player?.stop()
         player = nil
         configureAudioSession()
@@ -1382,6 +1468,10 @@ extension AudioPlayer: AVAudioPlayerDelegate {
             self?.next()
         }
     }
+}
+
+extension AVAudioPlayer: PlaybackBackend {
+    func detach() { delegate = nil }
 }
 
 #if os(iOS)

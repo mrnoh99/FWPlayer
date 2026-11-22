@@ -227,6 +227,12 @@ struct ContentView: View {
                 Text("Locks FWPlayer's volume at 100% so samples reach your DAC unaltered; remote volume changes are ignored. Set the listening level on your DAC or amp, and keep the device volume at maximum.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Toggle(isOn: $player.liveDSD) {
+                    Label("Instant DSD (experimental)", systemImage: "bolt.fill")
+                }
+                Text("Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 #if targetEnvironment(macCatalyst)
                 Toggle(isOn: $player.autoSampleRate) {
                     Label("Match DAC Sample Rate", systemImage: "dial.medium")

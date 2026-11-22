@@ -53,42 +53,11 @@ struct DSDDoPDecoder: AudioDecoder {
     /// PCM for rates DoP can't carry (DSD256+ would need a 705.6 kHz carrier).
     static func convert(sourceURL: URL, mode: DSDOutputMode,
                         progress: (@Sendable (Double) -> Void)? = nil) throws -> DSDConversion {
-        var handle: FileHandle?
-        defer { try? handle?.close() }
+        let reader = try makeReader(sourceURL: sourceURL)
+        let chosen = try Self.plan(for: reader, mode: mode)
+        let rate = chosen.dsdRate, multiple = chosen.multiple, useDoP = chosen.useDoP
 
-        let reader: DSDStreamReader
-        let ext = sourceURL.pathExtension.lowercased()
-        switch ext {
-        case "dsf", "dff":
-            let opened: FileHandle
-            do { opened = try FileHandle(forReadingFrom: URL(fileURLWithPath: sourceURL.path)) }
-            catch { throw AudioDecoderError.openFailed }
-            handle = opened
-            reader = ext == "dsf" ? try DSFReader(handle: opened) : try DFFReader(handle: opened)
-        case "iso":
-            // One track of an SACD image: the track number rides in the URL fragment.
-            let source = try SACDFileSectorSource(url: URL(fileURLWithPath: sourceURL.path))
-            reader = try SACDTrackReader(source: source, trackNumber: SACDISOTrackURL.trackNumber(in: sourceURL))
-        default:
-            throw AudioDecoderError.unsupported
-        }
-        guard reader.channels == 2 else {
-            throw AudioDecoderError.dsdUnsupported("Only stereo DSD files are supported.")
-        }
-
-        // 44.1 kHz family (2.8224 MHz × m) or 48 kHz family (3.072 MHz × m).
-        let rate = reader.dsdRate
-        let family44 = rate % 2_822_400 == 0
-        let family48 = rate % 3_072_000 == 0
-        let multiple = family44 ? rate / 2_822_400 : (family48 ? rate / 3_072_000 : 0)
-        guard multiple == 1 || multiple == 2 || multiple == 4 else {
-            throw AudioDecoderError.dsdUnsupported("Unsupported DSD sampling rate (\(rate) Hz).")
-        }
-        let label = "DSD\(64 * multiple)" + (family48 ? " (48 kHz)" : "")
-        let useDoP = mode == .dop && multiple <= 2
-
-        let writer = try WAVStreamWriter(sampleRate: useDoP ? rate / 16 : (family44 ? 176_400 : 192_000),
-                                         channels: 2, bitsPerSample: 24)
+        let writer = try WAVStreamWriter(sampleRate: chosen.outputRate, channels: 2, bitsPerSample: 24)
         do {
             if useDoP {
                 let encoder = DoPEncoder()
@@ -116,7 +85,56 @@ struct DSDDoPDecoder: AudioDecoder {
             writer.abort()
             throw error
         }
-        return DSDConversion(url: writer.url, isDoP: useDoP, label: label)
+        return DSDConversion(url: writer.url, isDoP: useDoP, label: chosen.label)
+    }
+
+    // MARK: Reader and plan (shared with live playback)
+
+    /// Opens a DSF / DFF file, or one track of an SACD image (`disc.iso#track=N`).
+    /// The reader keeps whatever it needs open until it is released.
+    static func makeReader(sourceURL: URL) throws -> DSDStreamReader {
+        let ext = sourceURL.pathExtension.lowercased()
+        switch ext {
+        case "dsf", "dff":
+            let handle: FileHandle
+            do { handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: sourceURL.path)) }
+            catch { throw AudioDecoderError.openFailed }
+            return ext == "dsf" ? try DSFReader(handle: handle) : try DFFReader(handle: handle)
+        case "iso":
+            // One track of an SACD image: the track number rides in the URL fragment.
+            let source = try SACDFileSectorSource(url: URL(fileURLWithPath: sourceURL.path))
+            return try SACDTrackReader(source: source, trackNumber: SACDISOTrackURL.trackNumber(in: sourceURL))
+        default:
+            throw AudioDecoderError.unsupported
+        }
+    }
+
+    /// How a stream is delivered: DoP or PCM, and at what rate.
+    struct Plan {
+        let dsdRate: Int
+        let multiple: Int
+        let useDoP: Bool
+        /// Sample rate of the PCM that is produced (the DoP carrier, or 176.4 / 192 kHz).
+        let outputRate: Int
+        let label: String
+    }
+
+    static func plan(for reader: DSDStreamReader, mode: DSDOutputMode) throws -> Plan {
+        guard reader.channels == 2 else {
+            throw AudioDecoderError.dsdUnsupported("Only stereo DSD files are supported.")
+        }
+        // 44.1 kHz family (2.8224 MHz × m) or 48 kHz family (3.072 MHz × m).
+        let rate = reader.dsdRate
+        let family44 = rate % 2_822_400 == 0
+        let family48 = rate % 3_072_000 == 0
+        let multiple = family44 ? rate / 2_822_400 : (family48 ? rate / 3_072_000 : 0)
+        guard multiple == 1 || multiple == 2 || multiple == 4 else {
+            throw AudioDecoderError.dsdUnsupported("Unsupported DSD sampling rate (\(rate) Hz).")
+        }
+        let useDoP = mode == .dop && multiple <= 2
+        return Plan(dsdRate: rate, multiple: multiple, useDoP: useDoP,
+                    outputRate: useDoP ? rate / 16 : (family44 ? 176_400 : 192_000),
+                    label: "DSD\(64 * multiple)" + (family48 ? " (48 kHz)" : ""))
     }
 }
 
@@ -248,7 +266,7 @@ private final class HalfBandDecimator {
     }
 }
 
-private final class DSDToPCMConverter {
+final class DSDToPCMConverter {
     private let stage1: (left: DSDDecimator, right: DSDDecimator)
     private let stage2: (left: HalfBandDecimator, right: HalfBandDecimator)
 
@@ -256,6 +274,19 @@ private final class DSDToPCMConverter {
         stage1 = (DSDDecimator(dsdRate: dsdRate, multiple: multiple),
                   DSDDecimator(dsdRate: dsdRate, multiple: multiple))
         stage2 = (HalfBandDecimator(), HalfBandDecimator())
+    }
+
+    /// Interleaved stereo float samples (clamped just inside ±1), for live playback.
+    func convertToFloats(left: [UInt8], right: [UInt8]) -> [Float] {
+        let l = stage2.left.process(stage1.left.process(left))
+        let r = stage2.right.process(stage1.right.process(right))
+        let frames = min(l.count, r.count)
+        var out = [Float](repeating: 0, count: frames * 2)
+        for f in 0..<frames {
+            out[2 * f] = max(-0.99999, min(0.99999, l[f]))
+            out[2 * f + 1] = max(-0.99999, min(0.99999, r[f]))
+        }
+        return out
     }
 
     /// Returns interleaved 24-bit little-endian stereo PCM.
@@ -326,13 +357,17 @@ struct DSDChunk {
     var right: [UInt8]
 }
 
-protocol DSDStreamReader: AnyObject {
+protocol DSDStreamReader: AnyObject, Sendable {
     var dsdRate: Int { get }
     var channels: Int { get }
     /// The next run of audio, or nil at the end of the stream.
     func next() throws -> DSDChunk?
     /// How much of the stream has been read, 0…1 (for progress display).
     var progress: Double { get }
+    /// Length of the stream.
+    var durationSeconds: Double { get }
+    /// Repositions the stream (to an even byte boundary, which DoP needs).
+    func seek(toSeconds seconds: Double) throws
 }
 
 /// DSD "silence" byte pattern, used to pad an odd trailing byte.
@@ -375,7 +410,7 @@ private func fourCC(_ b: [UInt8], _ o: Int) -> String {
 
 /// Sony DSF: little-endian chunks ("DSD ", "fmt ", "data"); audio is stored in
 /// per-channel blocks (usually 4096 bytes), usually LSB-first.
-private final class DSFReader: DSDStreamReader {
+private final class DSFReader: DSDStreamReader, @unchecked Sendable {
     let dsdRate: Int
     let channels: Int
     private let handle: FileHandle
@@ -385,6 +420,24 @@ private final class DSFReader: DSDStreamReader {
     private var groupsRemaining: Int
     private let groupsTotal: Int
     private var bytesPerChannelRemaining: Int
+    private let bytesPerChannelTotal: Int
+    private let dataStart: UInt64
+    /// Bytes at the start of the next chunk to drop after a seek.
+    private var skipBytes = 0
+
+    var durationSeconds: Double { Double(bytesPerChannelTotal) * 8 / Double(dsdRate) }
+
+    deinit { try? handle.close() }
+
+    func seek(toSeconds seconds: Double) throws {
+        let evenTotal = bytesPerChannelTotal & ~1
+        let wanted = min(evenTotal, max(0, Int(seconds * Double(dsdRate) / 8)) & ~1)
+        let group = min(groupsTotal, wanted / blockSize)
+        groupsRemaining = groupsTotal - group
+        bytesPerChannelRemaining = bytesPerChannelTotal - group * blockSize
+        dataOffset = dataStart + UInt64(group * blockSize * channels)
+        skipBytes = wanted - group * blockSize
+    }
 
     var progress: Double { groupsTotal > 0 ? 1 - Double(groupsRemaining) / Double(groupsTotal) : 1 }
 
@@ -431,6 +484,8 @@ private final class DSFReader: DSDStreamReader {
         dataOffset = dataStart
         groupsRemaining = Int(dataLength) / (block * channelCount)
         groupsTotal = groupsRemaining
+        bytesPerChannelTotal = Int(truncatingIfNeeded: (sampleCount &+ 7) / 8)
+        self.dataStart = dataStart
         bytesPerChannelRemaining = Int(truncatingIfNeeded: (sampleCount &+ 7) / 8)
     }
 
@@ -452,6 +507,13 @@ private final class DSFReader: DSDStreamReader {
             let base = g * groupBytes
             left.append(contentsOf: bytes[base..<(base + blockSize)])
             right.append(contentsOf: bytes[(base + blockSize)..<(base + groupBytes)])
+        }
+        if skipBytes > 0 {                                  // land mid-block after a seek
+            let drop = min(skipBytes, left.count)
+            left.removeFirst(drop)
+            right.removeFirst(drop)
+            bytesPerChannelRemaining -= drop
+            skipBytes -= drop
         }
         // The last block is zero-padded: keep only the real samples.
         let take = min(left.count, bytesPerChannelRemaining)
@@ -481,13 +543,25 @@ private final class DSFReader: DSDStreamReader {
 
 /// Philips DSDIFF ("FRM8", big-endian chunks); uncompressed DSD only, MSB-first,
 /// channels interleaved byte by byte.
-private final class DFFReader: DSDStreamReader {
+private final class DFFReader: DSDStreamReader, @unchecked Sendable {
     private(set) var dsdRate = 0
     private(set) var channels = 0
     private let handle: FileHandle
     private var dataOffset: UInt64 = 0
     private var dataRemaining: UInt64 = 0
     private var dataTotal: UInt64 = 0
+    private var dataStart: UInt64 = 0
+
+    var durationSeconds: Double { Double(dataTotal / UInt64(max(channels, 1))) * 8 / Double(max(dsdRate, 1)) }
+
+    deinit { try? handle.close() }
+
+    func seek(toSeconds seconds: Double) throws {
+        let perChannel = Int(dataTotal) / max(channels, 1)
+        let wanted = min(perChannel & ~1, max(0, Int(seconds * Double(dsdRate) / 8)) & ~1)
+        dataOffset = dataStart + UInt64(wanted * channels)
+        dataRemaining = dataTotal - UInt64(wanted * channels)
+    }
 
     var progress: Double { dataTotal > 0 ? 1 - Double(dataRemaining) / Double(dataTotal) : 1 }
 
@@ -527,6 +601,7 @@ private final class DFFReader: DSDStreamReader {
                 dataOffset = body
                 dataRemaining = min(size, fileSize - body)
                 dataTotal = dataRemaining
+                dataStart = body
                 break
             }
             offset = body + size + (size % 2)

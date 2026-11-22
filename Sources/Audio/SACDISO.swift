@@ -460,15 +460,28 @@ final class SACDFrameAssembler {
 
 /// Streams one stereo track of an SACD image as byte-interleaved-then-split DSD
 /// (MSB first), ready for the DoP / PCM pipeline.
-final class SACDTrackReader: DSDStreamReader {
+final class SACDTrackReader: DSDStreamReader, @unchecked Sendable {
     let dsdRate = 2_822_400
     let channels = 2
 
     private let source: SACDSectorSource
     private let track: SACDTrack
     private let area: SACDArea
-    private let assembler: SACDFrameAssembler
+    private var assembler: SACDFrameAssembler
     private var nextSector: Int
+    /// Frames to discard (undecoded) after a seek; the image has no time index here,
+    /// so a seek re-reads the track from its start and skips ahead.
+    private var framesToSkip = 0
+
+    var durationSeconds: Double { track.durationSeconds }
+
+    func seek(toSeconds seconds: Double) throws {
+        nextSector = track.startLSN
+        assembler = SACDFrameAssembler(channels: area.channels)
+        pending.removeAll()
+        finished = false
+        framesToSkip = max(0, Int(seconds * SACDISO.framesPerSecond))
+    }
     private let endSector: Int
     private var finished = false
     private var frameNumber = 0
@@ -544,7 +557,10 @@ final class SACDTrackReader: DSDStreamReader {
     private func fillPending(upTo count: Int) throws {
         while pending.count < count, !finished {
             if nextSector >= endSector {
-                try assembler.finish { frame, isDST in pending.append(try decode(frame: frame, isDST: isDST)) }
+                try assembler.finish { frame, isDST in
+                    if framesToSkip > 0 { framesToSkip -= 1; return }
+                    pending.append(try decode(frame: frame, isDST: isDST))
+                }
                 finished = true
                 break
             }
@@ -555,6 +571,7 @@ final class SACDTrackReader: DSDStreamReader {
             for s in 0..<whole {
                 let slice = data[(s * SACDISO.sectorSize)..<((s + 1) * SACDISO.sectorSize)]
                 try assembler.process(sector: slice) { frame, isDST in
+                    if framesToSkip > 0 { framesToSkip -= 1; return }
                     pending.append(try decode(frame: frame, isDST: isDST))
                 }
             }

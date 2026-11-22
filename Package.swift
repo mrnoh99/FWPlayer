@@ -23,7 +23,7 @@ let package = Package(
             name: "FWPlayerCore",
             dependencies: ["CDST"],
             path: "Sources/Audio",
-            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift"]
+            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift", "DSDLivePlayback.swift"]
         ),
         .testTarget(
             name: "FWPlayerCoreTests",
