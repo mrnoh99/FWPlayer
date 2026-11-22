@@ -98,7 +98,11 @@ struct DSDDoPDecoder: AudioDecoder {
         case "dsf", "dff":
             let handle: FileHandle
             do { handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: sourceURL.path)) }
-            catch { throw AudioDecoderError.openFailed }
+            catch {
+                // e.g. no access to the folder, or a file that isn't on the device yet (iCloud).
+                throw AudioDecoderError.dsdUnsupported(
+                    "Couldn't open \(sourceURL.lastPathComponent): \(error.localizedDescription)")
+            }
             return ext == "dsf" ? try DSFReader(handle: handle) : try DFFReader(handle: handle)
         case "iso":
             // One track of an SACD image: the track number rides in the URL fragment.
