@@ -113,6 +113,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         let duration: TimeInterval
         let tags: [String: String]
     }
+    private var coverProbedFolders = Set<String>()
     private var gaplessNext: GaplessNext?
     private var gaplessTask: Task<Void, Never>?
     private var gaplessHandled = 0
@@ -1113,12 +1114,17 @@ final class AudioPlayer: NSObject, ObservableObject {
                                       streaming: ByteStreamingSource, folderPath: String) {
         guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
         let track = queue[idx]
-        if let picture {
+        if artwork.hasCachedImage(for: track) {
+            artwork.resolveStreamed(track: track, embedded: nil)          // loads it from the cache
+        } else if let picture {
             artwork.resolveStreamed(track: track, embedded: picture)
         } else {
             // No embedded cover: a cover.jpg / folder.jpg next to the file, then the online lookup.
+            // Each folder is probed once per run: every probe is a request to the server.
+            let folderKey = "\(source.id)|\((folderPath as NSString).deletingLastPathComponent)"
+            let probe = coverProbedFolders.insert(folderKey).inserted
             Task { [weak self] in
-                let cover = await Self.sidecarCover(streaming: streaming, trackPath: folderPath)
+                let cover = probe ? await Self.sidecarCover(streaming: streaming, trackPath: folderPath) : nil
                 self?.artwork.resolveStreamed(track: track, embedded: cover)
             }
         }
@@ -1164,7 +1170,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         // The share's listings leave images out, so probe the usual names directly.
         let parent = (trackPath as NSString).deletingLastPathComponent
         var located: ByteSource?
-        search: for name in ["cover", "folder", "front", "Cover", "Folder", "Front"] {
+        search: for name in ["cover", "folder", "front"] {
             for ext in ["jpg", "png", "jpeg"] {
                 if Task.isCancelled { return nil }
                 let path = parent.isEmpty ? "\(name).\(ext)" : "\(parent)/\(name).\(ext)"

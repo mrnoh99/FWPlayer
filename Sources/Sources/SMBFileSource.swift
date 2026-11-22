@@ -401,7 +401,19 @@ private actor SMBConnection {
     }
 
     func invalidate() {
+        dropClient()
+    }
+
+    /// Forgets the current connection and closes it properly: a client that is simply
+    /// dropped leaves its SMB session open on the server, and enough of those make the
+    /// server refuse new ones.
+    private func dropClient() {
+        guard let old = client else { return }
         client = nil
+        Task.detached {
+            try? await old.disconnectShare()
+            try? await old.logoff()
+        }
     }
 
     private func connectedClient() async throws -> SMBClient {
@@ -431,7 +443,10 @@ private actor SMBConnection {
         do {
             return try await performListDirectory(path: path)
         } catch {
-            client = nil
+            // A missing file says nothing about the connection (probing for a cover that
+            // isn't there is routine): don't tear the session down for it.
+            if smbErrorIsObjectNotFound(error) { throw error }
+            dropClient()
             if smbShouldReconnect(error) {
                 return try await performListDirectory(path: path)
             }
@@ -444,7 +459,10 @@ private actor SMBConnection {
         do {
             return try await performFileSize(path: path)
         } catch {
-            client = nil
+            // A missing file says nothing about the connection (probing for a cover that
+            // isn't there is routine): don't tear the session down for it.
+            if smbErrorIsObjectNotFound(error) { throw error }
+            dropClient()
             if smbShouldReconnect(error) {
                 return try await performFileSize(path: path)
             }
@@ -464,7 +482,10 @@ private actor SMBConnection {
         do {
             return try await performReadRange(path: path, offset: offset, length: length)
         } catch {
-            client = nil
+            // A missing file says nothing about the connection (probing for a cover that
+            // isn't there is routine): don't tear the session down for it.
+            if smbErrorIsObjectNotFound(error) { throw error }
+            dropClient()
             if smbShouldReconnect(error) {
                 return try await performReadRange(path: path, offset: offset, length: length)
             }
@@ -491,7 +512,10 @@ private actor SMBConnection {
         do {
             return try await performDownload(path: path)
         } catch {
-            client = nil
+            // A missing file says nothing about the connection (probing for a cover that
+            // isn't there is routine): don't tear the session down for it.
+            if smbErrorIsObjectNotFound(error) { throw error }
+            dropClient()
             if smbShouldReconnect(error) {
                 return try await performDownload(path: path)
             }

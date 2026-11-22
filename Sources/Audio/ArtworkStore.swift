@@ -110,6 +110,12 @@ final class ArtworkStore: ObservableObject {
         }
     }
 
+    /// Whether this track's cover is already in memory or on disk (so no lookup is needed).
+    func hasCachedImage(for track: Track) -> Bool {
+        let key = Self.key(for: track)
+        return memory[key] != nil || FileManager.default.fileExists(atPath: diskURL(key).path)
+    }
+
     /// Artwork for a track streamed from a share (no local file to read): the cover
     /// embedded in the file when the stream gave one, otherwise the online lookup.
     func resolveStreamed(track: Track, embedded: Data?) {
