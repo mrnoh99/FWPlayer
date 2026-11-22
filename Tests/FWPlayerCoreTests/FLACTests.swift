@@ -13,7 +13,7 @@ final class FLACTests: XCTestCase {
     }
 
     private func decoder(_ name: String) throws -> FLACDecoder {
-        try FLACDecoder(source: MemoryByteSource(try fixture(name, "flac")))
+        try FLACDecoder(source: MemoryByteSource(data: try fixture(name, "flac")))
     }
 
     /// Decodes everything; returns interleaved stereo floats.
@@ -57,7 +57,7 @@ final class FLACTests: XCTestCase {
     }
 
     func testRejectsNonFLAC() {
-        XCTAssertThrowsError(try FLACDecoder(source: MemoryByteSource(Data(repeating: 0, count: 100))))
+        XCTAssertThrowsError(try FLACDecoder(source: MemoryByteSource(data: Data(repeating: 0, count: 100))))
     }
 
     private func checkSeek(_ name: String, seconds: [Double], file: StaticString = #filePath, line: UInt = #line) throws {
