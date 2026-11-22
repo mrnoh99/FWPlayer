@@ -46,6 +46,23 @@ protocol SACDSectorSource: AnyObject {
     func readSectors(_ lsn: Int, count: Int) throws -> [UInt8]
 }
 
+/// Sector access to an image over any byte source (a local file or a network stream).
+final class SACDByteSectorSource: SACDSectorSource, @unchecked Sendable {
+    private let source: ByteSource
+
+    init(source: ByteSource) { self.source = source }
+
+    func readSectors(_ lsn: Int, count: Int) throws -> [UInt8] {
+        guard lsn >= 0, count > 0 else { throw SACDError.readFailed }
+        do {
+            return [UInt8](try source.read(at: UInt64(lsn) * UInt64(SACDISO.sectorSize),
+                                           length: count * SACDISO.sectorSize))
+        } catch {
+            throw SACDError.readFailed
+        }
+    }
+}
+
 /// Sector access to an image stored in a local file.
 final class SACDFileSectorSource: SACDSectorSource {
     static let sectorSize = 2048

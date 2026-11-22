@@ -96,20 +96,30 @@ struct DSDDoPDecoder: AudioDecoder {
         let ext = sourceURL.pathExtension.lowercased()
         switch ext {
         case "dsf", "dff":
-            let handle: FileHandle
-            do { handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: sourceURL.path)) }
+            let source: FileByteSource
+            do { source = try FileByteSource(url: URL(fileURLWithPath: sourceURL.path)) }
             catch {
                 // e.g. no access to the folder, or a file that isn't on the device yet (iCloud).
                 throw AudioDecoderError.dsdUnsupported(
                     "Couldn't open \(sourceURL.lastPathComponent): \(error.localizedDescription)")
             }
-            return ext == "dsf" ? try DSFReader(handle: handle) : try DFFReader(handle: handle)
+            return try makeReader(stream: source, fileExtension: ext)
         case "iso":
             // One track of an SACD image: the track number rides in the URL fragment.
             let source = try SACDFileSectorSource(url: URL(fileURLWithPath: sourceURL.path))
             return try SACDTrackReader(source: source, trackNumber: SACDISOTrackURL.trackNumber(in: sourceURL))
         default:
             throw AudioDecoderError.unsupported
+        }
+    }
+
+    /// A DSF / DFF reader over any byte source — a local file or a network stream.
+    static func makeReader(stream: ByteSource, fileExtension ext: String) throws -> DSDStreamReader {
+        let handle = ByteStreamHandle(stream)
+        switch ext {
+        case "dsf": return try DSFReader(handle: handle)
+        case "dff": return try DFFReader(handle: handle)
+        default: throw AudioDecoderError.unsupported
         }
     }
 
@@ -384,7 +394,7 @@ private let bitReversed: [UInt8] = (0..<256).map { value -> UInt8 in
     return r
 }
 
-private func readExactly(_ handle: FileHandle, at offset: UInt64, count: Int) throws -> [UInt8] {
+private func readExactly(_ handle: ByteStreamHandle, at offset: UInt64, count: Int) throws -> [UInt8] {
     do {
         try handle.seek(toOffset: offset)
         guard let data = try handle.read(upToCount: count), data.count == count else {
@@ -418,7 +428,7 @@ private func fourCC(_ b: [UInt8], _ o: Int) -> String {
 private final class DSFReader: DSDStreamReader, @unchecked Sendable {
     let dsdRate: Int
     let channels: Int
-    private let handle: FileHandle
+    private let handle: ByteStreamHandle
     private let blockSize: Int
     private let lsbFirst: Bool
     private var dataOffset: UInt64
@@ -446,7 +456,7 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
 
     var progress: Double { groupsTotal > 0 ? 1 - Double(groupsRemaining) / Double(groupsTotal) : 1 }
 
-    init(handle: FileHandle) throws {
+    init(handle: ByteStreamHandle) throws {
         self.handle = handle
         let head = try readExactly(handle, at: 0, count: 28)
         func fail(_ why: String) -> AudioDecoderError { .dsdUnsupported("DSF file: \(why).") }
@@ -560,7 +570,7 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
 private final class DFFReader: DSDStreamReader, @unchecked Sendable {
     private(set) var dsdRate = 0
     private(set) var channels = 0
-    private let handle: FileHandle
+    private let handle: ByteStreamHandle
     private var dataOffset: UInt64 = 0
     private var dataRemaining: UInt64 = 0
     private var dataTotal: UInt64 = 0
@@ -579,7 +589,7 @@ private final class DFFReader: DSDStreamReader, @unchecked Sendable {
 
     var progress: Double { dataTotal > 0 ? 1 - Double(dataRemaining) / Double(dataTotal) : 1 }
 
-    init(handle: FileHandle) throws {
+    init(handle: ByteStreamHandle) throws {
         self.handle = handle
         let head = try readExactly(handle, at: 0, count: 16)
         guard fourCC(head, 0) == "FRM8", fourCC(head, 12) == "DSD " else { throw AudioDecoderError.openFailed }
@@ -661,9 +671,15 @@ enum DSDTags {
     static func read(from url: URL) -> [String: String] {
         let ext = url.pathExtension.lowercased()
         guard DSDDoPDecoder.supportedExtensions.contains(ext),
-              let handle = try? FileHandle(forReadingFrom: url) else { return [:] }
-        defer { try? handle.close() }
-        guard let size = try? handle.seekToEnd() else { return [:] }
+              let source = try? FileByteSource(url: url) else { return [:] }
+        return read(from: source, fileExtension: ext)
+    }
+
+    /// The same, from any byte source (e.g. a file streamed from an SMB share).
+    static func read(from source: ByteSource, fileExtension ext: String) -> [String: String] {
+        guard DSDDoPDecoder.supportedExtensions.contains(ext) else { return [:] }
+        let handle = ByteStreamHandle(source)
+        let size = source.size
 
         var offset: UInt64 = 0
         if ext == "dsf" {
@@ -676,7 +692,7 @@ enum DSDTags {
         return parseID3(handle, at: offset)
     }
 
-    private static func dffID3Offset(_ handle: FileHandle, fileSize: UInt64) -> UInt64 {
+    private static func dffID3Offset(_ handle: ByteStreamHandle, fileSize: UInt64) -> UInt64 {
         guard let head = try? readExactly(handle, at: 0, count: 16),
               fourCC(head, 0) == "FRM8" else { return 0 }
         var offset: UInt64 = 16
@@ -694,7 +710,7 @@ enum DSDTags {
         Int(b[o] & 0x7F) << 21 | Int(b[o + 1] & 0x7F) << 14 | Int(b[o + 2] & 0x7F) << 7 | Int(b[o + 3] & 0x7F)
     }
 
-    private static func parseID3(_ handle: FileHandle, at offset: UInt64) -> [String: String] {
+    private static func parseID3(_ handle: ByteStreamHandle, at offset: UInt64) -> [String: String] {
         guard let header = try? readExactly(handle, at: offset, count: 10),
               fourCC(header, 0).hasPrefix("ID3"),
               header[3] == 3 || header[3] == 4 else { return [:] }

@@ -201,6 +201,16 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         #endif
     }
 
+    /// Serves the file's bytes through ranged reads (no download first).
+    func openByteStream(forPath path: String) async throws -> ByteSource {
+        #if canImport(SMBClient)
+        let size = try await downloadConnection.fileSize(path: path)
+        return SMBRangeSource(path: path, size: size, connection: downloadConnection)
+        #else
+        throw FileSourceError.smbUnavailable
+        #endif
+    }
+
     func releaseTemporaryURL(_ url: URL) {
         // Only remove files inside our temp download directory.
         if url.path.contains("fwplayer-smb") {
@@ -411,6 +421,26 @@ private actor SMBConnection {
         }
     }
 
+    /// The size of a remote file.
+    func fileSize(path: String) async throws -> UInt64 {
+        do {
+            return try await performFileSize(path: path)
+        } catch {
+            client = nil
+            if smbShouldReconnect(error) {
+                return try await performFileSize(path: path)
+            }
+            throw error
+        }
+    }
+
+    private func performFileSize(path: String) async throws -> UInt64 {
+        let client = try await connectedClient()
+        return try await withTimeout(listTimeout) {
+            try await client.fileStat(path: path).size
+        }
+    }
+
     /// Reads `length` bytes at `offset` of a remote file.
     func readRange(path: String, offset: UInt64, length: UInt32) async throws -> Data {
         do {
@@ -506,5 +536,69 @@ private func smbIsConnectionError(_ error: Error) -> Bool {
         || lowered.contains("connection abort")
         || lowered.contains("network is down")
         || lowered.contains("software caused connection")
+}
+#endif
+
+extension SMBFileSource: ByteStreamingSource {}
+
+#if canImport(SMBClient)
+private final class ResultBox<T>: @unchecked Sendable {
+    var value: Result<T, Error>?
+}
+
+/// A remote file read in 4 MB ranged chunks as the player asks for bytes. The player's
+/// producer thread blocks here while a chunk arrives; the rest of playback is buffered.
+private final class SMBRangeSource: ByteSource, @unchecked Sendable {
+    let size: UInt64
+    private let path: String
+    private let connection: SMBConnection
+    private let lock = NSLock()
+    private var chunkOffset: UInt64 = 0
+    private var chunk = Data()
+    private static let chunkSize = 4 * 1024 * 1024
+
+    init(path: String, size: UInt64, connection: SMBConnection) {
+        self.path = path
+        self.size = size
+        self.connection = connection
+    }
+
+    func read(at offset: UInt64, length: Int) throws -> Data {
+        guard length > 0, offset < size else { return Data() }
+        lock.lock(); defer { lock.unlock() }
+        var result = Data()
+        var position = offset
+        let end = min(size, offset + UInt64(length))
+        while position < end {
+            if position < chunkOffset || position >= chunkOffset + UInt64(chunk.count) {
+                let want = Int(min(UInt64(Self.chunkSize), size - position))
+                chunk = try fetch(offset: position, length: want)
+                chunkOffset = position
+                if chunk.isEmpty { break }
+            }
+            let start = chunk.startIndex + Int(position - chunkOffset)
+            let take = Int(min(UInt64(chunk.count) - (position - chunkOffset), end - position))
+            result.append(chunk[start..<(start + take)])
+            position += UInt64(take)
+        }
+        return result
+    }
+
+    /// Blocks the calling (non-async) thread until the ranged read completes.
+    private func fetch(offset: UInt64, length: Int) throws -> Data {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = ResultBox<Data>()
+        let connection = self.connection, path = self.path
+        Task.detached {
+            do {
+                box.value = .success(try await connection.readRange(path: path, offset: offset, length: UInt32(length)))
+            } catch {
+                box.value = .failure(error)
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return try (box.value ?? .failure(FileSourceError.timedOut)).get()
+    }
 }
 #endif

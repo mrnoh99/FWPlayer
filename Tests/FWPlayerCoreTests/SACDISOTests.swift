@@ -310,6 +310,14 @@ final class SACDISOTests: XCTestCase {
         XCTAssertTrue(reads.allSatisfy { $0.lsn < 600 }, "the audio area must not be read")
     }
 
+    func testSACDTrackReaderWorksOverAByteStream() throws {
+        let source = SACDByteSectorSource(source: MemoryByteSource(bytes: makeImage()))
+        let reader = try SACDTrackReader(source: source, trackNumber: 1)
+        var total = 0
+        while let chunk = try reader.next() { total += chunk.left.count }
+        XCTAssertEqual(total, 4 * 4704)
+    }
+
     func testMemorySourceOnlyServesWhatItHolds() throws {
         let memory = SACDMemorySectorSource()
         memory.add(lsn: 10, bytes: [UInt8](repeating: 7, count: 2 * 2048))

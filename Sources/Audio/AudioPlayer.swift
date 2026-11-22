@@ -580,6 +580,9 @@ final class AudioPlayer: NSObject, ObservableObject {
             // eject the disc as unreadable. CD tracks are ripped just-in-time.
             if source.kind == .audioCD { continue }
             if source.directURL(forPath: track.path) != nil { continue }   // local: no download
+            // DSD from a share streams when it starts; don't download it ahead.
+            if liveDSD, source is ByteStreamingSource,
+               Self.isDSDPath(track.path, ext: (track.path as NSString).pathExtension.lowercased()) { continue }
 
             prefetchTasks[track.id] = Task { [weak self] in
                 let url = try? await source.fileURL(forPath: track.path)
@@ -687,6 +690,16 @@ final class AudioPlayer: NSObject, ObservableObject {
                 guard let source = self.registry.source(for: track.sourceID) else {
                     throw FileSourceError.notConnected
                 }
+                // Instant DSD from a network share: play straight from ranged reads, with no
+                // download first (a cached or prefetched copy is used as before).
+                let streamExt = (track.path as NSString).pathExtension.lowercased()
+                if self.liveDSD, let streaming = source as? ByteStreamingSource,
+                   Self.isDSDPath(track.path, ext: streamExt),
+                   self.prefetched[track.id] == nil, self.recentlyPlayed[track.id] == nil {
+                    if await self.startStreamedDSD(source: source, streaming: streaming, track: track) { return }
+                    try Task.checkCancellation()
+                }
+
                 // Use a pre-downloaded copy if we prefetched this track; otherwise
                 // fetch it now (downloading from SMB).
                 let sourceURL: URL
@@ -942,6 +955,10 @@ final class AudioPlayer: NSObject, ObservableObject {
         } catch {
             return nil
         }
+        return makeLiveDSD(reader: reader, mode: mode)
+    }
+
+    private func makeLiveDSD(reader: DSDStreamReader, mode: DSDOutputMode) -> DSDLivePlayback? {
         guard let plan = try? DSDDoPDecoder.plan(for: reader, mode: mode) else { return nil }
         applyPreferredHardwareRate(Double(plan.outputRate), channels: 2)
         let backend = DSDLivePlayback(reader: reader, plan: plan)
@@ -954,9 +971,59 @@ final class AudioPlayer: NSObject, ObservableObject {
         return backend
     }
 
+    /// DSF / DFF or an SACD image track.
+    private static func isDSDPath(_ path: String, ext: String) -> Bool {
+        DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension
+    }
+
+    /// Starts a DSD track straight from a share's ranged reads. False if it can't
+    /// (the caller then downloads the file as before).
+    private func startStreamedDSD(source: any FileSource, streaming: ByteStreamingSource, track: Track) async -> Bool {
+        let ext = (track.path as NSString).pathExtension.lowercased()
+        let mode: DSDOutputMode = doPPlaybackProblem(assumingDoP: true) == nil ? .dop : .pcm
+        let reader: DSDStreamReader
+        var tags: [String: String] = [:]
+        do {
+            if let virtual = SACDVirtualPath.split(track.path) {
+                let stream = try await streaming.openByteStream(forPath: virtual.image)
+                reader = try await Task.detached(priority: .userInitiated) {
+                    try SACDTrackReader(source: SACDByteSectorSource(source: stream), trackNumber: virtual.track)
+                }.value
+            } else {
+                let stream = try await streaming.openByteStream(forPath: track.path)
+                tags = await Task.detached(priority: .userInitiated) {
+                    DSDTags.read(from: stream, fileExtension: ext)
+                }.value
+                reader = try await Task.detached(priority: .userInitiated) {
+                    try DSDDoPDecoder.makeReader(stream: stream, fileExtension: ext)
+                }.value
+            }
+        } catch {
+            return false
+        }
+        guard !Task.isCancelled, let backend = makeLiveDSD(reader: reader, mode: mode) else { return false }
+        beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
+        if !tags.isEmpty { applyStreamedTags(tags, trackID: track.id) }
+        return true
+    }
+
+    /// Fills artist / album / year / genre from tags read over the stream.
+    private func applyStreamedTags(_ tags: [String: String], trackID: String) {
+        guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+        var track = queue[idx]
+        if track.artist == nil { track.artist = tags["ARTIST"] ?? tags["ALBUMARTIST"] }
+        if track.album == nil { track.album = tags["ALBUM"] }
+        if track.year == nil { track.year = Self.releaseYear(from: tags["DATE"]) }
+        if track.genre == nil { track.genre = tags["GENRE"] }
+        var updated = queue
+        updated[idx] = track
+        queue = updated
+        if currentIndex == idx { updateNowPlaying() }
+    }
+
     /// Makes `backend` the current playback and updates the player state like
     /// `startPlayback` does for a converted file.
-    private func beginLiveDSD(_ backend: DSDLivePlayback, sourceURL: URL, track: Track, sourceID: String) {
+    private func beginLiveDSD(_ backend: DSDLivePlayback, sourceURL: URL?, track: Track, sourceID: String) {
         cleanupTemp()
         let plan = backend.plan
         dopLabel = plan.useDoP ? plan.label : nil
@@ -966,7 +1033,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             backend.stop()
             dopLabel = nil
             dsdPCMLabel = nil
-            registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+            if let sourceURL { registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL) }
             isLoading = false
             errorMessage = problem
             return
@@ -979,7 +1046,11 @@ final class AudioPlayer: NSObject, ObservableObject {
         duration = backend.duration
         currentTime = 0
         isLoading = false
-        activeResource = (sourceID, sourceURL, nil, track.id)
+        if let sourceURL {
+            activeResource = (sourceID, sourceURL, nil, track.id)
+        } else {
+            activeResource = nil            // streamed: nothing local to release
+        }
         backend.play()
         isPlaying = true
         startTicker()
@@ -988,7 +1059,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         refreshOutputSampleRateSoon()
         updateTrackSampleRate(trackID: track.id, sampleRate: Double(plan.outputRate))
         updateNowPlaying()
-        loadMetadata(for: sourceURL, trackID: track.id)       // DSD tags live in the source file
+        if let sourceURL { loadMetadata(for: sourceURL, trackID: track.id) }   // DSD tags live in the source file
         prefetchUpcoming()
     }
 

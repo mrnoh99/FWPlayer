@@ -88,6 +88,12 @@ extension FileSource {
     }
 }
 
+/// A source that can serve a file's bytes on demand (ranged reads), so playback can
+/// start at once instead of after downloading the whole file.
+protocol ByteStreamingSource: AnyObject {
+    func openByteStream(forPath path: String) async throws -> ByteSource
+}
+
 enum FileSourceError: LocalizedError {
     case notConnected
     case smbUnavailable

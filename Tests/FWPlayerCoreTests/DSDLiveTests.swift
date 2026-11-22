@@ -176,6 +176,31 @@ final class DSDLiveTests: XCTestCase {
         return url
     }
 
+    /// The readers work over any byte source, which is what lets a file on an SMB share
+    /// play straight from ranged reads.
+    func testDSFReaderWorksOverAnArbitraryByteSource() throws {
+        let url = try makeDSF(bytesPerChannel: 32)
+        let source = MemoryByteSource(data: try Data(contentsOf: url))
+        let reader = try DSDDoPDecoder.makeReader(stream: source, fileExtension: "dsf")
+        XCTAssertEqual(reader.dsdRate, 2_822_400)
+        let chunk = try XCTUnwrap(reader.next())
+        XCTAssertEqual(chunk.left.count, 32)
+        XCTAssertEqual(chunk.left.last, 31)
+        XCTAssertEqual(chunk.right.first, 100)
+        XCTAssertNil(try reader.next())
+    }
+
+    func testByteStreamHandleBehavesLikeAFileCursor() throws {
+        let handle = ByteStreamHandle(MemoryByteSource(bytes: Array(0..<10)))
+        XCTAssertEqual(try handle.seekToEnd(), 10)
+        XCTAssertNil(try handle.read(upToCount: 4))
+        try handle.seek(toOffset: 8)
+        XCTAssertEqual(Array(try XCTUnwrap(handle.read(upToCount: 5))), [8, 9])
+        try handle.seek(toOffset: 2)
+        XCTAssertEqual(Array(try XCTUnwrap(handle.read(upToCount: 3))), [2, 3, 4])
+        XCTAssertEqual(Array(try XCTUnwrap(handle.read(upToCount: 2))), [5, 6])
+    }
+
     func testDSFSeekLandsOnAnEvenByteAndKeepsTheRest() throws {
         let reader = try DSDDoPDecoder.makeReader(sourceURL: try makeDSF(bytesPerChannel: 32))
         XCTAssertEqual(reader.durationSeconds, 32.0 * 8 / 2_822_400, accuracy: 1e-12)
