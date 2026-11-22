@@ -307,10 +307,13 @@ enum SACDISO {
                     let languageIndex = min(textSectors, 9)
                     let enc = encoding(forCharacterSet: Int(data[88 + 4 * languageIndex + 2]))
                     textSectors += 1
-                    let slice = Array(data[base..<(base + sectorSize)])
+                    // Track text positions are offsets from the start of this sector and
+                    // often point into the sectors that follow it, so keep the rest of
+                    // the TOC rather than one sector.
+                    let slice = Array(data[base...])
                     for t in 0..<trackCount {
                         let position = be16(slice, 8 + 2 * t)
-                        guard position > 0, position < sectorSize else { continue }
+                        guard position > 0, position < slice.count else { continue }
                         var p = position
                         let amount = Int(slice[p])
                         p += 4
@@ -348,7 +351,7 @@ enum SACDISO {
                 }
                 sector += 1
             default:
-                sector = Int.max / 2                                  // unknown list: stop
+                sector += 1          // text continuation or an unknown list: keep scanning for the ids
             }
         }
 

@@ -82,7 +82,7 @@ final class SACDISOTests: XCTestCase {
     private let audioLSN = 600
 
     /// A two-track stereo image; track 1 has 4 frames, track 2 has 3.
-    private func makeImage(trackFrames: [Int] = [4, 3]) -> [UInt8] {
+    private func makeImage(trackFrames: [Int] = [4, 3], spillText: Bool = false) -> [UInt8] {
         var image = [UInt8](repeating: 0, count: (audioLSN + 200) * sectorSize)
         func write(_ sector: [UInt8], at lsn: Int) {
             image.replaceSubrange((lsn * sectorSize)..<((lsn + 1) * sectorSize), with: sector)
@@ -92,7 +92,7 @@ final class SACDISOTests: XCTestCase {
         put(&master, 0, ascii("SACDMTOC"))
         put(&master, 8, [1, 20])
         put(&master, 64, be32(areaLSN))                               // area_1_toc_1_start
-        put(&master, 84, be16(4))                                     // area_1_toc_size
+        put(&master, 84, be16(spillText ? 5 : 4))                     // area_1_toc_size
         put(&master, 136, ascii("en") + [2, 0])                        // locale 0: ISO 8859-1
         write(master, at: masterLSN)
 
@@ -122,7 +122,7 @@ final class SACDISOTests: XCTestCase {
         var area = blank()
         put(&area, 0, ascii("TWOCHTOC"))
         put(&area, 8, [1, 20])
-        put(&area, 10, be16(4))                                       // TOC size in sectors
+        put(&area, 10, be16(spillText ? 5 : 4))                       // TOC size in sectors
         area[21] = 2                                                  // frame format: DSD 3 in 14
         area[32] = 2                                                  // channels
         area[69] = UInt8(trackFrames.count)                           // track count
@@ -146,10 +146,23 @@ final class SACDISOTests: XCTestCase {
 
         var titles = blank()
         put(&titles, 0, ascii("SACDTTxt"))
-        put(&titles, 8, be16(40))
-        put(&titles, 10, be16(120))
-        put(&titles, 40, [2, 0, 0, 0, 0x01, 0x20] + ascii("First Track") + [0, 0x02, 0x20] + ascii("Performer One") + [0])
-        put(&titles, 120, [1, 0, 0, 0, 0x01, 0x20] + ascii("Second Track") + [0])
+        let first: [UInt8] = [2, 0, 0, 0, 0x01, 0x20] + ascii("First Track") + [0, 0x02, 0x20] + ascii("Performer One") + [0]
+        let second: [UInt8] = [1, 0, 0, 0, 0x01, 0x20] + ascii("Second Track") + [0]
+        if spillText {
+            // Real discs keep the strings in the sector(s) after the "SACDTTxt" header
+            // sector: positions ≥ 2048 are offsets from the start of that header sector.
+            put(&titles, 8, be16(2048 + 40))
+            put(&titles, 10, be16(2048 + 120))
+            var more = blank()
+            put(&more, 40, first)
+            put(&more, 120, second)
+            write(more, at: areaLSN + 4)
+        } else {
+            put(&titles, 8, be16(40))
+            put(&titles, 10, be16(120))
+            put(&titles, 40, first)
+            put(&titles, 120, second)
+        }
         write(titles, at: areaLSN + 3)
 
         return image
@@ -183,6 +196,16 @@ final class SACDISOTests: XCTestCase {
         XCTAssertEqual(area.tracks[0].performer, "Performer One")
         XCTAssertEqual(area.tracks[1].title, "Second Track")
         XCTAssertEqual(area.tracks[0].durationSeconds, 4.0 / 75.0, accuracy: 1e-9)
+    }
+
+    func testTitlesStoredInFollowingSectorsAreRead() throws {
+        let url = try writeImage(makeImage(spillText: true))
+        let area = try XCTUnwrap(try SACDISO.open(try SACDFileSectorSource(url: url)).stereo)
+        XCTAssertEqual(area.tracks.count, 2)
+        XCTAssertEqual(area.tracks[0].title, "First Track")
+        XCTAssertEqual(area.tracks[0].performer, "Performer One")
+        XCTAssertEqual(area.tracks[1].title, "Second Track")
+        XCTAssertEqual(area.tracks[1].startLSN, audioLSN + 20)         // the lists after the text were still found
     }
 
     func testTrackFramesAreReassembledAndSplitIntoChannels() throws {
