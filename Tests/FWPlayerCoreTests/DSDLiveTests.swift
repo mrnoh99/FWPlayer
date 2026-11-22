@@ -30,6 +30,43 @@ final class DSDLiveTests: XCTestCase {
         DSDLiveRenderer(isDoP: doP, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0.1)
     }
 
+    // MARK: - Gapless boundaries
+
+    func testBoundaryRestartsTheTrackClockWithoutAGap() {
+        let renderer = DSDLiveRenderer(isDoP: false, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0)
+        // Track A: 300 frames of 0.25; track B: 200 frames of 0.75, joined seamlessly.
+        renderer.push([Float](repeating: 0.25, count: 600))
+        renderer.addBoundary()
+        renderer.push([Float](repeating: 0.75, count: 400))
+        renderer.setPaused(false)
+
+        XCTAssertEqual(renderer.pendingBoundaries, 1)
+        let first = render(renderer, 300)
+        XCTAssertTrue(first.left.allSatisfy { $0 == 0.25 })
+        XCTAssertEqual(renderer.completedBoundaries, 0)
+        XCTAssertEqual(renderer.musicSeconds, 0.3, accuracy: 1e-9)
+
+        let second = render(renderer, 100)                // B's first 100 frames, no silence between
+        XCTAssertTrue(second.left.allSatisfy { $0 == 0.75 })
+        XCTAssertEqual(renderer.completedBoundaries, 1)
+        XCTAssertEqual(renderer.pendingBoundaries, 0)
+        XCTAssertEqual(renderer.musicSeconds, 0.1, accuracy: 1e-9)   // B's own clock
+    }
+
+    func testFlushDropsPendingBoundaries() {
+        let renderer = DSDLiveRenderer(isDoP: false, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0)
+        renderer.push([Float](repeating: 0.5, count: 200))
+        renderer.addBoundary()
+        renderer.push([Float](repeating: 0.5, count: 200))
+        renderer.flush(musicSeconds: 1)
+        XCTAssertEqual(renderer.pendingBoundaries, 0)
+        renderer.push([Float](repeating: 0.5, count: 200))
+        renderer.setPaused(false)
+        _ = render(renderer, 100)
+        XCTAssertEqual(renderer.completedBoundaries, 0)
+        XCTAssertEqual(renderer.musicSeconds, 1.1, accuracy: 1e-9)
+    }
+
     // MARK: - DoP
 
     func testDoPMarkersAlternateAndBitsSurviveExactly() {

@@ -105,6 +105,18 @@ final class AudioPlayer: NSObject, ObservableObject {
     private unowned let playlists: PlaylistManager
     private var player: (any PlaybackBackend)?
     private var ticker: AnyCancellable?
+
+    // Gapless: the next streamed FLAC, opened ahead and handed to the running engine.
+    private struct GaplessNext {
+        let track: Track
+        let index: Int
+        let duration: TimeInterval
+        let tags: [String: String]
+    }
+    private var gaplessNext: GaplessNext?
+    private var gaplessTask: Task<Void, Never>?
+    private var gaplessHandled = 0
+    private var gaplessEpoch = 0
     /// Resources backing the current track: the source file (an SMB download, to
     /// be released) and any decoder-produced temp file (to be deleted).
     private var activeResource: (sourceID: String, sourceURL: URL, decodedTempURL: URL?, trackID: String)?
@@ -785,6 +797,11 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Stops the active player without clearing the queue or current index.
     private func tearDownPlayback(keepQueue: Bool) {
+        gaplessTask?.cancel()
+        gaplessTask = nil
+        gaplessNext = nil
+        gaplessHandled = 0
+        gaplessEpoch = 0
         player?.stop()
         player?.detach()
         player = nil
@@ -1116,6 +1133,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         backend.play()
         isPlaying = true
         startTicker()
+        scheduleGaplessNext()
         recordHistory(track)
         playlists.recordPlayed(track)
         refreshOutputSampleRateSoon()
@@ -1179,7 +1197,76 @@ final class AudioPlayer: NSObject, ObservableObject {
             .sink { [weak self] _ in
                 guard let self, let player = self.player else { return }
                 self.currentTime = max(0, player.currentTime - self.timeOffset)
+                self.checkGapless()
             }
+    }
+
+    // MARK: - Gapless (streamed FLAC)
+
+    /// Opens the next queued FLAC in the background and queues it on the running engine,
+    /// so the join has no gap. Only when it's a streamed FLAC at the same sample rate.
+    private func scheduleGaplessNext() {
+        gaplessTask?.cancel()
+        gaplessTask = nil
+        guard streamFLAC, repeatMode != .one,
+              let backend = player as? DSDLivePlayback, backend.isPCM, backend.wantsNext,
+              let current = currentTrack,
+              let index = upcomingIndices().first, queue.indices.contains(index) else { return }
+        let track = queue[index]
+        let ext = (track.path as NSString).pathExtension.lowercased()
+        guard track.id != current.id, ext == "flac",
+              let source = registry.source(for: track.sourceID),
+              let streaming = source as? ByteStreamingSource,
+              prefetched[track.id] == nil, recentlyPlayed[track.id] == nil else { return }
+        let currentID = current.id
+        gaplessTask = Task { [weak self] in
+            guard let stream = try? await streaming.openByteStream(forPath: track.path),
+                  let decoder = try? await Self.blocking({ try FLACDecoder(source: stream) }),
+                  !Task.isCancelled else { return }
+            let pcm = PCMSource(sampleRate: Double(decoder.info.sampleRate),
+                                durationSeconds: decoder.durationSeconds, label: "FLAC",
+                                next: { try decoder.nextSamples() },
+                                seek: { try decoder.seek(toSeconds: $0) })
+            await MainActor.run {
+                guard let self, self.currentTrack?.id == currentID,
+                      let backend = self.player as? DSDLivePlayback, backend.wantsNext,
+                      backend.queueNext(pcm) else { return }
+                self.gaplessNext = GaplessNext(track: track, index: index,
+                                               duration: decoder.durationSeconds, tags: decoder.tags)
+            }
+        }
+    }
+
+    /// Called every tick: follows the engine into the next track, or re-queues the next
+    /// one after a seek pulled playback back.
+    private func checkGapless() {
+        guard let backend = player as? DSDLivePlayback, backend.isPCM else { return }
+        let epoch = backend.rewindEpoch
+        if epoch != gaplessEpoch {
+            gaplessEpoch = epoch
+            gaplessNext = nil
+            scheduleGaplessNext()
+        }
+        while backend.completedSegments > gaplessHandled {
+            gaplessHandled += 1
+            guard let next = gaplessNext else { continue }
+            gaplessNext = nil
+            let id = next.track.id
+            let index = queue.firstIndex(where: { $0.id == id }) ?? next.index
+            guard queue.indices.contains(index) else { continue }
+            currentIndex = index
+            currentCatalogInfo = nil
+            backend.segmentDuration = next.duration
+            duration = next.duration
+            currentTime = 0
+            if !next.tags.isEmpty { applyStreamedTags(next.tags, trackID: id) }
+            updateTrackSampleRate(trackID: id, sampleRate: Double(backend.plan.outputRate))
+            recordHistory(queue[index])
+            playlists.recordPlayed(queue[index])
+            updateNowPlaying()
+            prefetchUpcoming()
+            scheduleGaplessNext()
+        }
     }
 
     private func cleanupTemp() {

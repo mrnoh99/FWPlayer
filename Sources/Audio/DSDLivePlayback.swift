@@ -53,6 +53,11 @@ final class DSDLiveRenderer {
     private var tailRemaining: Int
     private var finishedSent = false
     private let silenceFrames: Int
+    // Gapless: frames pushed / rendered in total, and where the next track starts.
+    private var produced: UInt64 = 0
+    private var consumed: UInt64 = 0
+    private var boundaries: [UInt64] = []
+    private var completed = 0
 
     /// Called (once, from the render thread) when the music and tail silence are done.
     var onFinished: (() -> Void)?
@@ -99,7 +104,26 @@ final class DSDLiveRenderer {
             if write == capacityFrames { write = 0 }
         }
         buffered += frames
+        produced &+= UInt64(frames)
         return frames
+    }
+
+    /// Marks that the samples pushed from now on belong to the next track.
+    func addBoundary() {
+        os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
+        boundaries.append(produced)
+    }
+
+    /// Next-track boundaries still ahead of the playhead.
+    var pendingBoundaries: Int {
+        os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
+        return boundaries.count
+    }
+
+    /// How many track boundaries the playhead has crossed so far.
+    var completedBoundaries: Int {
+        os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
+        return completed
     }
 
     func markEnd() {
@@ -117,6 +141,8 @@ final class DSDLiveRenderer {
         finishedSent = false
         tailRemaining = silenceFrames
         musicFrames = seconds * sampleRate
+        consumed = produced                     // what was buffered is dropped
+        boundaries.removeAll()
     }
 
     // MARK: Control / state
@@ -160,6 +186,12 @@ final class DSDLiveRenderer {
                 if leadRemaining > 0 {
                     leadRemaining -= 1
                 } else if buffered > 0 {
+                    if let boundary = boundaries.first, consumed >= boundary {
+                        boundaries.removeFirst()
+                        completed += 1
+                        musicFrames = 0         // a new track starts here
+                    }
+                    consumed &+= 1
                     let a = ring[2 * readFrame], b = ring[2 * readFrame + 1]
                     readFrame += 1
                     if readFrame == capacityFrames { readFrame = 0 }
@@ -234,6 +266,9 @@ final class DSDLivePlayback: PlaybackBackend {
     private var stopRequested = false
     private var pendingSeek: Double?
     private var producer: Thread?
+    private var nextSource: PCMSource?          // gapless: the track to continue with (producerLock)
+    private var pendingRewind = false           // a seek landed while still in the previous track
+    private var rewinds = 0
     private var started = false
     private var detached = false
 
@@ -248,13 +283,56 @@ final class DSDLivePlayback: PlaybackBackend {
                                    silenceSeconds: DSDDoPDecoder.silenceSeconds)
     }
 
+    /// Seconds of audio read ahead for PCM from a share (rides out network hiccups).
+    static let pcmBufferSeconds = 10.0
+
     /// Live PCM playback (no DSD): the same engine, ring buffer and seek handling.
     init(pcm: PCMSource) {
         self.reader = nil
         self.pcm = pcm
         let rate = Int(pcm.sampleRate)
         self.plan = DSDDoPDecoder.Plan(dsdRate: 0, multiple: 0, useDoP: false, outputRate: rate, label: pcm.label)
-        renderer = DSDLiveRenderer(isDoP: false, sampleRate: pcm.sampleRate, silenceSeconds: 0)
+        renderer = DSDLiveRenderer(isDoP: false, sampleRate: pcm.sampleRate,
+                                   capacitySeconds: Self.pcmBufferSeconds + 1, silenceSeconds: 0)
+        segmentDuration = pcm.durationSeconds
+    }
+
+    // MARK: Gapless (PCM only)
+
+    var isPCM: Bool { pcm != nil }
+
+    /// The duration shown for the track now playing (follows gapless track changes).
+    var segmentDuration: TimeInterval = 0
+
+    /// Tracks the playhead has moved into since playback began.
+    var completedSegments: Int { renderer.completedBoundaries }
+
+    /// Increments when a seek pulled playback back into a track whose successor had
+    /// already been taken (the successor must be queued again).
+    var rewindEpoch: Int {
+        producerLock.lock(); defer { producerLock.unlock() }
+        return rewinds
+    }
+
+    /// True while no successor is queued.
+    var wantsNext: Bool {
+        producerLock.lock(); defer { producerLock.unlock() }
+        return nextSource == nil
+    }
+
+    /// Queues the track to continue with once this one ends, without a gap. Only a
+    /// source at the same sample rate can join the running stream.
+    @discardableResult
+    func queueNext(_ source: PCMSource) -> Bool {
+        guard pcm != nil, Int(source.sampleRate) == plan.outputRate else { return false }
+        producerLock.lock(); defer { producerLock.unlock() }
+        nextSource = source
+        return true
+    }
+
+    func clearNext() {
+        producerLock.lock(); defer { producerLock.unlock() }
+        nextSource = nil
     }
 
     deinit { shutDown() }
@@ -268,7 +346,7 @@ final class DSDLivePlayback: PlaybackBackend {
         set { seek(to: newValue) }
     }
 
-    var duration: TimeInterval { reader?.durationSeconds ?? pcm?.durationSeconds ?? 0 }
+    var duration: TimeInterval { reader?.durationSeconds ?? segmentDuration }
 
     var volume: Float {
         get { engine.mainMixerNode.outputVolume }
@@ -361,8 +439,10 @@ final class DSDLivePlayback: PlaybackBackend {
 
     private func seek(to seconds: Double) {
         let clamped = max(0, min(seconds, duration))
+        let rewound = renderer.pendingBoundaries > 0     // still in the track before a gapless join
         producerLock.lock()
         pendingSeek = clamped
+        if rewound { pendingRewind = true }
         producerLock.unlock()
         // Silence until the producer has repositioned; the position follows at once.
         renderer.flush(musicSeconds: clamped)
@@ -379,7 +459,10 @@ final class DSDLivePlayback: PlaybackBackend {
     }
 
     private func produceLoop() {
-        let bufferTarget = Int(renderer.sampleRate)               // keep ~1 s buffered
+        let bufferTarget = pcm != nil ? Int(renderer.sampleRate * Self.pcmBufferSeconds)
+                                      : Int(renderer.sampleRate)   // DSD: keep ~1 s buffered
+        var source = pcm
+        var previous: PCMSource?                                  // kept until the playhead leaves it
         var converter = plan.useDoP || reader == nil ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
         var pendingSamples = [Float]()
 
@@ -388,12 +471,17 @@ final class DSDLivePlayback: PlaybackBackend {
             let stop = stopRequested
             let seekTo = pendingSeek
             pendingSeek = nil
+            let rewind = pendingRewind
+            pendingRewind = false
+            if rewind { nextSource = nil; rewinds += 1 }
             producerLock.unlock()
             if stop { return }
 
+            if previous != nil, renderer.pendingBoundaries == 0 { previous = nil }
             if let seekTo {
+                if rewind, let old = previous { source = old; previous = nil }
                 try? reader?.seek(toSeconds: seekTo)
-                try? pcm?.seek(seekTo)
+                try? source?.seek(seekTo)
                 converter = plan.useDoP || reader == nil ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
                 pendingSamples.removeAll()
                 renderer.flush(musicSeconds: seekTo)             // drop anything produced before the move
@@ -408,9 +496,19 @@ final class DSDLivePlayback: PlaybackBackend {
                 Thread.sleep(forTimeInterval: 0.01)
                 continue
             }
-            if let pcm {
-                if let samples = try? pcm.next(), !samples.isEmpty {
+            if let current = source {
+                if let samples = try? current.next(), !samples.isEmpty {
                     pendingSamples = samples
+                    continue
+                }
+                producerLock.lock()
+                let following = nextSource
+                nextSource = nil
+                producerLock.unlock()
+                if let following {                                // gapless: carry straight on
+                    previous = current
+                    source = following
+                    renderer.addBoundary()
                     continue
                 }
                 renderer.markEnd()
