@@ -78,6 +78,13 @@ enum MacOutputDevice {
         return highest.flatMap { $0 > 0 ? $0 : nil }
     }
 
+    /// The highest sample rate the default output device offers.
+    static func maxRate() -> Double? {
+        guard let device = defaultDeviceID() else { return nil }
+        let top = availableRates(of: device).map { $0.mMaximum }.max()
+        return top.flatMap { $0 > 0 ? $0 : nil }
+    }
+
     /// The default output device's name and the highest rate it offers, for the status
     /// line ("Prodigy CUBE 2 (up to 96 kHz)"). Nil if it can't be read.
     static func deviceSummary() -> String? {

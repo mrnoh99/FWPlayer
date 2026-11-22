@@ -326,6 +326,18 @@ struct ContentView: View {
         }
     }
 
+    /// The notice for a track the output isn't running at the rate of. When the device's
+    /// own maximum is known and below the track's rate, say so plainly instead of guessing.
+    private static func rateMismatchText(output: String, file: Double, player: AudioPlayer) -> String {
+        let fileText = AudioFormatReader.formatSampleRate(file)
+        if let top = player.outputDeviceMaxRate, top + 1 < file {
+            let name = player.outputDeviceSummary.map { String($0.split(separator: "(").first ?? "").trimmingCharacters(in: .whitespaces) }
+            return "This track is \(fileText), but \(name.flatMap { $0.isEmpty ? nil : $0 } ?? "the output device") supports up to \(AudioFormatReader.formatSampleRate(top)). The system converts it down (output \(output))."
+        }
+        return "Output \(output) ≠ track \(fileText) — the system is resampling."
+            + (player.outputDeviceSummary.map { " Device: \($0)." } ?? "")
+    }
+
     /// Whether the hardware is running at the playing track's native rate.
     @ViewBuilder
     private var bitPerfectStatus: some View {
@@ -365,8 +377,7 @@ struct ContentView: View {
                 // On a speaker/Bluetooth route the route warning above already
                 // explains the fixed rate; only blame the DAC when it is one.
                 if player.outputRoute?.canBeBitPerfect ?? true {
-                    Label("Output \(outputText) ≠ track \(AudioFormatReader.formatSampleRate(file)) — the system is resampling. Your DAC may not support this rate."
-                          + (player.outputDeviceSummary.map { " Device: \($0)." } ?? ""),
+                    Label(Self.rateMismatchText(output: outputText, file: file, player: player),
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.orange)

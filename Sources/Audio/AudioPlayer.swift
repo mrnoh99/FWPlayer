@@ -192,6 +192,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var outputSampleRate: Double?
     /// Mac: the output device's name and its highest sample rate, for the mismatch notice.
     @Published private(set) var outputDeviceSummary: String?
+    @Published private(set) var outputDeviceMaxRate: Double?
 
     /// iPhone/iPad system output volume (0…1). iOS applies it digitally to USB
     /// DACs that have no hardware volume, so anything below 1.0 alters the
@@ -1273,6 +1274,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         #if targetEnvironment(macCatalyst)
         outputSampleRate = MacOutputDevice.currentRate()
         outputDeviceSummary = MacOutputDevice.deviceSummary()
+        outputDeviceMaxRate = MacOutputDevice.maxRate()
         #elseif os(iOS)
         outputSampleRate = AVAudioSession.sharedInstance().sampleRate
         #endif
