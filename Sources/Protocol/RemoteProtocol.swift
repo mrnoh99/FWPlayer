@@ -44,6 +44,20 @@ struct RemoteTrack: Codable, Hashable, Identifiable {
     /// the player's library. Optional for compatibility with older players.
     var sourceID: String?
     var path: String?
+    /// Classical: composer and work from the file's tags. Optional for compatibility
+    /// with older players (which don't send them).
+    var composer: String?
+    var work: String?
+
+    /// Composer, work and performers on one line; nil when none is known. The work is
+    /// left out when the title already says it.
+    var artistLine: String? {
+        var parts: [String] = []
+        if let composer, !composer.isEmpty { parts.append(composer) }
+        if let work, !work.isEmpty, !title.localizedCaseInsensitiveContains(work) { parts.append(work) }
+        if let artist, !artist.isEmpty { parts.append(artist) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 }
 
 /// A full snapshot of the player's transport state, pushed to every connected

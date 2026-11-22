@@ -487,7 +487,8 @@ final class RemoteControlServer: ObservableObject {
             RemoteTrack(
                 id: $0.id, title: $0.title, artist: $0.artist, album: $0.album,
                 year: $0.year, genre: $0.genre, duration: $0.duration,
-                sourceID: $0.sourceID, path: $0.path
+                sourceID: $0.sourceID, path: $0.path,
+                composer: $0.composer, work: $0.work
             )
         }
     }
