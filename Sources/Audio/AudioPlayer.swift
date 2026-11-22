@@ -814,7 +814,16 @@ final class AudioPlayer: NSObject, ObservableObject {
             isLoading = false
             activeResource = (sourceID, sourceURL, playable.temporaryURL, track.id)
             if autoPlay {
-                newPlayer.play()
+                if !startOutput(newPlayer) {
+                    // Couldn't get sound out even after re-activating the session: say why.
+                    player = nil
+                    isPlaying = false
+                    playable.cleanup()
+                    activeResource = nil
+                    registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+                    errorMessage = "The audio output didn't start. \(outputDiagnostics()) Reconnect the DAC (or switch the output) and try again."
+                    return
+                }
                 isPlaying = true
                 startTicker()
             } else {
@@ -891,6 +900,33 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         #endif
         refreshOutputSampleRate()
+    }
+
+    // MARK: - Starting output
+
+    /// Starts `newPlayer`; if the output refuses (e.g. a USB DAC still switching
+    /// rate or mode), re-activates the audio session and tries once more.
+    private func startOutput(_ newPlayer: AVAudioPlayer) -> Bool {
+        if newPlayer.play() { return true }
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(false)
+        try? session.setActive(true)
+        #endif
+        Thread.sleep(forTimeInterval: 0.3)
+        newPlayer.prepareToPlay()
+        return newPlayer.play()
+    }
+
+    /// "(Output: SACD 30n, USB, 44100 Hz.)" for error messages.
+    private func outputDiagnostics() -> String {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute.outputs.first.map { "\($0.portName) (\($0.portType.rawValue))" } ?? "no output"
+        return "(Output: \(route), \(Int(session.sampleRate)) Hz.)"
+        #else
+        return ""
+        #endif
     }
 
     // MARK: - Live DSD
@@ -1458,6 +1494,9 @@ final class AudioPlayer: NSObject, ObservableObject {
 extension AudioPlayer: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
+            if !flag {
+                self?.errorMessage = "Playback stopped unexpectedly. \(self?.outputDiagnostics() ?? "")"
+            }
             self?.advanceAfterPlaybackEnded()
         }
     }
