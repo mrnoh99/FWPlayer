@@ -113,6 +113,16 @@ struct ContentView: View {
         } message: {
             Text("Give your playlist a name.")
         }
+        // Playback problems used to be recorded but never shown anywhere, so a track
+        // that failed to start just flipped back to the play button with no reason.
+        .alert("Playback", isPresented: Binding(
+            get: { player.errorMessage != nil },
+            set: { if !$0 { player.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { player.errorMessage = nil }
+        } message: {
+            Text(player.errorMessage ?? "")
+        }
     }
 
 
