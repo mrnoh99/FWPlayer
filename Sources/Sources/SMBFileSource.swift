@@ -65,8 +65,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
             return items
         }
         do {
-            let files = try await listConnection.listDirectory(path: path)
-            let items = Self.items(from: files, parent: path)
+            let items = try await listFolder(path: path)
             await listingCache.store(path: path, items: items)
             return items
         } catch {
@@ -88,14 +87,33 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
             await listingCache.store(path: path, items: items)
             return items
         }
-        let files = try await listConnection.listDirectory(path: path)
-        let items = Self.items(from: files, parent: path)
+        let items = try await listFolder(path: path)
         await listingCache.store(path: path, items: items)
         return items
         #else
         throw FileSourceError.smbUnavailable
         #endif
     }
+
+    #if canImport(SMBClient)
+    /// Lists a folder. An error that isn't "not found" may mean the cached connection went
+    /// bad (a long-idle or half-dead session), so reconnect and try once more; a second
+    /// failure is reported with its real description instead of a generic "Unknown error".
+    private func listFolder(path: String) async throws -> [FileItem] {
+        do {
+            return Self.items(from: try await listConnection.listDirectory(path: path), parent: path)
+        } catch {
+            if smbErrorIsObjectNotFound(error) { throw error }
+            await listConnection.invalidate()
+            do {
+                return Self.items(from: try await listConnection.listDirectory(path: path), parent: path)
+            } catch {
+                if smbErrorIsObjectNotFound(error) { throw error }
+                throw FileSourceError.smbFailure(smbDescribe(error))
+            }
+        }
+    }
+    #endif
 
     /// Walks the whole tree once, caching every listing to disk, then persists.
     /// Reports the number of folders scanned. Used after the server is added/edited.
@@ -494,6 +512,15 @@ private actor SMBConnection {
             try await client.download(path: path)
         }
     }
+}
+
+/// A readable description of an SMB error (the generic localized text is often just
+/// "Unknown error").
+private func smbDescribe(_ error: Error) -> String {
+    if let text = (error as? LocalizedError)?.errorDescription, !text.isEmpty { return text }
+    if let response = error as? ErrorResponse { return "SMB status \(NTStatus(response.header.status))" }
+    let ns = error as NSError
+    return "\(type(of: error)) (\(ns.domain) \(ns.code)): \(error)"
 }
 
 private func smbShouldReconnect(_ error: Error) -> Bool {

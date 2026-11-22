@@ -100,6 +100,7 @@ enum FileSourceError: LocalizedError {
     case fileNotFound(String)
     case accessDenied
     case timedOut
+    case smbFailure(String)
 
     var errorDescription: String? {
         switch self {
@@ -108,6 +109,7 @@ enum FileSourceError: LocalizedError {
         case .fileNotFound(let path): return "File not found: \(path)"
         case .accessDenied:
             return "Access to this location was denied. For a folder you added from Files, remove it and add it again."
+        case .smbFailure(let why): return "Couldn't read the folder from the server: \(why)"
         case .timedOut: return "The server didn't respond in time. Check the host/IP, share, and that the server is reachable on this network."
         }
     }
