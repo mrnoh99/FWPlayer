@@ -22,6 +22,19 @@ struct Track: Identifiable, Hashable, Codable, Transferable {
     var genre: String?
     var duration: TimeInterval?
     var sampleRate: Double?
+    /// Classical: composer and work (e.g. "Symphony No. 5"), from the file's tags.
+    var composer: String?
+    var work: String?
+
+    /// Composer, work and performers on one line (classical-friendly); nil when no tag
+    /// is known. The work is left out when the title already says it.
+    var artistLine: String? {
+        var parts: [String] = []
+        if let composer, !composer.isEmpty { parts.append(composer) }
+        if let work, !work.isEmpty, !title.localizedCaseInsensitiveContains(work) { parts.append(work) }
+        if let artist, !artist.isEmpty { parts.append(artist) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 
     var id: String { sourceID + "::" + path }
 

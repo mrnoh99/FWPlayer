@@ -181,7 +181,7 @@ struct QueueRow: View {
                 Text(track.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                if let artist = track.artist ?? track.album {
+                if let artist = track.artistLine ?? track.album {
                     Text(artist)
                         .font(.caption)
                         .foregroundStyle(.secondary)

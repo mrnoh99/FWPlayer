@@ -1107,6 +1107,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         if track.album == nil { track.album = tags["ALBUM"] }
         if track.year == nil { track.year = Self.releaseYear(from: tags["DATE"]) }
         if track.genre == nil { track.genre = tags["GENRE"] }
+        if track.composer == nil { track.composer = tags["COMPOSER"] }
+        if track.work == nil { track.work = tags["WORK"] }
         var updated = queue
         updated[idx] = track
         queue = updated
@@ -1336,6 +1338,17 @@ final class AudioPlayer: NSObject, ObservableObject {
             var artist: String?
             var album: String?
             var year: String?
+            var composer: String?
+            var work: String?
+            // Composer / work aren't in AVFoundation's common keys: read the ID3 / iTunes ones.
+            let allMetadata = (try? await asset.load(.metadata)) ?? []
+            for identifier in [AVMetadataIdentifier.id3MetadataComposer, .iTunesMetadataComposer] {
+                if let item = AVMetadataItem.metadataItems(from: allMetadata, filteredByIdentifier: identifier).first,
+                   let value = try? await item.load(.stringValue), !value.isEmpty {
+                    composer = value
+                    break
+                }
+            }
             for item in metadata {
                 guard let key = item.commonKey else { continue }
                 let value = try? await item.load(.stringValue)
@@ -1357,6 +1370,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if album == nil { album = flac["ALBUM"] }
                 if year == nil { year = Self.releaseYear(from: flac["DATE"] ?? flac["YEAR"] ?? flac["ORIGINALDATE"]) }
                 genre = flac["GENRE"]
+                if composer == nil { composer = flac["COMPOSER"] }
+                work = flac["WORK"]
             }
             // DSD (DSF/DFF) files carry ID3v2 tags.
             let dsd = DSDTags.read(from: url)
@@ -1365,6 +1380,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if album == nil { album = dsd["ALBUM"] }
                 if year == nil { year = Self.releaseYear(from: dsd["DATE"]) }
                 if genre == nil { genre = dsd["GENRE"] }
+                if composer == nil { composer = dsd["COMPOSER"] }
+                if work == nil { work = dsd["WORK"] }
             }
             // First pass: apply the file's embedded tags and start artwork resolution.
             let lookup: (artist: String?, album: String?)? = await MainActor.run {
@@ -1375,6 +1392,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                 if let album { track.album = album }
                 if let year { track.year = year }
                 if let genre, track.genre == nil { track.genre = genre }
+                if let composer, track.composer == nil { track.composer = composer }
+                if let work, track.work == nil { track.work = work }
                 if let sampleRate, track.sampleRate == nil { track.sampleRate = sampleRate }
                 // The file-name-derived title is kept; embedded title is only a fallback.
                 var updated = self.queue
@@ -1721,6 +1740,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         if let artist = track.artist { info[MPMediaItemPropertyArtist] = artist }
+        if let composer = track.composer { info[MPMediaItemPropertyComposer] = composer }
         if let album = track.album { info[MPMediaItemPropertyAlbumTitle] = album }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }

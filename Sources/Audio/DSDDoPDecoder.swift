@@ -745,6 +745,8 @@ enum DSDTags {
         case "TALB": return "ALBUM"
         case "TDRC", "TYER", "TDRL": return "DATE"
         case "TCON": return "GENRE"
+        case "TCOM": return "COMPOSER"
+        case "TIT1": return "WORK"
         default: return nil
         }
     }

@@ -511,7 +511,7 @@ struct PlayerView: View {
             queueArtwork(track)
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title).lineLimit(1)
-                if let line = track.artist ?? track.album {
+                if let line = track.artistLine ?? track.album {
                     Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -585,7 +585,7 @@ struct PlayerView: View {
     private func refreshFromPlayer() {
         isLoading = player.isLoading
         title = player.currentTrack?.title ?? "Not Playing"
-        artist = player.currentTrack?.artist
+        artist = player.currentTrack?.artistLine
         album = player.currentTrack?.album
         year = player.currentTrack?.year
         genre = player.currentTrack?.genre

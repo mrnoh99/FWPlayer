@@ -197,7 +197,7 @@ struct NowPlayingBar: View {
 
     private func refreshFromPlayer() {
         title = player.currentTrack?.title ?? ""
-        artist = player.currentTrack?.artist
+        artist = player.currentTrack?.artistLine
         sampleRate = player.currentTrack?.sampleRate
         isLoading = player.isLoading
         loadingDetail = player.loadingDetail
