@@ -384,13 +384,13 @@ private func readExactly(_ handle: FileHandle, at offset: UInt64, count: Int) th
     do {
         try handle.seek(toOffset: offset)
         guard let data = try handle.read(upToCount: count), data.count == count else {
-            throw AudioDecoderError.openFailed
+            throw AudioDecoderError.dsdUnsupported("The file ends too early to read its header (is the copy complete?).")
         }
         return [UInt8](data)
     } catch let error as AudioDecoderError {
         throw error
     } catch {
-        throw AudioDecoderError.openFailed
+        throw AudioDecoderError.dsdUnsupported("Couldn't read the file (\(error.localizedDescription)).")
     }
 }
 
@@ -445,7 +445,8 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
     init(handle: FileHandle) throws {
         self.handle = handle
         let head = try readExactly(handle, at: 0, count: 28)
-        guard fourCC(head, 0) == "DSD " else { throw AudioDecoderError.openFailed }
+        func fail(_ why: String) -> AudioDecoderError { .dsdUnsupported("DSF file: \(why).") }
+        guard fourCC(head, 0) == "DSD " else { throw fail("it doesn't start with a DSD header") }
         let fileSize = try handle.seekToEnd()
 
         var fmt: [UInt8]?
@@ -456,9 +457,14 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
             let chunkHead = try readExactly(handle, at: offset, count: 12)
             let id = fourCC(chunkHead, 0)
             let size = le64(chunkHead, 4)
-            guard size >= 12, size <= fileSize else { throw AudioDecoderError.openFailed }
+            guard size >= 12 else { throw fail("bad size \(size) for the '\(id)' chunk") }
+            // (A data chunk larger than the file — a copy that isn't complete — is
+            // played as far as it goes, so only other chunks must fit.)
+            guard id == "data" || size <= fileSize else {
+                throw fail("the '\(id)' chunk is larger than the file (is the copy complete?)")
+            }
             if id == "fmt " {
-                guard size >= 52 else { throw AudioDecoderError.openFailed }
+                guard size >= 52 else { throw fail("the 'fmt ' chunk is too short (\(size) bytes)") }
                 fmt = try readExactly(handle, at: offset + 12, count: 40)
             } else if id == "data" {
                 dataStart = offset + 12
@@ -467,16 +473,18 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
             }
             offset += size
         }
-        guard let fmt, dataStart > 0 else { throw AudioDecoderError.openFailed }
+        guard let fmt, dataStart > 0 else { throw fail("no 'fmt ' or 'data' chunk found (is the copy complete?)") }
 
         // fmt body: version, formatID, channelType, channelNum, freq, bits, samples(8), blockSize, reserved
         guard le32(fmt, 4) == 0 else {                      // 0 = DSD raw
-            throw AudioDecoderError.dsdUnsupported("Unsupported DSF format.")
+            throw fail("unsupported format ID \(le32(fmt, 4))")
         }
         let channelCount = Int(le32(fmt, 12))
         let block = Int(le32(fmt, 32))
         let sampleCount = le64(fmt, 24)
-        guard channelCount > 0, block > 0, block % 2 == 0 else { throw AudioDecoderError.openFailed }
+        guard channelCount > 0, block > 0, block % 2 == 0 else {
+            throw fail("unsupported layout (\(channelCount) channels, block size \(block))")
+        }
 
         channels = channelCount
         dsdRate = Int(le32(fmt, 16))
@@ -485,6 +493,7 @@ private final class DSFReader: DSDStreamReader, @unchecked Sendable {
         dataOffset = dataStart
         groupsRemaining = Int(dataLength) / (block * channelCount)
         groupsTotal = groupsRemaining
+        guard groupsRemaining > 0 else { throw fail("no audio data in it (is the copy complete?)") }
         bytesPerChannelTotal = Int(truncatingIfNeeded: (sampleCount &+ 7) / 8)
         self.dataStart = dataStart
         bytesPerChannelRemaining = Int(truncatingIfNeeded: (sampleCount &+ 7) / 8)
