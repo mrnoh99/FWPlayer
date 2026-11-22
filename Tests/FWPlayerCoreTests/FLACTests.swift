@@ -43,7 +43,7 @@ final class FLACTests: XCTestCase {
     func testAllFixturesDecodeBitExact() throws {
         for name in ["s16_44k_stereo_l8", "s16_44k_stereo_midside", "s16_44k_stereo_leftside",
                      "s16_44k_stereo_rightside", "s16_44k_stereo_fixed", "s24_96k_stereo",
-                     "s24_192k_stereo", "s16_44k_mono", "s16_44k_long", "s16_44k_long_seektable"] {
+                     "s24_192k_stereo", "s16_44k_mono", "s16_44k_long", "s16_44k_long_seektable", "s16_44k_order0"] {
             try check(name)
         }
     }

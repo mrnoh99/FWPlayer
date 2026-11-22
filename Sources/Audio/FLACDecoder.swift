@@ -450,7 +450,7 @@ final class FLACDecoder: @unchecked Sendable {
             var residual = [Int32](repeating: 0, count: blockSize - order)
             guard decodeResidual(&r, blockSize: blockSize, order: order, into: &residual) else { return false }
             for k in order..<blockSize {
-                let r1 = Int64(out[k - 1]), r2 = order > 1 ? Int64(out[k - 2]) : 0
+                let r1 = order > 0 ? Int64(out[k - 1]) : 0, r2 = order > 1 ? Int64(out[k - 2]) : 0
                 let r3 = order > 2 ? Int64(out[k - 3]) : 0, r4 = order > 3 ? Int64(out[k - 4]) : 0
                 let prediction: Int64
                 switch order {
