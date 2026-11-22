@@ -195,6 +195,18 @@ final class DSDTests: XCTestCase {
         XCTAssertEqual(try readWAV(result.url).rate, 176_400)
     }
 
+    func testDSD512And1024ConvertToPCM() throws {
+        let bytes = [UInt8](repeating: 0x69, count: 8)
+        for (rate, label) in [(22_579_200, "DSD512"), (45_158_400, "DSD1024"), (24_576_000, "DSD512 (48 kHz)")] {
+            let url = try write(makeDSF(left: bytes, right: bytes, rate: UInt32(rate)), ext: "dsf")
+            let result = try DSDDoPDecoder.convert(sourceURL: url, mode: .dop)
+            defer { try? FileManager.default.removeItem(at: result.url) }
+            XCTAssertFalse(result.isDoP, label)
+            XCTAssertEqual(result.label, label)
+            XCTAssertEqual(try readWAV(result.url).rate, rate % 3_072_000 == 0 ? 192_000 : 176_400, label)
+        }
+    }
+
     func testMonoIsRejected() throws {
         let url = try write(makeDSF(left: [UInt8](repeating: 0x69, count: 8), right: nil), ext: "dsf")
         XCTAssertThrowsError(try DSDDoPDecoder.convert(sourceURL: url, mode: .dop)) { error in
@@ -271,6 +283,28 @@ final class DSDTests: XCTestCase {
         }
         let amplitude = 2 * (inPhase * inPhase + quadrature * quadrature).squareRoot() / Double(window.count)
         XCTAssertEqual(amplitude, 0.5, accuracy: 0.02)
+    }
+
+    func testDSD512ToneKeepsItsLevel() throws {
+        // 22.5792 MHz: the same 1 kHz tone through the m = 8 filter.
+        let tone = modulate(frequency: 1000, amplitude: 0.25, seconds: 0.05, rate: 22_579_200)
+        let usable = tone.count / 8 * 8
+        let url = try write(makeDSF(left: Array(tone[0..<usable]), right: Array(tone[0..<usable]), rate: 22_579_200), ext: "dsf")
+        let result = try DSDDoPDecoder.convert(sourceURL: url, mode: .pcm)
+        defer { try? FileManager.default.removeItem(at: result.url) }
+        let wav = try readWAV(result.url)
+        XCTAssertEqual(wav.rate, 176_400)
+        let frames = wav.data.count / 6
+        XCTAssertGreaterThan(frames, 6_000)
+        var samples = [Double]()
+        for f in 0..<frames {
+            var v = Int(wav.data[f * 6]) | Int(wav.data[f * 6 + 1]) << 8 | Int(wav.data[f * 6 + 2]) << 16
+            if v & 0x80_0000 != 0 { v -= 1 << 24 }
+            samples.append(Double(v) / 8_388_607)
+        }
+        let steady = samples[1000..<(frames - 500)]
+        let rms = (steady.reduce(0) { $0 + $1 * $1 } / Double(steady.count)).squareRoot()
+        XCTAssertEqual(rms, 0.5 / 2.0.squareRoot(), accuracy: 0.03)
     }
 
     func testPCMConversionOfSilenceIsSilent() throws {

@@ -18,7 +18,7 @@ over Wi‑Fi.
   100% and see whether the DAC is actually running at the track's rate.
 - 🔊 **DSD (DSF / DFF)** — DSD64 / DSD128 are sent **bit-exact over DoP** to a
   USB DAC (volume locked at 100%; the system volume must be at maximum, and the
-  output must be a USB DAC). On any other output — or for DSD256 — the file is
+  output must be a USB DAC). On any other output — or for DSD256 / DSD512 / DSD1024, which a USB carrier can't hold — the file is
   filtered and converted to 24-bit PCM instead, so it's always safe to play.
   Embedded ID3 tags are read, and a progress readout shows while a large file is
   converted. DST-compressed DSDIFF and multichannel files aren't supported.

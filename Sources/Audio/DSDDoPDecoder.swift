@@ -128,7 +128,8 @@ struct DSDDoPDecoder: AudioDecoder {
         let family44 = rate % 2_822_400 == 0
         let family48 = rate % 3_072_000 == 0
         let multiple = family44 ? rate / 2_822_400 : (family48 ? rate / 3_072_000 : 0)
-        guard multiple == 1 || multiple == 2 || multiple == 4 else {
+        // DSD64 … DSD1024. Only DSD64/128 can go out as DoP; the rest is converted to PCM.
+        guard [1, 2, 4, 8, 16].contains(multiple) else {
             throw AudioDecoderError.dsdUnsupported("Unsupported DSD sampling rate (\(rate) Hz).")
         }
         let useDoP = mode == .dop && multiple <= 2
