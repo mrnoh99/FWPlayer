@@ -384,6 +384,9 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Reorders queued tracks (Queue editor), keeping the current track current.
     func moveQueue(fromOffsets source: IndexSet, toOffset destination: Int) {
+        // A remote can send stale indices; ignore anything out of range instead of trapping.
+        guard !source.isEmpty, source.allSatisfy({ queue.indices.contains($0) }),
+              (0...queue.count).contains(destination) else { return }
         let playing = currentTrack
         queue.move(fromOffsets: source, toOffset: destination)
         if let playing { currentIndex = queue.firstIndex(of: playing) }

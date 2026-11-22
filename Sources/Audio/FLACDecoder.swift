@@ -609,7 +609,7 @@ final class FLACDecoder: @unchecked Sendable {
             }
             let frameEnd = frameStart + UInt64(decoded.frames)
             if frameEnd > target {
-                samplesToSkip = Int(target - frameStart)
+                samplesToSkip = target > frameStart ? Int(target - frameStart) : 0
                 return                                          // leave this frame to be decoded by nextSamples()
             }
             cursor += decoded.length
