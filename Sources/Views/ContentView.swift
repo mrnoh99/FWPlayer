@@ -238,7 +238,7 @@ struct ContentView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Toggle(isOn: $player.liveDSD) {
-                    Label("Instant DSD (experimental)", systemImage: "bolt.fill")
+                    Label("Instant DSD", systemImage: "bolt.fill")
                 }
                 Text("Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.")
                     .font(.caption2)

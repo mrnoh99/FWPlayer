@@ -146,7 +146,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     private static let bitPerfectKey = "bitPerfectMode"
 
     /// Play DSD while converting it (no temporary file, no wait), instead of
-    /// converting the whole file first. Experimental; falls back to the old path.
+    /// converting the whole file first. On by default; falls back to the old path.
     @Published var liveDSD: Bool {
         didSet { UserDefaults.standard.set(liveDSD, forKey: Self.liveDSDKey) }
     }
@@ -211,7 +211,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         self.bitPerfectMode = UserDefaults.standard.bool(forKey: Self.bitPerfectKey)
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
-        self.liveDSD = UserDefaults.standard.bool(forKey: Self.liveDSDKey)
+        // On unless the user has switched it off.
+        self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
         super.init()
         configureAudioSession()
         observeSystemVolume()
