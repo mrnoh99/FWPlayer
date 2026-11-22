@@ -65,6 +65,11 @@ final class SourceRegistry: ObservableObject {
         // User-selected folders (security-scoped bookmarks).
         for entry in bookmarkStore.load() {
             guard let resolved = try? BookmarkStore.resolve(entry.bookmark) else { continue }
+            if resolved.isStale,
+               let fresh = try? BookmarkStore.makeBookmark(for: resolved.url) {
+                // Refresh a stale bookmark while it still resolves, so it keeps working.
+                bookmarkStore.add(.init(id: entry.id, displayName: entry.displayName, bookmark: fresh))
+            }
             loaded.append(LocalFileSource(
                 id: entry.id,
                 displayName: entry.displayName,

@@ -38,13 +38,33 @@ struct BookmarkStore {
     }
 
     /// Creates a security-scoped bookmark for a folder chosen by the user.
+    ///
+    /// The picker's URL only carries its sandbox extension while access has been
+    /// started, and a bookmark captures that extension: creating it *without*
+    /// `startAccessingSecurityScopedResource()` gave a bookmark that still resolved
+    /// after a relaunch (so the folder and its cached listing showed up) but granted
+    /// no access, and every file in it failed to play.
     static func makeBookmark(for url: URL) throws -> Data {
-        try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        #if targetEnvironment(macCatalyst)
+        // A sandboxed Mac app needs an explicit security-scoped bookmark.
+        return try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        #else
+        return try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        #endif
     }
 
     /// Resolves a stored bookmark back into a URL, reporting whether it is stale.
     static func resolve(_ data: Data) throws -> (url: URL, isStale: Bool) {
         var isStale = false
+        #if targetEnvironment(macCatalyst)
+        // Newer bookmarks are security-scoped; older ones were plain.
+        if let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil,
+                              bookmarkDataIsStale: &isStale) {
+            return (url, isStale)
+        }
+        #endif
         let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
         return (url, isStale)
     }

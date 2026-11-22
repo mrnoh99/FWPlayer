@@ -100,7 +100,8 @@ enum FileSourceError: LocalizedError {
         case .notConnected: return "Not connected to the server."
         case .smbUnavailable: return "SMB support is not available in this build."
         case .fileNotFound(let path): return "File not found: \(path)"
-        case .accessDenied: return "Access to this location was denied."
+        case .accessDenied:
+            return "Access to this location was denied. For a folder you added from Files, remove it and add it again."
         case .timedOut: return "The server didn't respond in time. Check the host/IP, share, and that the server is reachable on this network."
         }
     }
