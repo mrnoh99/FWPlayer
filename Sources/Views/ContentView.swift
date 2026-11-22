@@ -243,6 +243,12 @@ struct ContentView: View {
                 Text("Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Toggle(isOn: $player.dsdOverDoP) {
+                    Label("DSD over USB (DoP)", systemImage: "waveform.badge.magnifyingglass")
+                }
+                Text("Sends DSD64/128 to a USB DAC as bit-exact DoP. Turn it off for a DAC that doesn't decode DoP (it would play as loud noise): DSD is then converted to PCM instead.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Toggle(isOn: $player.streamFLAC) {
                     Label("Stream FLAC", systemImage: "arrow.down.circle.dashed")
                 }

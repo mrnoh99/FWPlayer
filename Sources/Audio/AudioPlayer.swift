@@ -171,6 +171,14 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let streamFLACKey = "streamFLAC"
 
+    /// Send DSD64/128 to a USB DAC as DoP (bit-exact DSD). Only for a DAC that decodes
+    /// DoP: on one that doesn't, DoP is loud noise. On by default on iPad; off on Mac
+    /// (turn it on when the Mac's DAC supports DSD).
+    @Published var dsdOverDoP: Bool {
+        didSet { UserDefaults.standard.set(dsdOverDoP, forKey: Self.dsdOverDoPKey) }
+    }
+    private static let dsdOverDoPKey = "dsdOverDoP"
+
     /// Mac only: switch the output device (e.g. a USB DAC) to each track's native
     /// sample rate automatically. On by default.
     @Published var autoSampleRate: Bool {
@@ -233,6 +241,11 @@ final class AudioPlayer: NSObject, ObservableObject {
         // On unless the user has switched it off.
         self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
         self.streamFLAC = UserDefaults.standard.object(forKey: Self.streamFLACKey) as? Bool ?? true
+        #if targetEnvironment(macCatalyst)
+        self.dsdOverDoP = UserDefaults.standard.object(forKey: Self.dsdOverDoPKey) as? Bool ?? false
+        #else
+        self.dsdOverDoP = UserDefaults.standard.object(forKey: Self.dsdOverDoPKey) as? Bool ?? true
+        #endif
         super.init()
         configureAudioSession()
         observeSystemVolume()
@@ -332,6 +345,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// below-maximum system volume corrupts the markers too.
     private func doPPlaybackProblem(assumingDoP: Bool = false) -> String? {
         guard isDoPPlayback || assumingDoP else { return nil }
+        if assumingDoP, !dsdOverDoP { return "DoP is turned off in Settings (DSD is converted to PCM)." }
         #if targetEnvironment(macCatalyst)
         if MacOutputDevice.isUSBOutput() != true {
             return Self.doPRouteMessage
