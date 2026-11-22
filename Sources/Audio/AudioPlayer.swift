@@ -114,6 +114,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         let tags: [String: String]
     }
     private var coverProbedFolders = Set<String>()
+    /// Why streaming a track couldn't start (kept for the error shown if playing it fails).
+    private var lastStreamFailure: String?
     private var gaplessNext: GaplessNext?
     private var gaplessTask: Task<Void, Never>?
     private var gaplessHandled = 0
@@ -725,6 +727,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         let track = queue[index]
         isLoading = true
         errorMessage = nil
+        lastStreamFailure = nil
 
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -878,7 +881,18 @@ final class AudioPlayer: NSObject, ObservableObject {
                 return
             }
 
-            let newPlayer = try AVAudioPlayer(contentsOf: playable.url)
+            let newPlayer: AVAudioPlayer
+            do {
+                newPlayer = try AVAudioPlayer(contentsOf: playable.url)
+            } catch {
+                // Core Audio refused the file (e.g. an unusual WAV header it won't open):
+                // try our own FLAC / WAV / AIFF decoder on the local copy before giving up.
+                if !playable.isDoP, let backend = makeLivePCM(fileURL: playable.url) {
+                    beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: sourceID)
+                    return
+                }
+                throw error
+            }
             newPlayer.delegate = self
             newPlayer.volume = Float(effectiveVolume)
             newPlayer.enableRate = false // no time-stretch/rate resampling in the path
@@ -936,7 +950,25 @@ final class AudioPlayer: NSObject, ObservableObject {
             registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
             isLoading = false
             errorMessage = "Couldn't play \(track.title): \(error.localizedDescription)"
+                + (lastStreamFailure.map { " (Streaming failed: \($0))" } ?? "")
         }
+    }
+
+    /// Plays a local FLAC / WAV / AIFF with our own decoder on the live engine.
+    private func makeLivePCM(fileURL: URL) -> DSDLivePlayback? {
+        let ext = fileURL.pathExtension.lowercased()
+        guard StreamedPCM.extensions.contains(ext),
+              let source = try? FileByteSource(url: fileURL),
+              let decoder = try? StreamedPCM.open(source: source, fileExtension: ext) else { return nil }
+        let rate = Double(decoder.sampleRate)
+        let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds,
+                            label: StreamedPCM.label(forExtension: ext),
+                            next: { try decoder.nextSamples() },
+                            seek: { try decoder.seek(toSeconds: $0) })
+        applyPreferredHardwareRate(rate, channels: 2)
+        let backend = DSDLivePlayback(pcm: pcm)
+        do { try backend.prepare() } catch { backend.stop(); return nil }
+        return backend
     }
 
     /// Requests that the audio hardware run at `url`'s native sample rate (and
@@ -1092,6 +1124,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 try StreamedPCM.open(source: stream, fileExtension: ext)
             }
         } catch {
+            lastStreamFailure = error.localizedDescription      // shown if the download path fails too
             return false
         }
         guard !Task.isCancelled else { return false }
