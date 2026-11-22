@@ -1060,7 +1060,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         guard !Task.isCancelled, let backend = makeLiveDSD(reader: reader, mode: mode) else { return false }
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !tags.isEmpty { applyStreamedTags(tags, trackID: track.id) }
-        loadStreamedMetadata(trackID: track.id, picture: nil, source: source, streaming: streaming,
+        loadStreamedMetadata(trackID: track.id, picture: nil, lyrics: nil, source: source, streaming: streaming,
                              folderPath: SACDVirtualPath.split(track.path)?.image ?? track.path)
         return true
     }
@@ -1099,15 +1099,17 @@ final class AudioPlayer: NSObject, ObservableObject {
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !decoder.tags.isEmpty { applyStreamedTags(decoder.tags, trackID: track.id) }
         let picture = decoder.pictureBlock.flatMap { AlbumArtwork.parseFlacPicture($0) }
-        loadStreamedMetadata(trackID: track.id, picture: picture, source: source, streaming: streaming,
-                             folderPath: track.path)
+        let lyrics = ["LYRICS", "UNSYNCEDLYRICS", "UNSYNCED LYRICS"]
+            .compactMap { decoder.tags[$0] }.first { !$0.isEmpty }
+        loadStreamedMetadata(trackID: track.id, picture: picture, lyrics: lyrics, source: source,
+                             streaming: streaming, folderPath: track.path)
         return true
     }
 
     /// Cover art and album details for a track streamed from a share: there's no local
     /// file to read, so use the cover embedded in the stream (FLAC) or look it up online
     /// by artist and album, and fill the details panel from the Apple Music / iTunes catalog.
-    private func loadStreamedMetadata(trackID: String, picture: Data?, source: any FileSource,
+    private func loadStreamedMetadata(trackID: String, picture: Data?, lyrics: String?, source: any FileSource,
                                       streaming: ByteStreamingSource, folderPath: String) {
         guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
         let track = queue[idx]
@@ -1120,13 +1122,18 @@ final class AudioPlayer: NSObject, ObservableObject {
                 self?.artwork.resolveStreamed(track: track, embedded: cover)
             }
         }
-        guard track.artist != nil || track.album != nil else { return }
+        let hasAlbumTags = track.artist != nil || track.album != nil
+        guard hasAlbumTags || lyrics != nil else { return }
         Task { [weak self] in
-            var catalog = MusicKitCatalog.isSupported
-                ? await MusicKitCatalog.album(artist: track.artist, album: track.album)
-                : nil
-            if catalog == nil { catalog = await ITunesCatalog.album(artist: track.artist, album: track.album) }
+            var catalog: MusicKitCatalog.AlbumInfo?
+            if hasAlbumTags {
+                catalog = MusicKitCatalog.isSupported
+                    ? await MusicKitCatalog.album(artist: track.artist, album: track.album)
+                    : nil
+                if catalog == nil { catalog = await ITunesCatalog.album(artist: track.artist, album: track.album) }
+            }
             var info = catalog ?? MusicKitCatalog.AlbumInfo()
+            info.lyrics = lyrics
             if info.albumTitle == nil { info.albumTitle = track.album }
             if info.artistName == nil { info.artistName = track.artist }
             if info.genres.isEmpty, let genre = track.genre { info.genres = [genre] }
