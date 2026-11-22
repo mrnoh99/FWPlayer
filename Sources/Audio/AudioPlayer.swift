@@ -705,6 +705,12 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // Instant DSD from a network share: play straight from ranged reads, with no
                 // download first (a cached or prefetched copy is used as before).
                 let streamExt = (track.path as NSString).pathExtension.lowercased()
+                // Skipping through tracks quickly: let the last one win before any engine,
+                // decoder or network read is set up for the ones in between.
+                if source is ByteStreamingSource,
+                   (self.streamFLAC && streamExt == "flac") || (self.liveDSD && Self.isDSDPath(track.path, ext: streamExt)) {
+                    try await Task.sleep(nanoseconds: 250_000_000)
+                }
                 if self.liveDSD, let streaming = source as? ByteStreamingSource,
                    Self.isDSDPath(track.path, ext: streamExt),
                    self.prefetched[track.id] == nil, self.recentlyPlayed[track.id] == nil {
@@ -1005,17 +1011,17 @@ final class AudioPlayer: NSObject, ObservableObject {
         do {
             if let virtual = SACDVirtualPath.split(track.path) {
                 let stream = try await streaming.openByteStream(forPath: virtual.image)
-                reader = try await Task.detached(priority: .userInitiated) {
+                reader = try await Self.blocking {
                     try SACDTrackReader(source: SACDByteSectorSource(source: stream), trackNumber: virtual.track)
-                }.value
+                }
             } else {
                 let stream = try await streaming.openByteStream(forPath: track.path)
-                tags = await Task.detached(priority: .userInitiated) {
+                tags = (try? await Self.blocking {
                     DSDTags.read(from: stream, fileExtension: ext)
-                }.value
-                reader = try await Task.detached(priority: .userInitiated) {
+                }) ?? [:]
+                reader = try await Self.blocking {
                     try DSDDoPDecoder.makeReader(stream: stream, fileExtension: ext)
-                }.value
+                }
             }
         } catch {
             return false
@@ -1026,15 +1032,26 @@ final class AudioPlayer: NSObject, ObservableObject {
         return true
     }
 
+    /// Runs blocking work (network reads that wait on a semaphore) on its own thread.
+    /// Swift's cooperative pool has few threads; several of these waiting at once —
+    /// easy when skipping tracks quickly — would starve the reads they wait for.
+    private static func blocking<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try work() })
+            }
+        }
+    }
+
     /// Starts a FLAC file straight from a share's ranged reads. False if it can't
     /// (the caller then downloads the file as before).
     private func startStreamedFLAC(source: any FileSource, streaming: ByteStreamingSource, track: Track) async -> Bool {
         let decoder: FLACDecoder
         do {
             let stream = try await streaming.openByteStream(forPath: track.path)
-            decoder = try await Task.detached(priority: .userInitiated) {
+            decoder = try await Self.blocking {
                 try FLACDecoder(source: stream)
-            }.value
+            }
         } catch {
             return false
         }
