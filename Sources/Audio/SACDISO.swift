@@ -125,7 +125,7 @@ enum SACDVirtualPath {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let shortened = String(cleaned.prefix(80))
         let prefix = String(format: "%02d", number)
-        return (shortened.isEmpty ? prefix : prefix + " " + shortened) + "." + trackExtension
+        return (shortened.isEmpty ? "Track " + prefix : prefix + " " + shortened) + "." + trackExtension
     }
 
     /// `("dir/disc.iso", 3)` for `dir/disc.iso/03 Title.sacdtrack`.
@@ -134,7 +134,10 @@ enum SACDVirtualPath {
         guard ns.pathExtension.lowercased() == trackExtension else { return nil }
         let image = ns.deletingLastPathComponent
         guard isImage(image) else { return nil }
-        let digits = ns.lastPathComponent.prefix { $0.isASCII && $0.isNumber }
+        // "03 Title" or "Track 03": the track number is the first run of digits.
+        let name = ns.lastPathComponent
+        guard let start = name.firstIndex(where: { $0.isASCII && $0.isNumber }) else { return nil }
+        let digits = name[start...].prefix { $0.isASCII && $0.isNumber }
         guard let number = Int(digits), number > 0 else { return nil }
         return (image, number)
     }
@@ -201,6 +204,15 @@ enum SACDISO {
         String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(e.rawValue)))
     }
 
+    /// Decodes disc text; if one stray byte makes the declared encoding reject it, tries
+    /// the other common encodings instead of losing the whole string.
+    private static func decode(_ bytes: [UInt8], encoding: String.Encoding) -> String {
+        for candidate in [encoding, .shiftJIS, .japaneseEUC, .utf8, .isoLatin1] {
+            if let text = String(bytes: bytes, encoding: candidate), !text.isEmpty { return text }
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
     /// The NUL-terminated string at `offset` (≤ 255 bytes), or nil when empty.
     private static func cString(_ b: [UInt8], at offset: Int, encoding: String.Encoding) -> String? {
         guard offset > 0, offset < b.count else { return nil }
@@ -209,7 +221,7 @@ enum SACDISO {
         guard end > offset else { return nil }
         // Some discs contain stray control characters in titles; blank them.
         let bytes = b[offset..<end].map { $0 < 0x20 ? UInt8(0x20) : $0 }
-        let text = (String(bytes: bytes, encoding: encoding) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = decode(bytes, encoding: encoding).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
     }
 
@@ -285,14 +297,16 @@ enum SACDISO {
 
         // Sectors after the first hold the lists, each tagged with an 8-byte id.
         var sector = 1
-        var sawText = false
+        var textSectors = 0
         while sector < min(tocSectors, data.count / sectorSize) {
             let base = sector * sectorSize
             let sectorID = String(decoding: data[base..<(base + 8)], as: UTF8.self)
             switch sectorID {
             case "SACDTTxt":
-                if !sawText {                                        // first language only
-                    sawText = true
+                do {                                                 // one per language; the first with a title wins
+                    let languageIndex = min(textSectors, 9)
+                    let enc = encoding(forCharacterSet: Int(data[88 + 4 * languageIndex + 2]))
+                    textSectors += 1
                     let slice = Array(data[base..<(base + sectorSize)])
                     for t in 0..<trackCount {
                         let position = be16(slice, 8 + 2 * t)
@@ -306,8 +320,8 @@ enum SACDISO {
                             p += 2                                    // type + a reserved byte
                             let value = cString(slice, at: p, encoding: enc)
                             if value != nil {
-                                if type == 0x01 { titles[t] = value }
-                                if type == 0x02 { performers[t] = value }
+                                if type == 0x01, titles[t] == nil { titles[t] = value }
+                                if type == 0x02, performers[t] == nil { performers[t] = value }
                             }
                             if j < amount - 1 {
                                 while p < slice.count, slice[p] != 0 { p += 1 }

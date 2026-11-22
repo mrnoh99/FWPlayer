@@ -257,7 +257,8 @@ final class SACDISOTests: XCTestCase {
 
     func testVirtualPaths() {
         XCTAssertEqual(SACDVirtualPath.trackName(number: 3, title: "A/B: C"), "03 A-B- C.sacdtrack")
-        XCTAssertEqual(SACDVirtualPath.trackName(number: 12, title: nil), "12.sacdtrack")
+        XCTAssertEqual(SACDVirtualPath.trackName(number: 12, title: nil), "Track 12.sacdtrack")
+        XCTAssertEqual(SACDVirtualPath.trackName(number: 5, title: "  "), "Track 05.sacdtrack")
         XCTAssertTrue(SACDVirtualPath.isImage("dir/Disc.ISO"))
         XCTAssertFalse(SACDVirtualPath.isImage("dir/track.flac"))
 
@@ -267,6 +268,8 @@ final class SACDISOTests: XCTestCase {
         XCTAssertNil(SACDVirtualPath.split("Jazz/song.flac"))
         XCTAssertNil(SACDVirtualPath.split("Jazz/folder/03 Title.sacdtrack"))     // not inside an image
         XCTAssertNil(SACDVirtualPath.split("Jazz/Pure 2.iso/Title.sacdtrack"))    // no track number
+        XCTAssertEqual(SACDVirtualPath.split("Jazz/Pure 2.iso/Track 12.sacdtrack")?.track, 12)
+        XCTAssertEqual(SACDVirtualPath.split("Jazz/Pure 2.iso/03 Song 7.sacdtrack")?.track, 3)
     }
 
     func testTOCPrefetchOpensAnImageWithoutReadingAudio() async throws {
