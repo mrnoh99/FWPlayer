@@ -274,6 +274,12 @@ final class RemoteControlServer: ObservableObject {
         case .cancelLoading:
             player.cancelLoading()
 
+        case .search(let query):
+            Task { @MainActor in
+                let results = await buildSearchResults(query: query)
+                link.send(.searchResults(results))
+            }
+
         case .toggleShuffle:
             player.toggleShuffle()
 
@@ -515,6 +521,32 @@ final class RemoteControlServer: ObservableObject {
                 )
             }
         )
+    }
+
+    /// Folders and files whose names match `query`, per source (the same search as the player's
+    /// Search screen, over the cached folder listings).
+    private func buildSearchResults(query: String) async -> RemoteSearchResults {
+        let terms = LibrarySearch.terms(from: query)
+        var groups: [RemoteSearchGroup] = []
+        if !terms.isEmpty {
+            for source in registry.sources {
+                let found = await source.search(terms: terms, limit: 100)
+                let items = found.compactMap { item -> RemoteFileItem? in
+                    switch item.kind {
+                    case .directory:
+                        return RemoteFileItem(path: item.path, name: item.name, kind: .directory, size: item.size)
+                    case .audio:
+                        return RemoteFileItem(path: item.path, name: item.name, kind: .audio, size: item.size)
+                    case .other:
+                        return nil
+                    }
+                }
+                if !items.isEmpty {
+                    groups.append(RemoteSearchGroup(sourceID: source.id, sourceName: source.displayName, items: items))
+                }
+            }
+        }
+        return RemoteSearchResults(query: query, groups: groups)
     }
 
     private func buildListing(sourceID: String, path: String, forceRefresh: Bool) async -> RemoteListing {

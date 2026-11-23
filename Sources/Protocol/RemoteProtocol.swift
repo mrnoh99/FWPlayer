@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 11
+let fwRemoteProtocolVersion = 12
 
 /// The fixed id of the built-in Favorites playlist, so the remote can offer an
 /// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
@@ -147,6 +147,22 @@ struct RemoteListing: Codable, Hashable {
     var error: String?
 }
 
+/// One source's matches in a library search.
+struct RemoteSearchGroup: Codable, Hashable, Identifiable {
+    var sourceID: String
+    var sourceName: String
+    var items: [RemoteFileItem]
+
+    var id: String { sourceID }
+}
+
+/// The answer to a `search` command: folders and files whose names match, per source. `query`
+/// echoes what was asked so the remote can tell a late answer from the current one.
+struct RemoteSearchResults: Codable, Hashable {
+    var query: String
+    var groups: [RemoteSearchGroup]
+}
+
 /// A command sent from the remote to the player.
 enum RemoteCommand: Codable, Hashable {
     /// Must be sent first with the PIN shown on the player screen.
@@ -164,6 +180,8 @@ enum RemoteCommand: Codable, Hashable {
     /// Give up on a track that is still loading (e.g. the music server can't be reached),
     /// keeping the queue and the selected track.
     case cancelLoading
+    /// Find folders and files by name across every source; answered with `searchResults`.
+    case search(query: String)
     /// Toggle shuffle on/off.
     case toggleShuffle
     /// Cycle repeat: off → all → one → off.
@@ -248,4 +266,5 @@ enum RemoteMessage: Codable {
     case listing(RemoteListing)
     case artwork(RemoteArtwork)
     case catalogInfo(RemoteCatalogInfo)
+    case searchResults(RemoteSearchResults)
 }
