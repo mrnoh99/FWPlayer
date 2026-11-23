@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Identifies what the sidebar has selected: a file source or a playlist.
 enum SidebarSelection: Hashable {
@@ -19,6 +22,7 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selection: SidebarSelection?
+    @State private var diagnosticsCopied = false
     @State private var showingFolderPicker = false
     @State private var showingAddSMB = false
     @State private var showingPlayer = false
@@ -293,6 +297,28 @@ struct ContentView: View {
                     Label("Stay on in background", systemImage: "wifi")
                 }
                 Text("Keeps FWPlayer reachable by the remote with the screen off, so playback can be controlled without waking this device. Uses more battery.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Diagnostics") {
+                Button {
+                    #if canImport(UIKit)
+                    UIPasteboard.general.string = DiagnosticsLog.shared.text()
+                    #endif
+                    diagnosticsCopied = true
+                } label: {
+                    Label(diagnosticsCopied ? "Copied — paste it into a message"
+                                            : "Copy diagnostics log (\(DiagnosticsLog.shared.count) events)",
+                          systemImage: diagnosticsCopied ? "checkmark" : "doc.on.clipboard")
+                }
+                Button(role: .destructive) {
+                    DiagnosticsLog.shared.clear()
+                    diagnosticsCopied = false
+                } label: {
+                    Label("Clear log", systemImage: "trash")
+                }
+                Text("Records which way each track played, streams that couldn't open, retried reads and sample-rate changes, so a problem can be traced. Nothing leaves the device unless you paste it somewhere.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

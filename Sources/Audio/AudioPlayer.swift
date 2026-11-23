@@ -733,6 +733,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         isLoading = true
         errorMessage = nil
         lastStreamFailure = nil
+        DiagnosticsLog.log("play", "load \"\(track.title)\" [\((track.path as NSString).pathExtension.lowercased())] source \(track.sourceID)")
 
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -833,6 +834,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             } catch {
                 self.isLoading = false
                 self.errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                DiagnosticsLog.log("error", self.errorMessage ?? "")
             }
         }
     }
@@ -841,6 +843,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// from this network). The queue and the selected track stay as they are.
     func cancelLoading() {
         guard isLoading else { return }
+        DiagnosticsLog.log("play", "loading cancelled by the user")
         loadTask?.cancel()
         loadTask = nil
         clearPrefetch()
@@ -919,6 +922,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             do {
                 newPlayer = try AVAudioPlayer(contentsOf: playable.url)
             } catch {
+                DiagnosticsLog.log("play", "Core Audio refused the file: \(error.localizedDescription)")
                 // Core Audio refused the file (e.g. an unusual WAV header it won't open):
                 // try our own FLAC / WAV / AIFF decoder on the local copy before giving up.
                 if !playable.isDoP, let backend = makeLivePCM(fileURL: playable.url) {
@@ -985,6 +989,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             isLoading = false
             errorMessage = "Couldn't play \(track.title): \(error.localizedDescription)"
                 + (lastStreamFailure.map { " (Streaming failed: \($0))" } ?? "")
+            DiagnosticsLog.log("error", errorMessage ?? "")
         }
     }
 
@@ -1051,6 +1056,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         #endif
         refreshOutputSampleRate()
+        DiagnosticsLog.log("rate", "asked for \(Int(rate)) Hz; output is \(outputSampleRate.map { String(Int($0)) } ?? "unknown") Hz")
     }
 
     // MARK: - Starting output
@@ -1169,6 +1175,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             }
         } catch {
             lastStreamFailure = error.localizedDescription      // shown if the download path fails too
+            DiagnosticsLog.log("stream", "\(ext) stream could not start: \(error.localizedDescription)")
             return false
         }
         guard !Task.isCancelled else { return false }
@@ -1180,6 +1187,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         applyPreferredHardwareRate(rate, channels: 2)
         let backend = DSDLivePlayback(pcm: pcm)
         do { try backend.prepare() } catch { backend.stop(); return false }
+        DiagnosticsLog.log("stream", "\(StreamedPCM.label(forExtension: ext)) streaming, \(Int(rate)) Hz, \(Int(decoder.durationSeconds)) s")
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !decoder.tags.isEmpty { applyStreamedTags(decoder.tags, trackID: track.id) }
         let picture = decoder.pictureBlock.flatMap { AlbumArtwork.parseFlacPicture($0) }
@@ -1210,39 +1218,9 @@ final class AudioPlayer: NSObject, ObservableObject {
                 self?.artwork.resolveStreamed(track: track, embedded: cover)
             }
         }
-        let hasAlbumTags = track.artist != nil || track.album != nil
-        guard hasAlbumTags || lyrics != nil else { return }
         Task { [weak self] in
-            var catalog: MusicKitCatalog.AlbumInfo?
-            if hasAlbumTags {
-                catalog = MusicKitCatalog.isSupported
-                    ? await MusicKitCatalog.album(artist: track.artist, album: track.album)
-                    : nil
-                if catalog == nil { catalog = await ITunesCatalog.album(artist: track.artist, album: track.album) }
-            }
-            var info = catalog ?? MusicKitCatalog.AlbumInfo()
-            info.lyrics = lyrics
-            if info.albumTitle == nil { info.albumTitle = track.album }
-            if info.artistName == nil { info.artistName = track.artist }
-            if info.genres.isEmpty, let genre = track.genre { info.genres = [genre] }
-            if info.releaseDate == nil, info.yearText == nil { info.yearText = track.year }
-            guard info.hasDisplayableDetails else { return }
-            await MainActor.run {
-                guard let self, let i = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
-                var updatedTrack = self.queue[i]
-                var changed = false
-                if updatedTrack.year == nil, let y = info.year { updatedTrack.year = y; changed = true }
-                if updatedTrack.genre == nil, let g = info.genre { updatedTrack.genre = g; changed = true }
-                if changed {
-                    var updated = self.queue
-                    updated[i] = updatedTrack
-                    self.queue = updated
-                }
-                if self.currentIndex == i {
-                    self.currentCatalogInfo = info
-                    self.updateNowPlaying()
-                }
-            }
+            await self?.publishDetails(trackID: trackID, artist: track.artist, album: track.album,
+                                       genre: track.genre, year: track.year, lyrics: { lyrics })
         }
     }
 
@@ -1309,6 +1287,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             Task { @MainActor in self?.errorMessage = message }
         }
         backend.volume = Float(effectiveVolume)
+        DiagnosticsLog.log("play", "live engine: \(plan.label), output \(plan.outputRate) Hz\(plan.useDoP ? ", DoP" : "")")
         player = backend
         duration = backend.duration
         currentTime = 0
@@ -1428,6 +1407,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 guard let self, self.currentTrack?.id == currentID,
                       let backend = self.player as? DSDLivePlayback, backend.wantsNext,
                       backend.queueNext(pcm) else { return }
+                DiagnosticsLog.log("gapless", "next queued: \(track.title)")
                 self.gaplessNext = GaplessNext(
                     track: track, index: index, duration: decoder.durationSeconds, tags: decoder.tags,
                     source: source, streaming: streaming, localURL: localURL,
@@ -1452,6 +1432,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             guard let next = gaplessNext else { continue }
             gaplessNext = nil
             let id = next.track.id
+            DiagnosticsLog.log("gapless", "advanced to: \(next.track.title)")
             let index = queue.firstIndex(where: { $0.id == id }) ?? next.index
             guard queue.indices.contains(index) else { continue }
             currentIndex = index
@@ -1599,46 +1580,47 @@ final class AudioPlayer: NSObject, ObservableObject {
             // file's embedded lyrics, in parallel. This fills release year/genre
             // for untagged files and powers the full details panel (player) and
             // details section (remote).
-            guard let lookup else { return }
-            async let lyricsTask = EmbeddedLyrics.read(from: url)
+            guard lookup != nil, let self else { return }
+            await self.publishDetails(trackID: trackID, artist: artist, album: album, genre: genre, year: year,
+                                      lyrics: { await EmbeddedLyrics.read(from: url) })
+        }
+    }
+
+    /// The one place album details are assembled, for every playback path (local file,
+    /// share stream, download): looks the album up in the Apple Music / iTunes catalog,
+    /// falls back to the file's own tags, adds the lyrics, and publishes the result for the
+    /// player's details panel and the remote. Fills a track's missing year / genre too.
+    private func publishDetails(trackID: String, artist: String?, album: String?, genre: String?, year: String?,
+                                lyrics: @escaping () async -> String?) async {
+        async let lyricsTask = lyrics()
+        var catalog: MusicKitCatalog.AlbumInfo?
+        if artist != nil || album != nil {
             // Apple Music (MusicKit) first; if it can't (e.g. no developer token),
             // fall back to the free iTunes Search API so the details still fill.
-            var catalog = MusicKitCatalog.isSupported
-                ? await MusicKitCatalog.album(artist: lookup.artist, album: lookup.album)
-                : nil
-            if catalog == nil {
-                catalog = await ITunesCatalog.album(artist: lookup.artist, album: lookup.album)
-            }
-            let lyrics = await lyricsTask
-            var info = catalog ?? MusicKitCatalog.AlbumInfo()
-            info.lyrics = lyrics
-            // Fall back to the file's own tags so the details panel still shows
-            // album / artist / year even when MusicKit isn't configured or finds
-            // nothing.
-            if info.albumTitle == nil { info.albumTitle = album }
-            if info.artistName == nil { info.artistName = artist }
-            if info.genres.isEmpty, let genre { info.genres = [genre] }
-            if info.releaseDate == nil, info.yearText == nil { info.yearText = year }
-            guard info.hasDisplayableDetails else { return }
-            await MainActor.run {
-                guard let self,
-                      let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
-                var track = self.queue[idx]
-                var changed = false
-                if track.year == nil, let y = info.year { track.year = y; changed = true }
-                if track.genre == nil, let g = info.genre { track.genre = g; changed = true }
-                if changed {
-                    var updated = self.queue
-                    updated[idx] = track
-                    self.queue = updated
-                }
-                // Expose the full details for the current track (drives the
-                // player's detail panel and the remote's details section).
-                if self.currentIndex == idx {
-                    self.currentCatalogInfo = info
-                    self.updateNowPlaying()
-                }
-            }
+            catalog = MusicKitCatalog.isSupported ? await MusicKitCatalog.album(artist: artist, album: album) : nil
+            if catalog == nil { catalog = await ITunesCatalog.album(artist: artist, album: album) }
+        }
+        var info = catalog ?? MusicKitCatalog.AlbumInfo()
+        info.lyrics = await lyricsTask
+        // The file's own tags keep the panel useful when the catalog finds nothing.
+        if info.albumTitle == nil { info.albumTitle = album }
+        if info.artistName == nil { info.artistName = artist }
+        if info.genres.isEmpty, let genre { info.genres = [genre] }
+        if info.releaseDate == nil, info.yearText == nil { info.yearText = year }
+        guard info.hasDisplayableDetails,
+              let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+        var track = queue[idx]
+        var changed = false
+        if track.year == nil, let y = info.year { track.year = y; changed = true }
+        if track.genre == nil, let g = info.genre { track.genre = g; changed = true }
+        if changed {
+            var updated = queue
+            updated[idx] = track
+            queue = updated
+        }
+        if currentIndex == idx {
+            currentCatalogInfo = info
+            updateNowPlaying()
         }
     }
 

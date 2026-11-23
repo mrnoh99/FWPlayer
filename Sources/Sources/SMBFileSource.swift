@@ -104,6 +104,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
             return Self.items(from: try await listConnection.listDirectory(path: path), parent: path)
         } catch {
             if smbErrorIsObjectNotFound(error) { throw error }
+            DiagnosticsLog.log("smb", "listing \(path.isEmpty ? "/" : path) failed, retrying on a new connection: \(smbDescribe(error))")
             await listConnection.invalidate()
             do {
                 return Self.items(from: try await listConnection.listDirectory(path: path), parent: path)
@@ -409,6 +410,7 @@ private actor SMBConnection {
     /// server refuse new ones.
     private func dropClient() {
         guard let old = client else { return }
+        DiagnosticsLog.log("smb", "connection to \(config.host) dropped; it will be rebuilt")
         client = nil
         Task.detached {
             try? await old.disconnectShare()

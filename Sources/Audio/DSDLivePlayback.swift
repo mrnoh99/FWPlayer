@@ -258,7 +258,7 @@ final class DSDLivePlayback: PlaybackBackend {
     private let reader: DSDStreamReader?
     /// Set instead of `reader` when this plays plain PCM (e.g. FLAC streamed from a share).
     private let pcm: PCMSource?
-    private let renderer: DSDLiveRenderer
+    let renderer: DSDLiveRenderer
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
 
@@ -280,7 +280,9 @@ final class DSDLivePlayback: PlaybackBackend {
     var onFailed: ((String) -> Void)?
 
     /// A failed read is retried this many times, half a second apart, before giving up.
-    private static let maxReadRetries = 20
+    /// (Variables so tests can shorten them.)
+    static var maxReadRetries = 20
+    static var readRetryInterval: TimeInterval = 0.5
 
     init(reader: DSDStreamReader, plan: DSDDoPDecoder.Plan) {
         self.reader = reader
@@ -457,7 +459,7 @@ final class DSDLivePlayback: PlaybackBackend {
 
     // MARK: Producer
 
-    private func startProducer() {
+    func startProducer() {
         let thread = Thread { [weak self] in self?.produceLoop() }
         thread.name = "FWPlayer.DSDLive"
         thread.qualityOfService = .userInitiated
@@ -484,6 +486,7 @@ final class DSDLivePlayback: PlaybackBackend {
             }
         }
         func reportFailure(_ error: Error) {
+            DiagnosticsLog.log("read", "giving up: \(error.localizedDescription)")
             let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.detached else { return }
@@ -532,8 +535,9 @@ final class DSDLivePlayback: PlaybackBackend {
                 } catch {
                     // A dropped read (Wi-Fi blip, NAS busy) isn't the end of the track: retry.
                     readFailures += 1
+                    DiagnosticsLog.log("read", "failed (\(readFailures)/\(Self.maxReadRetries)): \(error.localizedDescription)")
                     if readFailures <= Self.maxReadRetries {
-                        Thread.sleep(forTimeInterval: 0.5)
+                        Thread.sleep(forTimeInterval: Self.readRetryInterval)
                         continue
                     }
                     reportFailure(error)
@@ -562,8 +566,9 @@ final class DSDLivePlayback: PlaybackBackend {
                 readFailures = 0
             } catch {
                 readFailures += 1
+                DiagnosticsLog.log("read", "failed (\(readFailures)/\(Self.maxReadRetries)): \(error.localizedDescription)")
                 if readFailures <= Self.maxReadRetries {
-                    Thread.sleep(forTimeInterval: 0.5)
+                    Thread.sleep(forTimeInterval: Self.readRetryInterval)
                     continue
                 }
                 reportFailure(error)
