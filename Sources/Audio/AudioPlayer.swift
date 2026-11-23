@@ -739,7 +739,9 @@ final class AudioPlayer: NSObject, ObservableObject {
             guard let self else { return }
             do {
                 guard let source = self.registry.source(for: track.sourceID) else {
-                    throw FileSourceError.notConnected
+                    // A folder you added (external drive, iCloud…) vs a server: say which.
+                    throw track.sourceID.hasPrefix("local:") ? FileSourceError.folderUnavailable
+                                                             : FileSourceError.notConnected
                 }
                 // Instant DSD from a network share: play straight from ranged reads, with no
                 // download first (a cached or prefetched copy is used as before).

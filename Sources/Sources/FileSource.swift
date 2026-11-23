@@ -96,6 +96,7 @@ protocol ByteStreamingSource: AnyObject {
 
 enum FileSourceError: LocalizedError {
     case notConnected
+    case folderUnavailable
     case smbUnavailable
     case fileNotFound(String)
     case accessDenied
@@ -105,6 +106,8 @@ enum FileSourceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConnected: return "Not connected to the server."
+        case .folderUnavailable:
+            return "The folder or drive this track is on isn't available. Reconnect the drive; if it still doesn't open, remove the folder and add it again."
         case .smbUnavailable: return "SMB support is not available in this build."
         case .fileNotFound(let path): return "File not found: \(path)"
         case .accessDenied:
