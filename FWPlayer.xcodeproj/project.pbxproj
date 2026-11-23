@@ -267,6 +267,10 @@
 			isa = PBXBuildFile;
 			fileRef = 7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */;
 		};
+		3D8E1A6C9B2F4057A8C3E4D1 /* RowReorder.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 6B2F9C4A1E7D4839B5A0D2C8 /* RowReorder.swift */;
+		};
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -739,6 +743,12 @@
 			path = LibrarySearchView.swift;
 			sourceTree = "<group>";
 		};
+		6B2F9C4A1E7D4839B5A0D2C8 /* RowReorder.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = RowReorder.swift;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -795,6 +805,7 @@
 				EC91B1C76215479A8457F2E8 /* PlayerView.swift */,
 				1C601CC0DD77499E88B6385D /* PlaylistDetailView.swift */,
 				7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */,
+				6B2F9C4A1E7D4839B5A0D2C8 /* RowReorder.swift */,
 				4B5E82643B35411494B2CD52 /* QueueView.swift */,
 				698F1B5D7A214B18A83916FF /* RemotePairingBanner.swift */,
 			);
@@ -1062,6 +1073,7 @@
 				6E1D4C7A9B2F4835A5D0C3E8 /* DiagnosticsLog.swift in Sources */,
 				5C3A9D1E7B2F4086A9D4C1E7 /* LibrarySearch.swift in Sources */,
 				1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */,
+				3D8E1A6C9B2F4057A8C3E4D1 /* RowReorder.swift in Sources */,
 				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
 				7EAB32DDA2A34C2E9E0C9191 /* SACDLibrary.swift in Sources */,
 				81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */,
@@ -1211,7 +1223,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 55;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1279,7 +1291,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 55;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

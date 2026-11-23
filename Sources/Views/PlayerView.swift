@@ -12,6 +12,7 @@ struct PlayerView: View {
     var onShowQueue: (() -> Void)? = nil
 
     @State private var isLoading = false
+    @State private var draggingUpcoming: Int?
     @State private var title = "Not Playing"
     @State private var artist: String?
     @State private var album: String?
@@ -522,6 +523,10 @@ struct PlayerView: View {
                             upcomingRowMenu(item)
                         }
                         .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        // Touch and hold, then drag to reorder; `item.offset` is the queue index.
+                        .reorderable(index: item.offset, dragging: $draggingUpcoming) { from, to in
+                            Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: from), toOffset: to) }
+                        }
                     }
                     .onMove { source, destination in
                         moveUpcoming(from: source, to: destination)

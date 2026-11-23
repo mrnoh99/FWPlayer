@@ -13,6 +13,7 @@ struct PlaylistDetailView: View {
 
     @State private var trackToAdd: Track?
     @State private var showingRename = false
+    @State private var draggingRow: Int?
     @State private var showingClearAsk = false
     @State private var showingClearFinal = false
     @State private var renameText = ""
@@ -123,6 +124,10 @@ struct PlaylistDetailView: View {
                         }
                     }
                 )
+            }
+            // Touch and hold, then drag to reorder (no Edit mode needed).
+            .reorderable(index: index, isEnabled: !editMode.isEditing, dragging: $draggingRow) { from, to in
+                playlists.moveEntries(from: IndexSet(integer: from), to: to, in: playlistID)
             }
             // No explicit .id() here: it overrides the ForEach's structural
             // identity, which is what .onDelete / .onMove use — with it, the

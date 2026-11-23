@@ -13,6 +13,7 @@ struct QueueView: View {
     @State private var queueExpanded = true
     @State private var editMode: EditMode = .inactive
     @State private var trackToAdd: Track?
+    @State private var draggingRow: Int?
 
     var body: some View {
         List {
@@ -44,6 +45,10 @@ struct QueueView: View {
                         row(track: track, index: index, isCurrent: player.currentIndex == index,
                             onPlay: { player.play(at: index) },
                             onRemove: { player.removeFromQueue(at: IndexSet(integer: index)) })
+                            // Touch and hold, then drag to reorder (no Edit mode needed).
+                            .reorderable(index: index, isEnabled: !editMode.isEditing, dragging: $draggingRow) { from, to in
+                                Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: from), toOffset: to) }
+                            }
                     }
                     .onMove { offsets, destination in
                         Task { @MainActor in player.moveQueue(fromOffsets: offsets, toOffset: destination) }
