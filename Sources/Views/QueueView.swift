@@ -104,6 +104,25 @@ struct QueueView: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
 
+            VStack(spacing: 0) {
+                Button {
+                    player.moveQueue(fromOffsets: IndexSet(integer: index), toOffset: index - 1)
+                } label: {
+                    Image(systemName: "chevron.up").frame(width: 32, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(index == 0)
+                .accessibilityLabel("Move Up")
+                Button {
+                    player.moveQueue(fromOffsets: IndexSet(integer: index), toOffset: index + 2)
+                } label: {
+                    Image(systemName: "chevron.down").frame(width: 32, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(index >= player.queue.count - 1)
+                .accessibilityLabel("Move Down")
+            }
+
             QueueRowMenu(
                 isFavorite: playlists.isFavorite(track),
                 onPlayNow: { Task { @MainActor in onPlay() } },
