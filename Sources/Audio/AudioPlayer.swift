@@ -172,6 +172,17 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let liveDSDKey = "liveDSD"
 
+    /// When a track can't be opened (its drive or server is gone, the file moved), go on to the
+    /// next one instead of stopping with an alert. On by default.
+    @Published var skipUnplayable: Bool {
+        didSet { UserDefaults.standard.set(skipUnplayable, forKey: Self.skipUnplayableKey) }
+    }
+    private static let skipUnplayableKey = "skipUnplayable"
+    /// A short note shown on the player for a few seconds after a track was skipped.
+    @Published private(set) var skipNotice: String?
+    private var consecutiveSkips = 0
+    private var skipNoticeTask: Task<Void, Never>?
+
     /// Play FLAC from a network share while it is read, instead of downloading the
     /// whole file first. On by default; falls back to the download.
     @Published var streamFLAC: Bool {
@@ -251,6 +262,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
         // On unless the user has switched it off.
         self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
+        self.skipUnplayable = UserDefaults.standard.object(forKey: Self.skipUnplayableKey) as? Bool ?? true
         self.streamFLAC = UserDefaults.standard.object(forKey: Self.streamFLACKey) as? Bool ?? true
         #if targetEnvironment(macCatalyst)
         self.dsdOverDoP = UserDefaults.standard.object(forKey: Self.dsdOverDoPKey) as? Bool ?? false
@@ -442,6 +454,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Records a track as just-played at the top of the history (deduped, capped).
     private func recordHistory(_ track: Track) {
+        consecutiveSkips = 0                      // a track started, so the skipping streak is over
         history.removeAll { $0.id == track.id }
         history.insert(track, at: 0)
         if history.count > 100 { history.removeLast(history.count - 100) }
@@ -834,10 +847,40 @@ final class AudioPlayer: NSObject, ObservableObject {
             } catch is CancellationError {
                 // ignored
             } catch {
-                self.isLoading = false
-                self.errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                DiagnosticsLog.log("error", self.errorMessage ?? "")
+                self.failedToLoad((error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
+                                  trackIndex: index)
             }
+        }
+    }
+
+    /// A track couldn't be opened. Either skip to the next one (with a short note) or, when
+    /// skipping is off, there is nothing left to try, or every track in the queue has failed in a
+    /// row, stop and say why.
+    private func failedToLoad(_ message: String, trackIndex: Int) {
+        isLoading = false
+        DiagnosticsLog.log("error", message)
+        let title = queue.indices.contains(trackIndex) ? queue[trackIndex].title : "track"
+        let next: Int? = trackIndex + 1 < queue.count ? trackIndex + 1 : (repeatMode == .all ? 0 : nil)
+        guard skipUnplayable, queue.count > 1, consecutiveSkips < queue.count - 1, let next, next != trackIndex else {
+            let streak = consecutiveSkips
+            consecutiveSkips = 0
+            errorMessage = streak > 0
+                ? "\(streak + 1) tracks in a row couldn't be played, so playback stopped. Last: \(message)"
+                : message
+            return
+        }
+        consecutiveSkips += 1
+        DiagnosticsLog.log("skip", "skipping \"\(title)\"; next is #\(next + 1)")
+        showSkipNotice("Skipped “\(title)” — couldn't be opened")
+        loadAndPlay(index: next)
+    }
+
+    private func showSkipNotice(_ text: String) {
+        skipNotice = text
+        skipNoticeTask?.cancel()
+        skipNoticeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            if !Task.isCancelled { self?.skipNotice = nil }
         }
     }
 
@@ -988,10 +1031,9 @@ final class AudioPlayer: NSObject, ObservableObject {
         } catch {
             playable.cleanup()
             registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
-            isLoading = false
-            errorMessage = "Couldn't play \(track.title): \(error.localizedDescription)"
-                + (lastStreamFailure.map { " (Streaming failed: \($0))" } ?? "")
-            DiagnosticsLog.log("error", errorMessage ?? "")
+            failedToLoad("Couldn't play \(track.title): \(error.localizedDescription)"
+                         + (lastStreamFailure.map { " (Streaming failed: \($0))" } ?? ""),
+                         trackIndex: queue.firstIndex(where: { $0.id == track.id }) ?? currentIndex ?? 0)
         }
     }
 

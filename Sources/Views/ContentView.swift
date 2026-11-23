@@ -247,6 +247,12 @@ struct ContentView: View {
                 Text("Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Toggle(isOn: $player.skipUnplayable) {
+                    Label("Skip Unplayable Tracks", systemImage: "forward.end.alt")
+                }
+                Text("When a track can't be opened (its drive or server isn't there, the file moved), go on to the next one with a short note instead of stopping with an alert. If every track fails, playback stops and says why.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Toggle(isOn: $player.dsdOverDoP) {
                     Label("DSD over USB (DoP)", systemImage: "waveform.badge.magnifyingglass")
                 }

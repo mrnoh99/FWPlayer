@@ -18,6 +18,7 @@ struct NowPlayingBar: View {
     @State private var sampleRate: Double?
     @State private var isLoading = false
     @State private var loadingDetail: String?
+    @State private var skipNotice: String?
     /// "DSD128 DoP" while a DSD file is sent bit-exact (replaces the PCM carrier rate).
     @State private var dopText: String?
     @State private var isPlaying = false
@@ -193,6 +194,7 @@ struct NowPlayingBar: View {
     /// Artist and the sampling rate (the rate is always shown — it matters for a
     /// bit-perfect/lossless player).
     private var subtitle: String? {
+        if let skipNotice { return skipNotice }
         if isLoading, let loadingDetail { return loadingDetail }
         var parts: [String] = []
         if let artist { parts.append(artist) }
@@ -210,6 +212,7 @@ struct NowPlayingBar: View {
         sampleRate = player.currentTrack?.sampleRate
         isLoading = player.isLoading
         loadingDetail = player.loadingDetail
+        skipNotice = player.skipNotice
         dopText = player.dopLabel.map { "\($0) DoP" }
         isPlaying = player.isPlaying
         canGoPrevious = player.canGoPrevious
