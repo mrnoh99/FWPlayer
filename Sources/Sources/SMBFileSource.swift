@@ -642,7 +642,9 @@ private final class SMBRangeSource: ByteSource, @unchecked Sendable {
         let semaphore = DispatchSemaphore(value: 0)
         let box = ResultBox<Data>()
         let connection = self.connection, path = self.path
-        Task.detached {
+        // Same priority as the thread that waits below, so the read isn't queued behind lower
+        // priority work (the system flags a user-initiated thread waiting on a default one).
+        Task.detached(priority: .userInitiated) {
             do {
                 box.value = .success(try await connection.readRange(path: path, offset: offset, length: UInt32(length)))
             } catch {
