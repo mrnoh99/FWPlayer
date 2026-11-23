@@ -274,6 +274,9 @@ final class RemoteControlServer: ObservableObject {
         case .cancelLoading:
             player.cancelLoading()
 
+        case .showNowPlaying:
+            player.requestShowPlayer()
+
         case .search(let query):
             Task { @MainActor in
                 let results = await buildSearchResults(query: query)

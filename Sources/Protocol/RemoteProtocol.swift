@@ -18,7 +18,7 @@ import Foundation
 let fwRemoteServiceType = "_fwplayer._tcp"
 
 /// A protocol version so the two sides can detect a mismatch.
-let fwRemoteProtocolVersion = 12
+let fwRemoteProtocolVersion = 13
 
 /// The fixed id of the built-in Favorites playlist, so the remote can offer an
 /// "Add to Favorites" action. Mirrors `PlaylistManager.favoritesID`.
@@ -180,6 +180,8 @@ enum RemoteCommand: Codable, Hashable {
     /// Give up on a track that is still loading (e.g. the music server can't be reached),
     /// keeping the queue and the selected track.
     case cancelLoading
+    /// The remote opened its Now Playing screen: bring the player's Now Playing screen up too.
+    case showNowPlaying
     /// Find folders and files by name across every source; answered with `searchResults`.
     case search(query: String)
     /// Toggle shuffle on/off.

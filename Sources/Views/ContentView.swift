@@ -139,6 +139,8 @@ struct ContentView: View {
                 onTap: { showingPlayer = true },
                 onShowQueue: showQueue
             )
+            // The remote opened its Now Playing screen: bring ours up too.
+            .onChange(of: player.showPlayerRequest) { _, _ in showingPlayer = true }
         }
     }
 

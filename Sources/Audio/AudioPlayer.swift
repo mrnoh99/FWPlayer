@@ -66,6 +66,10 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published var errorMessage: String?
     /// Bumped on play/pause, skip, seek, and stop so list views can snap focus back to the playing row.
     @Published private(set) var transportEventID = 0
+    /// Bumped when something (the remote) asks for the full Now Playing screen to come up.
+    @Published private(set) var showPlayerRequest = 0
+
+    func requestShowPlayer() { showPlayerRequest += 1 }
     /// Apple Music Catalog (MusicKit) details for the current track, resolved
     /// asynchronously after it starts. Drives the player's detail panel and is
     /// forwarded to the remote. Cleared whenever the track changes.
