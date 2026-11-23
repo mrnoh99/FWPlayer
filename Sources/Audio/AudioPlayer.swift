@@ -811,7 +811,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                    let decoder = try? await Self.blocking({
                        try StreamedPCM.open(source: try FileByteSource(url: sourceURL), fileExtension: ext)
                    }),
-                   let backend = self.makeLivePCM(decoder: decoder, ext: ext) {
+                   let backend = await self.makeLivePCM(decoder: decoder, ext: ext) {
                     try Task.checkCancellation()
                     self.beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: source.id)
                     return
@@ -990,18 +990,15 @@ final class AudioPlayer: NSObject, ObservableObject {
             isLoading = false
             activeResource = (sourceID, sourceURL, playable.temporaryURL, track.id)
             if autoPlay {
-                if !startOutput(newPlayer) {
-                    // Couldn't get sound out even after re-activating the session: say why.
-                    player = nil
+                if newPlayer.play() {
+                    isPlaying = true
+                    startTicker()
+                } else {
+                    // The output refused (a USB DAC still switching rate or mode). Retry off the
+                    // main thread; the rest of the setup continues meanwhile.
                     isPlaying = false
-                    playable.cleanup()
-                    activeResource = nil
-                    registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
-                    errorMessage = "The audio output didn't start. \(outputDiagnostics()) Reconnect the DAC (or switch the output) and try again."
-                    return
+                    retryStartOutput(newPlayer, playable: playable, sourceID: sourceID, sourceURL: sourceURL)
                 }
-                isPlaying = true
-                startTicker()
             } else {
                 isPlaying = false
             }
@@ -1052,17 +1049,24 @@ final class AudioPlayer: NSObject, ObservableObject {
         guard StreamedPCM.extensions.contains(ext),
               let source = try? FileByteSource(url: fileURL),
               let decoder = try? StreamedPCM.open(source: source, fileExtension: ext) else { return nil }
-        return makeLivePCM(decoder: decoder, ext: ext)
+        let rate = Double(decoder.sampleRate)
+        applyPreferredHardwareRate(rate, channels: 2)
+        return buildLivePCM(decoder: decoder, ext: ext)
     }
 
-    /// The live engine for an already-open decoder.
-    private func makeLivePCM(decoder: StreamedPCMDecoder, ext: String) -> DSDLivePlayback? {
+    /// The live engine for an already-open decoder; the session's rate change happens off the main thread.
+    private func makeLivePCM(decoder: StreamedPCMDecoder, ext: String) async -> DSDLivePlayback? {
+        await applyPreferredHardwareRateAsync(Double(decoder.sampleRate), channels: 2)
+        return buildLivePCM(decoder: decoder, ext: ext)
+    }
+
+    /// Engine setup once the hardware rate has been requested.
+    private func buildLivePCM(decoder: StreamedPCMDecoder, ext: String) -> DSDLivePlayback? {
         let rate = Double(decoder.sampleRate)
         let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds,
                             label: StreamedPCM.label(forExtension: ext),
                             next: { try decoder.nextSamples() },
                             seek: { try decoder.seek(toSeconds: $0) })
-        applyPreferredHardwareRate(rate, channels: 2)
         let backend = DSDLivePlayback(pcm: pcm)
         do { try backend.prepare() } catch { backend.stop(); return nil }
         return backend
@@ -1076,7 +1080,29 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     /// Asks the output hardware to run at `rate` (and `channels`), verifying that it did.
+    /// Blocks on the audio daemon on iOS: prefer `applyPreferredHardwareRateAsync` from async code.
     private func applyPreferredHardwareRate(_ rate: Double, channels: Int) {
+        requestHardwareRate(rate, channels: channels)
+        finishHardwareRateRequest(rate)
+    }
+
+    /// Same, but the AVAudioSession calls run on the audio-session queue so the main thread
+    /// never waits on a USB DAC switching rate.
+    private func applyPreferredHardwareRateAsync(_ rate: Double, channels: Int) async {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            AudioSessionQueue.queue.async {
+                Self.setSessionRate(rate, channels: channels)
+                done.resume()
+            }
+        }
+        #else
+        requestHardwareRate(rate, channels: channels)
+        #endif
+        finishHardwareRateRequest(rate)
+    }
+
+    private func requestHardwareRate(_ rate: Double, channels: Int) {
         #if targetEnvironment(macCatalyst)
         // AVAudioSession's preferred-rate API doesn't drive the Mac's output
         // device: set its nominal rate through Core Audio instead.
@@ -1087,6 +1113,12 @@ final class AudioPlayer: NSObject, ObservableObject {
         // The background keep-alive is a silent 44.1 kHz stream; left running it
         // would pin the hardware to that rate (and block re-activation below).
         keepAlive.stop()
+        Self.setSessionRate(rate, channels: channels)
+        #endif
+    }
+
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    private nonisolated static func setSessionRate(_ rate: Double, channels: Int) {
         let session = AVAudioSession.sharedInstance()
         try? session.setPreferredSampleRate(rate)
         if channels > 0 {
@@ -1102,25 +1134,48 @@ final class AudioPlayer: NSObject, ObservableObject {
             try? session.setPreferredSampleRate(rate)
             try? session.setActive(true)
         }
-        #endif
+    }
+    #endif
+
+    private func finishHardwareRateRequest(_ rate: Double) {
         refreshOutputSampleRate()
         DiagnosticsLog.log("rate", "asked for \(Int(rate)) Hz; output is \(outputSampleRate.map { String(Int($0)) } ?? "unknown") Hz")
     }
 
     // MARK: - Starting output
 
-    /// Starts `newPlayer`; if the output refuses (e.g. a USB DAC still switching
-    /// rate or mode), re-activates the audio session and tries once more.
-    private func startOutput(_ newPlayer: AVAudioPlayer) -> Bool {
-        if newPlayer.play() { return true }
-        #if os(iOS) && !targetEnvironment(macCatalyst)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setActive(false)
-        try? session.setActive(true)
-        #endif
-        Thread.sleep(forTimeInterval: 0.3)
-        newPlayer.prepareToPlay()
-        return newPlayer.play()
+    /// Second attempt at starting `newPlayer`: re-activates the audio session on the session
+    /// queue, waits briefly without blocking the main thread, and plays again. If that fails
+    /// too, says why.
+    private func retryStartOutput(_ newPlayer: AVAudioPlayer, playable: PlayableAudio,
+                                  sourceID: String, sourceURL: URL) {
+        Task { @MainActor [weak self] in
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                AudioSessionQueue.queue.async {
+                    let session = AVAudioSession.sharedInstance()
+                    try? session.setActive(false)
+                    try? session.setActive(true)
+                    done.resume()
+                }
+            }
+            #endif
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let self, self.player === newPlayer else { return }   // the user moved on
+            newPlayer.prepareToPlay()
+            if newPlayer.play() {
+                self.isPlaying = true
+                self.startTicker()
+                return
+            }
+            // Couldn't get sound out even after re-activating the session: say why.
+            self.player = nil
+            self.isPlaying = false
+            playable.cleanup()
+            self.activeResource = nil
+            self.registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+            self.errorMessage = "The audio output didn't start. \(self.outputDiagnostics()) Reconnect the DAC (or switch the output) and try again."
+        }
     }
 
     /// "(Output: SACD 30n, USB, 44100 Hz.)" for error messages.
@@ -1146,12 +1201,12 @@ final class AudioPlayer: NSObject, ObservableObject {
         } catch {
             return nil
         }
-        return makeLiveDSD(reader: reader, mode: mode)
+        return await makeLiveDSD(reader: reader, mode: mode)
     }
 
-    private func makeLiveDSD(reader: DSDStreamReader, mode: DSDOutputMode) -> DSDLivePlayback? {
+    private func makeLiveDSD(reader: DSDStreamReader, mode: DSDOutputMode) async -> DSDLivePlayback? {
         guard let plan = try? DSDDoPDecoder.plan(for: reader, mode: mode) else { return nil }
-        applyPreferredHardwareRate(Double(plan.outputRate), channels: 2)
+        await applyPreferredHardwareRateAsync(Double(plan.outputRate), channels: 2)
         let backend = DSDLivePlayback(reader: reader, plan: plan)
         do {
             try backend.prepare()
@@ -1192,7 +1247,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         } catch {
             return false
         }
-        guard !Task.isCancelled, let backend = makeLiveDSD(reader: reader, mode: mode) else { return false }
+        guard !Task.isCancelled, let backend = await makeLiveDSD(reader: reader, mode: mode) else { return false }
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !tags.isEmpty { applyStreamedTags(tags, trackID: track.id) }
         loadStreamedMetadata(trackID: track.id, picture: nil, lyrics: nil, source: source, streaming: streaming,
@@ -1232,7 +1287,8 @@ final class AudioPlayer: NSObject, ObservableObject {
                             label: StreamedPCM.label(forExtension: ext),
                             next: { try decoder.nextSamples() },
                             seek: { try decoder.seek(toSeconds: $0) })
-        applyPreferredHardwareRate(rate, channels: 2)
+        await applyPreferredHardwareRateAsync(rate, channels: 2)
+        guard !Task.isCancelled else { return false }
         let backend = DSDLivePlayback(pcm: pcm)
         do { try backend.prepare() } catch { backend.stop(); return false }
         DiagnosticsLog.log("stream", "\(StreamedPCM.label(forExtension: ext)) streaming, \(Int(rate)) Hz, \(Int(decoder.durationSeconds)) s")

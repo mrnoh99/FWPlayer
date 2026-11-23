@@ -97,36 +97,47 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private func playlistRows(for playlist: Playlist) -> some View {
         ForEach(Array(playlist.entries.enumerated()), id: \.element.id) { index, entry in
-            PlaybackRowInteraction(
-                isHighlighted: isFocused(entry),
-                onPlay: { play(playlist, startAt: index) }
-            ) {
-                EntryRow(
-                    entry: entry,
-                    isCurrent: isCurrent(entry),
-                    isPlaying: player.isPlaying,
-                    directURL: registry.source(for: entry.sourceID)?.directURL(forPath: entry.path),
-                    onPlayNow: { player.play(tracks: [Track(entry: entry)], startAt: 0) },
-                    onPlayFromHere: { play(playlist, startAt: index) },
-                    onPlayNext: { player.playNext(Track(entry: entry)) },
-                    onAddToQueue: { player.enqueue(tracks: [Track(entry: entry)]) },
-                    onAddToPlaylist: { trackToAdd = Track(entry: entry) },
-                    onMoveUp: index > 0
-                        ? { playlists.moveEntries(from: IndexSet(integer: index), to: index - 1, in: playlistID) }
-                        : nil,
-                    onMoveDown: index < playlist.entries.count - 1
-                        ? { playlists.moveEntries(from: IndexSet(integer: index), to: index + 2, in: playlistID) }
-                        : nil,
-                    onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } },
-                    onRemove: {
-                        if let i = playlist.entries.firstIndex(where: { $0.id == entry.id }) {
-                            playlists.removeEntries(at: IndexSet(integer: i), from: playlistID)
+            HStack(spacing: 6) {
+                PlaybackRowInteraction(
+                    isHighlighted: isFocused(entry),
+                    onPlay: { play(playlist, startAt: index) }
+                ) {
+                    EntryRow(
+                        entry: entry,
+                        isCurrent: isCurrent(entry),
+                        isPlaying: player.isPlaying,
+                        directURL: registry.source(for: entry.sourceID)?.directURL(forPath: entry.path),
+                        onPlayNow: { player.play(tracks: [Track(entry: entry)], startAt: 0) },
+                        onPlayFromHere: { play(playlist, startAt: index) },
+                        onPlayNext: { player.playNext(Track(entry: entry)) },
+                        onAddToQueue: { player.enqueue(tracks: [Track(entry: entry)]) },
+                        onAddToPlaylist: { trackToAdd = Track(entry: entry) },
+                        onMoveUp: index > 0
+                            ? { playlists.moveEntries(from: IndexSet(integer: index), to: index - 1, in: playlistID) }
+                            : nil,
+                        onMoveDown: index < playlist.entries.count - 1
+                            ? { playlists.moveEntries(from: IndexSet(integer: index), to: index + 2, in: playlistID) }
+                            : nil,
+                        onLocate: onLocate.map { locate in { locate(Track(entry: entry)) } },
+                        onRemove: {
+                            if let i = playlist.entries.firstIndex(where: { $0.id == entry.id }) {
+                                playlists.removeEntries(at: IndexSet(integer: i), from: playlistID)
+                            }
                         }
-                    }
-                )
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !editMode.isEditing {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 44)
+                        .contentShape(Rectangle())
+                        .reorderGrip(index: index, dragging: $draggingRow, title: entry.title)
+                        .accessibilityLabel("Drag to reorder")
+                }
             }
             // Touch and hold, then drag to reorder (no Edit mode needed).
-            .reorderable(index: index, isEnabled: !editMode.isEditing, dragging: $draggingRow) { from, to in
+            .reorderDropTarget(index: index, dragging: $draggingRow) { from, to in
                 playlists.moveEntries(from: IndexSet(integer: from), to: to, in: playlistID)
             }
             // No explicit .id() here: it overrides the ForEach's structural

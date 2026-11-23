@@ -521,10 +521,16 @@ struct PlayerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                             upcomingRowMenu(item)
+
+                            Image(systemName: "line.3.horizontal")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, height: 44)
+                                .contentShape(Rectangle())
+                                .reorderGrip(index: item.offset, dragging: $draggingUpcoming, title: item.element.title)
                         }
                         .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                         // Touch and hold, then drag to reorder; `item.offset` is the queue index.
-                        .reorderable(index: item.offset, dragging: $draggingUpcoming) { from, to in
+                        .reorderDropTarget(index: item.offset, dragging: $draggingUpcoming) { from, to in
                             Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: from), toOffset: to) }
                         }
                     }
