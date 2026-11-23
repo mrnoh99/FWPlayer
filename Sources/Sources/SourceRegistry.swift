@@ -44,6 +44,17 @@ final class SourceRegistry: ObservableObject {
         #endif
     }
 
+    /// The Files app only lists an app's folder ("On My iPad › FWPlayer") once it holds
+    /// something, so an empty Documents folder is invisible and there's nowhere to drop music.
+    /// A small note file makes the folder appear (it isn't a playable file, so it's never listed).
+    private static func makeFolderVisibleInFiles(_ documents: URL) {
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: documents.path)) ?? []
+        guard contents.isEmpty else { return }
+        let note = documents.appendingPathComponent("Put your music here.txt")
+        try? "Copy music files or folders into this folder; they appear in FWPlayer under On This Device.\n"
+            .write(to: note, atomically: true, encoding: .utf8)
+    }
+
     /// Builds the source list from persisted bookmarks and SMB configs.
     func loadPersisted() {
         var loaded: [any FileSource] = []
@@ -52,6 +63,7 @@ final class SourceRegistry: ObservableObject {
         // iOS/iPadOS: expose the app's Documents directory for AirDrop / Files.
         if let documents = try? FileManager.default.url(
             for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+            Self.makeFolderVisibleInFiles(documents)
             loaded.append(LocalFileSource(
                 id: documentsSourceID,
                 displayName: "On This Device",
