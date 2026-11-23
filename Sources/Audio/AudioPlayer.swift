@@ -1262,6 +1262,9 @@ final class AudioPlayer: NSObject, ObservableObject {
         backend.onFinished = { [weak self] in
             Task { @MainActor in self?.advanceAfterPlaybackEnded() }
         }
+        backend.onFailed = { [weak self] message in
+            Task { @MainActor in self?.errorMessage = message }
+        }
         backend.volume = Float(effectiveVolume)
         player = backend
         duration = backend.duration

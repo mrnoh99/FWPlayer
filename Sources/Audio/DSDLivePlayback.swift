@@ -275,6 +275,13 @@ final class DSDLivePlayback: PlaybackBackend {
     /// Called on the main queue when the track has played to the end.
     var onFinished: (() -> Void)?
 
+    /// Called on the main queue when reading the source failed for good (e.g. the network
+    /// share went away), so the user is told why playback stopped.
+    var onFailed: ((String) -> Void)?
+
+    /// A failed read is retried this many times, half a second apart, before giving up.
+    private static let maxReadRetries = 20
+
     init(reader: DSDStreamReader, plan: DSDDoPDecoder.Plan) {
         self.reader = reader
         self.pcm = nil
@@ -465,6 +472,24 @@ final class DSDLivePlayback: PlaybackBackend {
         var previous: PCMSource?                                  // kept until the playhead leaves it
         var converter = plan.useDoP || reader == nil ? nil : DSDToPCMConverter(dsdRate: plan.dsdRate, multiple: plan.multiple)
         var pendingSamples = [Float]()
+        var readFailures = 0
+
+        func waitForSeekOrStop() {
+            while true {
+                producerLock.lock()
+                let done = stopRequested || pendingSeek != nil
+                producerLock.unlock()
+                if done { return }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+        }
+        func reportFailure(_ error: Error) {
+            let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.detached else { return }
+                self.onFailed?("Playback stopped: the file could no longer be read (\(text)).")
+            }
+        }
 
         while true {
             producerLock.lock()
@@ -497,8 +522,24 @@ final class DSDLivePlayback: PlaybackBackend {
                 continue
             }
             if let current = source {
-                if let samples = try? current.next(), !samples.isEmpty {
-                    pendingSamples = samples
+                do {
+                    if let samples = try current.next(), !samples.isEmpty {
+                        readFailures = 0
+                        pendingSamples = samples
+                        continue
+                    }
+                    readFailures = 0
+                } catch {
+                    // A dropped read (Wi-Fi blip, NAS busy) isn't the end of the track: retry.
+                    readFailures += 1
+                    if readFailures <= Self.maxReadRetries {
+                        Thread.sleep(forTimeInterval: 0.5)
+                        continue
+                    }
+                    reportFailure(error)
+                    renderer.markEnd()
+                    waitForSeekOrStop()
+                    readFailures = 0
                     continue
                 }
                 producerLock.lock()
@@ -512,25 +553,27 @@ final class DSDLivePlayback: PlaybackBackend {
                     continue
                 }
                 renderer.markEnd()
-                while true {
-                    producerLock.lock()
-                    let done = stopRequested || pendingSeek != nil
-                    producerLock.unlock()
-                    if done { break }
-                    Thread.sleep(forTimeInterval: 0.02)
-                }
+                waitForSeekOrStop()
                 continue
             }
-            guard let chunk = try? reader?.next() else {
+            let nextChunk: DSDChunk?
+            do {
+                nextChunk = try reader?.next()
+                readFailures = 0
+            } catch {
+                readFailures += 1
+                if readFailures <= Self.maxReadRetries {
+                    Thread.sleep(forTimeInterval: 0.5)
+                    continue
+                }
+                reportFailure(error)
+                nextChunk = nil
+            }
+            guard let chunk = nextChunk else {
                 renderer.markEnd()
                 // Wait for a seek (or stop) once the stream is exhausted.
-                while true {
-                    producerLock.lock()
-                    let done = stopRequested || pendingSeek != nil
-                    producerLock.unlock()
-                    if done { break }
-                    Thread.sleep(forTimeInterval: 0.02)
-                }
+                waitForSeekOrStop()
+                readFailures = 0
                 continue
             }
             pendingSamples = plan.useDoP
