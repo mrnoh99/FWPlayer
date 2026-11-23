@@ -155,6 +155,14 @@ final class PlaylistManager: ObservableObject {
         persist()
     }
 
+    /// Empties a playlist (the playlist itself, and the audio files, stay).
+    func removeAll(from id: UUID) {
+        guard let index = playlists.firstIndex(where: { $0.id == id }),
+              !playlists[index].entries.isEmpty else { return }
+        playlists[index].entries.removeAll()
+        persist()
+    }
+
     func moveEntries(from offsets: IndexSet, to destination: Int, in id: UUID) {
         guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
         playlists[index].entries.move(fromOffsets: offsets, toOffset: destination)

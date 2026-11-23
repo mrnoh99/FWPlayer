@@ -13,6 +13,8 @@ struct PlaylistDetailView: View {
 
     @State private var trackToAdd: Track?
     @State private var showingRename = false
+    @State private var showingClearAsk = false
+    @State private var showingClearFinal = false
     @State private var renameText = ""
     @State private var isDropTarget = false
     @State private var selectedEntryID: String?
@@ -65,6 +67,24 @@ struct PlaylistDetailView: View {
             TextField("Name", text: $renameText)
             Button("Cancel", role: .cancel) {}
             Button("Save") { playlists.rename(playlistID, to: renameText) }
+        }
+        // Deleting every track asks twice: it can't be undone.
+        .alert("Delete all tracks?", isPresented: $showingClearAsk) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue", role: .destructive) {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)     // let this alert close first
+                    showingClearFinal = true
+                }
+            }
+        } message: {
+            Text("All \(playlist?.entries.count ?? 0) tracks will be removed from “\(playlist?.name ?? "this playlist")”. The audio files themselves are not deleted.")
+        }
+        .alert("Are you sure?", isPresented: $showingClearFinal) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete All", role: .destructive) { playlists.removeAll(from: playlistID) }
+        } message: {
+            Text("This can't be undone.")
         }
         .sheet(item: $trackToAdd) { track in
             AddToPlaylistView(track: track)
@@ -215,6 +235,13 @@ struct PlaylistDetailView: View {
                         showingRename = true
                     } label: {
                         Label("Rename", systemImage: "pencil")
+                    }
+                }
+                if let playlist, !playlist.entries.isEmpty {
+                    Button(role: .destructive) {
+                        showingClearAsk = true
+                    } label: {
+                        Label("Delete All Tracks…", systemImage: "trash.slash")
                     }
                 }
                 if !PlaylistManager.isBuiltIn(playlistID) {
