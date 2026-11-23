@@ -271,6 +271,9 @@ final class RemoteControlServer: ObservableObject {
         case .stop:
             player.stop()
 
+        case .cancelLoading:
+            player.cancelLoading()
+
         case .toggleShuffle:
             player.toggleShuffle()
 
