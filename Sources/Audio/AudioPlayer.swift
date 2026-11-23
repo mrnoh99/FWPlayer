@@ -112,6 +112,11 @@ final class AudioPlayer: NSObject, ObservableObject {
         let index: Int
         let duration: TimeInterval
         let tags: [String: String]
+        let source: any FileSource
+        let streaming: ByteStreamingSource?     // set for a share
+        let localURL: URL?                      // set for a file on this device
+        let picture: Data?
+        let lyrics: String?
     }
     private var coverProbedFolders = Set<String>()
     /// Why streaming a track couldn't start (kept for the error shown if playing it fails).
@@ -777,6 +782,21 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // to a temporary PCM file off the main thread.
                 let ext = (track.path as NSString).pathExtension.lowercased()
 
+                // A FLAC / WAV / AIFF on this device (e.g. an external drive) plays with the
+                // built-in decoder too: it rides out a drive that stalls, and joins tracks
+                // without a gap. A file the decoder can't open falls through to Core Audio.
+                if self.streamFLAC, StreamedPCM.extensions.contains(ext),
+                   source.directURL(forPath: track.path) != nil,
+                   // Opening reads the file's header off the main thread: an external drive may have to spin up.
+                   let decoder = try? await Self.blocking({
+                       try StreamedPCM.open(source: try FileByteSource(url: sourceURL), fileExtension: ext)
+                   }),
+                   let backend = self.makeLivePCM(decoder: decoder, ext: ext) {
+                    try Task.checkCancellation()
+                    self.beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: source.id)
+                    return
+                }
+
                 // Instant DSD: play it while converting, with no temporary file.
                 if self.liveDSD,
                    DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension {
@@ -954,12 +974,22 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    /// Lyrics from a Vorbis-style tag map.
+    private static func embeddedLyrics(in tags: [String: String]) -> String? {
+        ["LYRICS", "UNSYNCEDLYRICS", "UNSYNCED LYRICS"].compactMap { tags[$0] }.first { !$0.isEmpty }
+    }
+
     /// Plays a local FLAC / WAV / AIFF with our own decoder on the live engine.
     private func makeLivePCM(fileURL: URL) -> DSDLivePlayback? {
         let ext = fileURL.pathExtension.lowercased()
         guard StreamedPCM.extensions.contains(ext),
               let source = try? FileByteSource(url: fileURL),
               let decoder = try? StreamedPCM.open(source: source, fileExtension: ext) else { return nil }
+        return makeLivePCM(decoder: decoder, ext: ext)
+    }
+
+    /// The live engine for an already-open decoder.
+    private func makeLivePCM(decoder: StreamedPCMDecoder, ext: String) -> DSDLivePlayback? {
         let rate = Double(decoder.sampleRate)
         let pcm = PCMSource(sampleRate: rate, durationSeconds: decoder.durationSeconds,
                             label: StreamedPCM.label(forExtension: ext),
@@ -1139,8 +1169,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !decoder.tags.isEmpty { applyStreamedTags(decoder.tags, trackID: track.id) }
         let picture = decoder.pictureBlock.flatMap { AlbumArtwork.parseFlacPicture($0) }
-        let lyrics = ["LYRICS", "UNSYNCEDLYRICS", "UNSYNCED LYRICS"]
-            .compactMap { decoder.tags[$0] }.first { !$0.isEmpty }
+        let lyrics = Self.embeddedLyrics(in: decoder.tags)
         loadStreamedMetadata(trackID: track.id, picture: picture, lyrics: lyrics, source: source,
                              streaming: streaming, folderPath: track.path)
         return true
@@ -1363,11 +1392,18 @@ final class AudioPlayer: NSObject, ObservableObject {
         let ext = (track.path as NSString).pathExtension.lowercased()
         guard track.id != current.id, StreamedPCM.extensions.contains(ext),
               let source = registry.source(for: track.sourceID),
-              let streaming = source as? ByteStreamingSource,
               prefetched[track.id] == nil, recentlyPlayed[track.id] == nil else { return }
+        // Where the next track's bytes come from: a share's ranged reads, or a file here.
+        let streaming = source as? ByteStreamingSource
+        let localURL = streaming == nil ? source.directURL(forPath: track.path) : nil
+        guard streaming != nil || localURL != nil else { return }
         let currentID = current.id
         gaplessTask = Task { [weak self] in
-            guard let stream = try? await streaming.openByteStream(forPath: track.path),
+            let opened: ByteSource?
+            if let streaming { opened = try? await streaming.openByteStream(forPath: track.path) }
+            else if let localURL { opened = try? FileByteSource(url: localURL) }
+            else { opened = nil }
+            guard let stream = opened,
                   let decoder = try? await Self.blocking({ try StreamedPCM.open(source: stream, fileExtension: ext) }),
                   !Task.isCancelled else { return }
             let pcm = PCMSource(sampleRate: Double(decoder.sampleRate),
@@ -1378,8 +1414,11 @@ final class AudioPlayer: NSObject, ObservableObject {
                 guard let self, self.currentTrack?.id == currentID,
                       let backend = self.player as? DSDLivePlayback, backend.wantsNext,
                       backend.queueNext(pcm) else { return }
-                self.gaplessNext = GaplessNext(track: track, index: index,
-                                               duration: decoder.durationSeconds, tags: decoder.tags)
+                self.gaplessNext = GaplessNext(
+                    track: track, index: index, duration: decoder.durationSeconds, tags: decoder.tags,
+                    source: source, streaming: streaming, localURL: localURL,
+                    picture: decoder.pictureBlock.flatMap { AlbumArtwork.parseFlacPicture($0) },
+                    lyrics: Self.embeddedLyrics(in: decoder.tags))
             }
         }
     }
@@ -1406,7 +1445,13 @@ final class AudioPlayer: NSObject, ObservableObject {
             backend.segmentDuration = next.duration
             duration = next.duration
             currentTime = 0
-            if !next.tags.isEmpty { applyStreamedTags(next.tags, trackID: id) }
+            if let url = next.localURL {
+                loadMetadata(for: url, trackID: id)                 // tags, cover, details and lyrics from the file
+            } else if let streaming = next.streaming {
+                if !next.tags.isEmpty { applyStreamedTags(next.tags, trackID: id) }
+                loadStreamedMetadata(trackID: id, picture: next.picture, lyrics: next.lyrics, source: next.source,
+                                     streaming: streaming, folderPath: next.track.path)
+            }
             updateTrackSampleRate(trackID: id, sampleRate: Double(backend.plan.outputRate))
             recordHistory(queue[index])
             playlists.recordPlayed(queue[index])
