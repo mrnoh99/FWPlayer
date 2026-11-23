@@ -131,17 +131,19 @@ final class PlaybackFlowTests: XCTestCase {
 
     func testSeekingBackIntoThePreviousTrackRequeuesTheSuccessor() {
         let first = Script(chunks: [300])
+        let second = Script(chunks: [200])
         let backend = DSDLivePlayback(pcm: source(first, duration: 0.3))
-        XCTAssertTrue(backend.queueNext(source(Script(chunks: [200]), duration: 0.2)))
+        XCTAssertTrue(backend.queueNext(source(second, duration: 0.2)))
         backend.startProducer()
         defer { backend.stop() }
         XCTAssertTrue(wait { backend.renderer.bufferedFrames == 500 })
-        XCTAssertFalse(backend.wantsNext, "the successor was taken when the first track ended")
+        XCTAssertTrue(backend.wantsNext, "the successor was taken when the first track ended")
         XCTAssertEqual(backend.rewindEpoch, 0)
 
         backend.currentTime = 0.1                          // still in the first track: seek back into it
-        XCTAssertTrue(wait { backend.rewindEpoch == 1 })
-        XCTAssertTrue(wait { first.seekCount >= 1 }, "the seek goes to the first track, not the successor")
-        XCTAssertTrue(backend.wantsNext, "the successor must be queued again")
+        XCTAssertTrue(wait { backend.rewindEpoch == 1 }, "the player is told the successor must be queued again")
+        XCTAssertTrue(wait { first.seekCount >= 1 }, "the seek goes to the first track")
+        XCTAssertEqual(first.seeks.first ?? -1, 0.1, accuracy: 1e-9)
+        XCTAssertEqual(second.seekCount, 0, "the successor must not be seeked")
     }
 }

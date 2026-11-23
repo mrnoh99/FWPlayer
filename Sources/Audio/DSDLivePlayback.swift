@@ -505,8 +505,9 @@ final class DSDLivePlayback: PlaybackBackend {
             producerLock.unlock()
             if stop { return }
 
-            if previous != nil, renderer.pendingBoundaries == 0 { previous = nil }
             if let seekTo {
+                // A seek made while still in the previous track of a gapless join: the main thread
+                // has already dropped the boundary, so go back to that track before it is forgotten.
                 if rewind, let old = previous { source = old; previous = nil }
                 try? reader?.seek(toSeconds: seekTo)
                 try? source?.seek(seekTo)
@@ -514,6 +515,7 @@ final class DSDLivePlayback: PlaybackBackend {
                 pendingSamples.removeAll()
                 renderer.flush(musicSeconds: seekTo)             // drop anything produced before the move
             }
+            if previous != nil, renderer.pendingBoundaries == 0 { previous = nil }   // the playhead has left it
 
             if !pendingSamples.isEmpty {
                 let accepted = renderer.push(pendingSamples)
