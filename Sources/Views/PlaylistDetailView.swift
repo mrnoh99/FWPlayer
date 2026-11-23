@@ -23,6 +23,8 @@ struct PlaylistDetailView: View {
     @State private var focusRevertTask: Task<Void, Never>?
 
     private var playlist: Playlist? { playlists.playlist(for: playlistID) }
+    private var clearName: String { playlist?.name ?? "this playlist" }
+    private var clearCount: Int { playlist?.entries.count ?? 0 }
 
     var body: some View {
         Group {
@@ -68,24 +70,9 @@ struct PlaylistDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") { playlists.rename(playlistID, to: renameText) }
         }
-        // Deleting every track asks twice: it can't be undone.
-        .alert("Delete all tracks?", isPresented: $showingClearAsk) {
-            Button("Cancel", role: .cancel) {}
-            Button("Continue", role: .destructive) {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 400_000_000)     // let this alert close first
-                    showingClearFinal = true
-                }
-            }
-        } message: {
-            Text("All \(playlist?.entries.count ?? 0) tracks will be removed from “\(playlist?.name ?? "this playlist")”. The audio files themselves are not deleted.")
-        }
-        .alert("Are you sure?", isPresented: $showingClearFinal) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete All", role: .destructive) { playlists.removeAll(from: playlistID) }
-        } message: {
-            Text("This can't be undone.")
-        }
+        .modifier(ClearAllConfirmation(
+            name: clearName, count: clearCount, isAsking: $showingClearAsk, isFinal: $showingClearFinal,
+            onConfirm: { playlists.removeAll(from: playlistID) }))
         .sheet(item: $trackToAdd) { track in
             AddToPlaylistView(track: track)
         }
@@ -420,5 +407,41 @@ private struct EntryRow: View {
             loadedSampleRate = await AudioFormatReader.sampleRate(for: directURL)
             duration = await AudioFormatReader.duration(for: directURL)
         }
+    }
+}
+
+/// The two-step "delete all tracks" confirmation. It lives in its own modifier because the
+/// view's modifier chain is already long: two more alerts inline make the compiler give up
+/// type-checking it ("unable to type-check this expression in reasonable time").
+private struct ClearAllConfirmation: ViewModifier {
+    let name: String
+    let count: Int
+    @Binding var isAsking: Bool
+    @Binding var isFinal: Bool
+    let onConfirm: () -> Void
+
+    private var message: String {
+        "All \(count) tracks will be removed from “\(name)”. The audio files themselves are not deleted."
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Delete all tracks?", isPresented: $isAsking) {
+                Button("Cancel", role: .cancel) {}
+                Button("Continue", role: .destructive) {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 400_000_000)     // let this alert close first
+                        isFinal = true
+                    }
+                }
+            } message: {
+                Text(message)
+            }
+            .alert("Are you sure?", isPresented: $isFinal) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete All", role: .destructive, action: onConfirm)
+            } message: {
+                Text("This can't be undone.")
+            }
     }
 }
