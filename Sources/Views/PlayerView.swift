@@ -387,10 +387,18 @@ struct PlayerView: View {
                 .disabled(!canGoPrevious)
 
                 if isLoading {
-                    // Preparing the track — show a spinner so the press is visible.
-                    ProgressView()
-                        .controlSize(.large)
+                    // Preparing the track — a spinner you can tap to give up (e.g. the music
+                    // server can't be reached from this network).
+                    Button { Haptics.tap(); Task { @MainActor in player.cancelLoading() } } label: {
+                        ZStack {
+                            ProgressView().controlSize(.large)
+                            Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
+                        }
                         .frame(width: 60, height: 60)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel loading")
                 } else {
                     Button {
                         Haptics.tap()

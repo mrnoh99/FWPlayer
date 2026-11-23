@@ -111,7 +111,16 @@ struct NowPlayingBar: View {
             .disabled(!canGoPrevious)
 
             if isLoading {
-                ProgressView().frame(width: 30, height: 30)
+                // Tap to give up (e.g. the music server can't be reached from this network).
+                Button { Haptics.tap(); Task { @MainActor in player.cancelLoading() } } label: {
+                    ZStack {
+                        ProgressView()
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    }
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Cancel loading")
             } else {
                 Button { Haptics.tap(); Task { @MainActor in player.togglePlayPause() } } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title)

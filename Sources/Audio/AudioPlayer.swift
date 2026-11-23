@@ -837,6 +837,20 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    /// Gives up on a track that is still being fetched (e.g. the server can't be reached
+    /// from this network). The queue and the selected track stay as they are.
+    func cancelLoading() {
+        guard isLoading else { return }
+        loadTask?.cancel()
+        loadTask = nil
+        clearPrefetch()
+        isLoading = false
+        loadingDetail = nil
+        errorMessage = nil
+        updateNowPlaying()
+        noteTransportEvent()
+    }
+
     /// Stops the active player without clearing the queue or current index.
     private func tearDownPlayback(keepQueue: Bool) {
         gaplessTask?.cancel()
