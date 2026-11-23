@@ -26,6 +26,20 @@ final class PlaylistManager: ObservableObject {
         playlists = store.load()
         ensureFavoritesFirst()
         ensurePlayedSecond()
+        migratePlayedToNewestFirst()
+    }
+
+    private static let playedNewestFirstKey = "playedNewestFirst"
+
+    /// Played used to be stored oldest first; it is now newest first. Flip a list saved the
+    /// old way, once.
+    private func migratePlayedToNewestFirst() {
+        guard !UserDefaults.standard.bool(forKey: Self.playedNewestFirstKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.playedNewestFirstKey)
+        guard let index = playlists.firstIndex(where: { $0.id == Self.playedID }),
+              playlists[index].entries.count > 1 else { return }
+        playlists[index].entries.reverse()
+        persist()
     }
 
     /// Guarantees a Played playlist exists and sits right after Favorites.
@@ -43,14 +57,14 @@ final class PlaylistManager: ObservableObject {
         }
     }
 
-    /// Records a track in Played: moved to the end if it was already there.
+    /// Records a track in Played, newest first: moved to the top if it was already there.
     func recordPlayed(_ track: Track) {
         guard let index = playlists.firstIndex(where: { $0.id == Self.playedID }) else { return }
         let entry = PlaylistEntry(track: track)
         playlists[index].entries.removeAll { $0.id == entry.id }
-        playlists[index].entries.append(entry)
+        playlists[index].entries.insert(entry, at: 0)
         let excess = playlists[index].entries.count - Self.playedLimit
-        if excess > 0 { playlists[index].entries.removeFirst(excess) }
+        if excess > 0 { playlists[index].entries.removeLast(excess) }
         persist()
     }
 

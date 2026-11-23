@@ -145,7 +145,7 @@ preserved through a security‑scoped bookmark.
 ## Playlists
 
 Two playlists are built in and can't be deleted: **Favorites** (star a track) and
-**Played** — every track you've played, oldest first (most recent last), kept
+**Played** — every track you've played, most recent first, kept
 across launches (up to 1000).
 
 - Create one with **＋ → New Playlist…** (or *New Playlist…* from the *Add to
