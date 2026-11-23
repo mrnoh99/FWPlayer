@@ -1692,12 +1692,16 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func configureAudioSession() {
         #if os(iOS)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
-        // Hi-res USB output is steadier with a larger I/O buffer; latency doesn't
-        // matter for playback.
-        try? session.setPreferredIOBufferDuration(0.1)
-        try? session.setActive(true)
+        // Activating the session can block (it talks to the audio daemon, and a USB DAC may
+        // have to switch mode), so it never happens on the main thread.
+        AudioSessionQueue.queue.async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .default)
+            // Hi-res USB output is steadier with a larger I/O buffer; latency doesn't
+            // matter for playback.
+            try? session.setPreferredIOBufferDuration(0.1)
+            try? session.setActive(true)
+        }
         #endif
     }
 
@@ -1739,7 +1743,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // Re-assert the audio session so active playback keeps going
                 // with the screen off, exactly like the Music app.
                 if self.isPlaying {
-                    try? AVAudioSession.sharedInstance().setActive(true)
+                    AudioSessionQueue.queue.async { try? AVAudioSession.sharedInstance().setActive(true) }
                 }
                 self.updateBackgroundKeepAlive()
             }
@@ -1816,8 +1820,11 @@ final class AudioPlayer: NSObject, ObservableObject {
                 options = []
             }
             if options.contains(.shouldResume) && wasPlayingBeforeInterruption {
-                try? AVAudioSession.sharedInstance().setActive(true)
-                resumePlayback()
+                // Re-activate off the main thread, then resume once the session is live.
+                AudioSessionQueue.queue.async { [weak self] in
+                    try? AVAudioSession.sharedInstance().setActive(true)
+                    Task { @MainActor in self?.resumePlayback() }
+                }
             }
             wasPlayingBeforeInterruption = false
         @unknown default:
@@ -1938,6 +1945,12 @@ extension AudioPlayer: AVAudioPlayerDelegate {
     }
 }
 
+/// One serial queue for everything that activates or reconfigures the audio session, so those
+/// calls stay off the main thread (Xcode's "AVAudioSession Hang Risk") and in order.
+enum AudioSessionQueue {
+    static let queue = DispatchQueue(label: "com.fwplayer.audiosession", qos: .userInitiated)
+}
+
 extension AVAudioPlayer: PlaybackBackend {
     func detach() { delegate = nil }
 }
@@ -1957,22 +1970,29 @@ extension AVAudioPlayer: PlaybackBackend {
 final class BackgroundAudioKeepAlive {
     private var player: AVAudioPlayer?
     private var active = false
+    /// Building and starting the silent player activates the audio session, which can block:
+    /// all of it runs on the audio-session queue, not the main thread.
+    private let queue = AudioSessionQueue.queue
 
     func start() {
-        guard !active else { return }
-        active = true
-        if player == nil { player = Self.makeSilentPlayer() }
-        player?.numberOfLoops = -1
-        player?.volume = 0
-        if player?.isPlaying == false { player?.play() }
+        queue.async { [self] in
+            guard !active else { return }
+            active = true
+            if player == nil { player = Self.makeSilentPlayer() }
+            player?.numberOfLoops = -1
+            player?.volume = 0
+            if player?.isPlaying == false { player?.play() }
+        }
     }
 
     func stop() {
-        guard active else { return }
-        active = false
-        player?.stop()
-        // Keep the (cheap) player instance around for fast restarts.
-        player?.currentTime = 0
+        queue.async { [self] in
+            guard active else { return }
+            active = false
+            player?.stop()
+            // Keep the (cheap) player instance around for fast restarts.
+            player?.currentTime = 0
+        }
     }
 
     private static func makeSilentPlayer() -> AVAudioPlayer? {
