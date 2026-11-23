@@ -46,7 +46,7 @@ struct QueueView: View {
                             onPlay: { player.play(at: index) },
                             onRemove: { player.removeFromQueue(at: IndexSet(integer: index)) })
                             // Touch and hold, then drag to reorder (no Edit mode needed).
-                            .reorderable(index: index, isEnabled: !editMode.isEditing, dragging: $draggingRow) { from, to in
+                            .reorderDropTarget(index: index, dragging: $draggingRow) { from, to in
                                 Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: from), toOffset: to) }
                             }
                     }
@@ -103,6 +103,15 @@ struct QueueView: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(playlists.isFavorite(track) ? "Remove from Favorites" : "Add to Favorites")
+
+            if !editMode.isEditing {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 44)
+                    .contentShape(Rectangle())
+                    .reorderGrip(index: index, dragging: $draggingRow, title: track.title)
+                    .accessibilityLabel("Drag to reorder")
+            }
 
             VStack(spacing: 0) {
                 Button {
