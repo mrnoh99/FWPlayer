@@ -50,6 +50,26 @@ actor FolderListingCache {
         return false
     }
 
+    /// Folders and audio files whose names match `terms` (see `LibrarySearch`), best first.
+    func search(terms: [String], limit: Int) -> [FileItem] {
+        guard !terms.isEmpty else { return [] }
+        var scored: [(score: Int, item: FileItem)] = []
+        for listing in entries.values {
+            for item in listing where item.kind != .other {
+                if let score = LibrarySearch.score(name: item.name, path: item.path,
+                                                   isFolder: item.kind == .directory, terms: terms) {
+                    scored.append((score, item))
+                }
+            }
+        }
+        scored.sort {
+            $0.score != $1.score
+                ? $0.score > $1.score
+                : $0.item.path.localizedStandardCompare($1.item.path) == .orderedAscending
+        }
+        return scored.prefix(limit).map { $0.item }
+    }
+
     func recursiveAudio(in path: String) -> [FileItem] {
         guard let listing = entries[path] else { return [] }
         var audio = listing.filter { $0.kind == .audio }

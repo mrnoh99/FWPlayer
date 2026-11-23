@@ -41,6 +41,11 @@ protocol FileSource: AnyObject, Identifiable {
 
     /// Whether any subdirectory holds playable audio (used for folder Play UI).
     func subfolderHasPlayableAudio(in path: String) async -> Bool
+
+    /// Folders and audio files whose names match `terms` (from `LibrarySearch.terms`), best
+    /// first. Looks only at folders already scanned into the listing cache; a source without
+    /// one finds nothing.
+    func search(terms: [String], limit: Int) async -> [FileItem]
 }
 
 /// Sources that pre-scan folder listings into an on-disk cache for fast browsing.
@@ -50,6 +55,7 @@ protocol PrewarmableFileSource: FileSource {
 }
 
 extension FileSource {
+    func search(terms: [String], limit: Int) async -> [FileItem] { [] }
     func releaseTemporaryURL(_ url: URL) {}
     func directURL(forPath path: String) -> URL? { nil }
     /// By default there is no cache, so a refresh is just a list.

@@ -54,6 +54,10 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
         await listingCache.isEmpty
     }
 
+    func search(terms: [String], limit: Int) async -> [FileItem] {
+        await listingCache.search(terms: terms, limit: limit)
+    }
+
     func list(path: String) async throws -> [FileItem] {
         #if canImport(SMBClient)
         // The on-disk cache makes browsing instant after the one-time pre-scan

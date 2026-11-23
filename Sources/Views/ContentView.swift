@@ -9,6 +9,7 @@ enum SidebarSelection: Hashable {
     case playlist(UUID)
     case queue
     case history
+    case search
 }
 
 /// Root layout: a sidebar listing sources and playlists, a detail browser, and
@@ -187,6 +188,9 @@ struct ContentView: View {
                     Image(systemName: "clock.arrow.circlepath")
                 }
                 .tag(SidebarSelection.history)
+
+                Label("Search", systemImage: "magnifyingglass")
+                    .tag(SidebarSelection.search)
             }
 
             Section("Library") {
@@ -440,6 +444,10 @@ struct ContentView: View {
                     .environmentObject(player)
                     .environmentObject(playlists)
             }
+        case .search:
+            NavigationStack {
+                LibrarySearchView(onOpenFolder: { openFolder(sourceID: $0, folder: $1) }, onLocate: locate)
+            }
         case .source(let id):
             if let source = registry.source(for: id) {
                 sourceDetail(source: source, id: id)
@@ -515,6 +523,13 @@ struct ContentView: View {
         locateFilePath = track.path
         pendingLocate = true
         selection = .source(track.sourceID)
+    }
+
+    /// Opens `folder` of a source in its browser (from a search result).
+    private func openFolder(sourceID: String, folder: String) {
+        sourcePaths[sourceID] = folderRoutes(sourceID: sourceID, folder: folder)
+        locateFilePath = nil
+        selection = .source(sourceID)
     }
 
     /// Builds the chain of folder routes leading down to `folder`.

@@ -259,6 +259,14 @@
 			isa = PBXBuildFile;
 			fileRef = 2B8F5A1C6D3E4970B7A4D1F2 /* DiagnosticsLog.swift */;
 		};
+		5C3A9D1E7B2F4086A9D4C1E7 /* LibrarySearch.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 9B4E2A7C1D5F4863B0A2D8F4 /* LibrarySearch.swift */;
+		};
+		1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */;
+		};
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -719,6 +727,18 @@
 			path = DiagnosticsLog.swift;
 			sourceTree = "<group>";
 		};
+		9B4E2A7C1D5F4863B0A2D8F4 /* LibrarySearch.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = LibrarySearch.swift;
+			sourceTree = "<group>";
+		};
+		7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = LibrarySearchView.swift;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -747,6 +767,7 @@
 				7E4B2A6C9D1F43A58B0E3C61 /* FLACDecoder.swift */,
 				4D9A6B3E1C5F4872A0C3E5B9 /* PCMFileDecoder.swift */,
 				2B8F5A1C6D3E4970B7A4D1F2 /* DiagnosticsLog.swift */,
+				9B4E2A7C1D5F4863B0A2D8F4 /* LibrarySearch.swift */,
 				61FEFB6356924F3AA8178187 /* SACDISO.swift */,
 				2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */,
 				8B87615A1D104B909447182C /* MusicKitCatalog.swift */,
@@ -773,6 +794,7 @@
 				159BA1C230CC4A0AA9129583 /* PlaybackRowInteraction.swift */,
 				EC91B1C76215479A8457F2E8 /* PlayerView.swift */,
 				1C601CC0DD77499E88B6385D /* PlaylistDetailView.swift */,
+				7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */,
 				4B5E82643B35411494B2CD52 /* QueueView.swift */,
 				698F1B5D7A214B18A83916FF /* RemotePairingBanner.swift */,
 			);
@@ -1038,6 +1060,8 @@
 				3A7C1D9E5B2F4086A1C4D7E2 /* FLACDecoder.swift in Sources */,
 				8C2E5A1D7F3B4960B4D1E2A7 /* PCMFileDecoder.swift in Sources */,
 				6E1D4C7A9B2F4835A5D0C3E8 /* DiagnosticsLog.swift in Sources */,
+				5C3A9D1E7B2F4086A9D4C1E7 /* LibrarySearch.swift in Sources */,
+				1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */,
 				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
 				7EAB32DDA2A34C2E9E0C9191 /* SACDLibrary.swift in Sources */,
 				81CF5DF2FE3948C19681C222 /* ccp_calc.c in Sources */,
@@ -1187,7 +1211,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1255,7 +1279,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

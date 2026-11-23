@@ -83,6 +83,10 @@ final class LocalFileSource: FileSource, PrewarmableFileSource {
         path.isEmpty ? rootURL : rootURL.appendingPathComponent(path)
     }
 
+    func search(terms: [String], limit: Int) async -> [FileItem] {
+        await listingCache.search(terms: terms, limit: limit)
+    }
+
     func list(path: String) async throws -> [FileItem] {
         if let cached = await listingCache.listing(path: path) { return cached }
         let items = try await listFromDisk(path: path)
