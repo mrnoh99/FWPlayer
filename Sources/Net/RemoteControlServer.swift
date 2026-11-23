@@ -339,6 +339,10 @@ final class RemoteControlServer: ObservableObject {
             guard let uuid = UUID(uuidString: playlistID) else { return }
             playlists.delete(uuid)
 
+        case .clearPlaylist(let playlistID):
+            guard let uuid = UUID(uuidString: playlistID) else { return }
+            playlists.removeAll(from: uuid)
+
         case .addToPlaylist(let playlistID, let tracks):
             guard let uuid = UUID(uuidString: playlistID) else { return }
             for remote in tracks {
