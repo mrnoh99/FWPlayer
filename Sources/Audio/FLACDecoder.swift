@@ -110,6 +110,12 @@ private let crc8Table: [UInt8] = (0..<256).map { value -> UInt8 in
     return c
 }
 
+private let crc16Table: [UInt16] = (0..<256).map { value -> UInt16 in
+    var c = UInt16(value) << 8
+    for _ in 0..<8 { c = c & 0x8000 != 0 ? (c << 1) ^ 0x8005 : c << 1 }
+    return c
+}
+
 private struct FLACFrameHeader {
     var blockSize: Int
     var bitsPerSample: Int
@@ -142,6 +148,9 @@ final class FLACDecoder: @unchecked Sendable {
     private var cursor = 0                   // index of the next frame in `buffer`
     /// After a seek, leading samples of the next frame to drop.
     private var samplesToSkip = 0
+
+    /// Reading ahead for a frame bigger than STREAMINFO promised stops here; beyond it the data is garbage.
+    private static let maxFrameLookahead = 4 << 20
 
     /// Bytes needed in the buffer to decode any frame.
     private var neededBytes: Int {
@@ -261,7 +270,13 @@ final class FLACDecoder: @unchecked Sendable {
         var frames: Int
         var startSample: UInt64?       // known for variable block sizes
         var length: Int                // bytes
+        var crcOK = true               // the frame's CRC-16 matched its bytes
     }
+
+    /// Frames whose stored CRC-16 didn't match their bytes (damaged data from the file, drive or share).
+    private(set) var crcErrors = 0
+    /// Frames that couldn't be decoded and were skipped over (each one is a gap in the sound).
+    private(set) var skippedFrames = 0
 
     /// The next frame as interleaved stereo floats, or nil at the end of the stream.
     func nextSamples() throws -> [Float]? {
@@ -271,10 +286,17 @@ final class FLACDecoder: @unchecked Sendable {
 
             let info = self.info
             let at = cursor
+            var needsMore = false
             let decoded = buffer.withUnsafeBufferPointer { p in
-                Self.decodeFrame(p, at: at, info: info)
+                Self.decodeFrame(p, at: at, info: info, needsMore: &needsMore)
             }
             if let decoded {
+                if !decoded.crcOK {
+                    crcErrors += 1
+                    if crcErrors <= 5 || crcErrors % 100 == 0 {
+                        DiagnosticsLog.log("flac", "frame CRC mismatch near byte \(bufferStart + UInt64(at)) (\(crcErrors) so far): damaged data")
+                    }
+                }
                 cursor += decoded.length
                 var samples = decoded.samples
                 if samplesToSkip > 0 {
@@ -285,7 +307,17 @@ final class FLACDecoder: @unchecked Sendable {
                 if samples.isEmpty { continue }
                 return samples
             }
+            // The frame runs past what was read (a bigger frame than STREAMINFO promised): read more.
+            if needsMore && !atEnd && buffer.count - cursor < Self.maxFrameLookahead {
+                let before = buffer.count
+                try fill(minBytes: buffer.count - cursor + 256 * 1024)
+                if buffer.count > before { continue }
+            }
             // Lost sync or a damaged frame: look for the next valid frame header.
+            skippedFrames += 1
+            if skippedFrames <= 5 || skippedFrames % 100 == 0 {
+                DiagnosticsLog.log("flac", "skipped an undecodable frame near byte \(bufferStart + UInt64(at)) (\(skippedFrames) so far)")
+            }
             guard let next = findFrame(from: cursor + 1) else {
                 if atEnd { return nil }
                 cursor = max(cursor, buffer.count - 16)          // keep a tail so a split header is found
@@ -383,7 +415,8 @@ final class FLACDecoder: @unchecked Sendable {
                                length: j + 1 - i)
     }
 
-    private static func decodeFrame(_ p: UnsafeBufferPointer<UInt8>, at i: Int, info: FLACStreamInfo) -> DecodedFrame? {
+    private static func decodeFrame(_ p: UnsafeBufferPointer<UInt8>, at i: Int, info: FLACStreamInfo,
+                                    needsMore: inout Bool) -> DecodedFrame? {
         guard let header = parseHeader(p, at: i, info: info), let base = p.baseAddress else { return nil }
         var reader = BitReader(base: base, count: p.count, startByte: i + header.length)
 
@@ -394,12 +427,16 @@ final class FLACDecoder: @unchecked Sendable {
                 depth += 1                                      // the side channel has one more bit
             }
             guard decodeSubframe(&reader, blockSize: header.blockSize, bitsPerSample: depth, into: &channels[c]) else {
+                needsMore = reader.overrun
                 return nil
             }
         }
         reader.alignToByte()
-        _ = reader.bits(16)                                     // frame CRC-16 (not checked)
-        if reader.overrun { return nil }
+        let crcEnd = reader.bytePosition
+        let stored = UInt16(truncatingIfNeeded: reader.bits(16))
+        if reader.overrun { needsMore = true; return nil }
+        var crc: UInt16 = 0
+        for k in i..<crcEnd { crc = (crc << 8) ^ crc16Table[Int((crc >> 8) ^ UInt16(p[k]))] }
 
         let n = header.blockSize
         switch header.assignment {
@@ -432,7 +469,8 @@ final class FLACDecoder: @unchecked Sendable {
             }
         }
         let start: UInt64? = header.variableBlockSize ? header.number : nil
-        return DecodedFrame(samples: out, frames: n, startSample: start, length: reader.bytePosition - i)
+        return DecodedFrame(samples: out, frames: n, startSample: start, length: reader.bytePosition - i,
+                            crcOK: crc == stored)
     }
 
     // MARK: Subframes
@@ -610,8 +648,14 @@ final class FLACDecoder: @unchecked Sendable {
             try fill(minBytes: neededBytes)
             guard cursor < buffer.count else { return }
             let at = cursor
-            let decoded = buffer.withUnsafeBufferPointer { Self.decodeFrame($0, at: at, info: info) }
+            var needsMore = false
+            let decoded = buffer.withUnsafeBufferPointer { Self.decodeFrame($0, at: at, info: info, needsMore: &needsMore) }
             guard let decoded else {
+                if needsMore && !atEnd && buffer.count - cursor < Self.maxFrameLookahead {
+                    let before = buffer.count
+                    try fill(minBytes: buffer.count - cursor + 256 * 1024)
+                    if buffer.count > before { continue }
+                }
                 guard let next = findFrame(from: cursor + 1) else { return }
                 cursor = next
                 continue

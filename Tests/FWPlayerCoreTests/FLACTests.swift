@@ -38,6 +38,18 @@ final class FLACTests: XCTestCase {
             if got[2 * i] != l || got[2 * i + 1] != r { bad += 1 }
         }
         XCTAssertEqual(bad, 0, "\(name): mismatching frames", file: file, line: line)
+        XCTAssertEqual(d.crcErrors, 0, "\(name): frame CRC-16 mismatches", file: file, line: line)
+        XCTAssertEqual(d.skippedFrames, 0, "\(name): skipped frames", file: file, line: line)
+    }
+
+    func testADamagedFrameIsReportedAndOnlyThatFrameIsLost() throws {
+        var data = try fixture("s16_44k_long", "flac")
+        let clean = try decodeAll(try FLACDecoder(source: MemoryByteSource(data: data)))
+        data[data.count / 2] ^= 0xFF                              // flip bits in the middle of the audio
+        let d = try FLACDecoder(source: MemoryByteSource(data: data))
+        let damaged = try decodeAll(d)
+        XCTAssertGreaterThan(d.crcErrors + d.skippedFrames, 0)    // the damage doesn't pass silently
+        XCTAssertGreaterThan(damaged.count, clean.count / 2)      // and the rest still plays
     }
 
     func testAllFixturesDecodeBitExact() throws {
