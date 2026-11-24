@@ -1518,12 +1518,14 @@ final class AudioPlayer: NSObject, ObservableObject {
         let ext = (track.path as NSString).pathExtension.lowercased()
         // (The same song queued twice in a row is a different entry and joins gaplessly like any other.)
         guard index != currentIndex, StreamedPCM.extensions.contains(ext),
-              let source = registry.source(for: track.sourceID),
-              prefetched[track.id] == nil, recentlyPlayed[track.id] == nil else { return }
+              let source = registry.source(for: track.sourceID) else { return }
         // Where the next track's bytes come from: a share's ranged reads, or a file here.
         let streaming = source as? ByteStreamingSource
         let localURL = streaming == nil ? source.directURL(forPath: track.path) : nil
         guard streaming != nil || localURL != nil else { return }
+        // A track already downloaded for a share plays from that copy. A file on this device has
+        // nothing cached, so having played it recently (or the same song twice) doesn't rule out joining it.
+        if localURL == nil, prefetched[track.id] != nil || recentlyPlayed[track.id] != nil { return }
         let currentID = current.id
         gaplessTask = Task { [weak self] in
             let opened: ByteSource?
