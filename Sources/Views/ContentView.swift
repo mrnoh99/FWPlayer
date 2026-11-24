@@ -319,8 +319,14 @@ struct ContentView: View {
                     UIPasteboard.general.string = DiagnosticsLog.shared.text()
                     #endif
                     diagnosticsCopied = true
+                    // The confirmation lasts a moment, then the button is ready to copy again
+                    // (the log keeps growing while you listen).
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        diagnosticsCopied = false
+                    }
                 } label: {
-                    Label(diagnosticsCopied ? "Copied — paste it into a message"
+                    Label(diagnosticsCopied ? "Copied (\(DiagnosticsLog.shared.count) events) — paste it into a message"
                                             : "Copy diagnostics log (\(DiagnosticsLog.shared.count) events)",
                           systemImage: diagnosticsCopied ? "checkmark" : "doc.on.clipboard")
                 }
