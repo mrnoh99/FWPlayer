@@ -41,7 +41,8 @@ struct QueueView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, track in
+                    // Identified by position: the same song can be queued twice, and two rows can't share an id.
+                    ForEach(Array(player.queue.enumerated()), id: \.offset) { index, track in
                         row(track: track, index: index, isCurrent: player.currentIndex == index,
                             onPlay: { player.play(at: index) },
                             onRemove: { player.removeFromQueue(at: IndexSet(integer: index)) })

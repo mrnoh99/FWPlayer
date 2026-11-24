@@ -1060,7 +1060,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
             failedToLoad("Couldn't play \(track.title): \(error.localizedDescription)"
                          + (lastStreamFailure.map { " (Streaming failed: \($0))" } ?? ""),
-                         trackIndex: queue.firstIndex(where: { $0.id == track.id }) ?? currentIndex ?? 0)
+                         trackIndex: queueIndexOfPlaying(track.id) ?? currentIndex ?? 0)
         }
     }
 
@@ -1334,7 +1334,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// by artist and album, and fill the details panel from the Apple Music / iTunes catalog.
     private func loadStreamedMetadata(trackID: String, picture: Data?, lyrics: String?, source: any FileSource,
                                       streaming: ByteStreamingSource, folderPath: String) {
-        guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+        guard let idx = queueIndexOfPlaying(trackID) else { return }
         let track = queue[idx]
         if artwork.hasCachedImage(for: track) {
             artwork.resolveStreamed(track: track, embedded: nil)          // loads it from the cache
@@ -1380,7 +1380,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Fills artist / album / year / genre from tags read over the stream.
     private func applyStreamedTags(_ tags: [String: String], trackID: String) {
-        guard let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+        guard let idx = queueIndexOfPlaying(trackID) else { return }
         var track = queue[idx]
         if track.artist == nil { track.artist = tags["ARTIST"] ?? tags["ALBUMARTIST"] }
         if track.album == nil { track.album = tags["ALBUM"] }
@@ -1565,8 +1565,9 @@ final class AudioPlayer: NSObject, ObservableObject {
             gaplessNext = nil
             let id = next.track.id
             DiagnosticsLog.log("gapless", "advanced to: \(next.track.title)")
-            let index = queue.firstIndex(where: { $0.id == id }) ?? next.index
-            guard queue.indices.contains(index) else { continue }
+            // The same song can be in the queue twice: take the copy that was queued, not the first.
+            guard let index = QueueIndex.ofGaplessNext(id: id, queuedAt: next.index, in: queue.map(\.id),
+                                                       current: currentIndex) else { continue }
             currentIndex = index
             currentCatalogInfo = nil
             backend.segmentDuration = next.duration
@@ -1586,6 +1587,12 @@ final class AudioPlayer: NSObject, ObservableObject {
             prefetchUpcoming()
             scheduleGaplessNext()
         }
+    }
+
+    /// The queue position of the track `id` that is playing (or being loaded): with the same song
+    /// in the queue twice, the copy at the current position rather than the first one.
+    private func queueIndexOfPlaying(_ id: String) -> Int? {
+        QueueIndex.ofPlaying(id: id, in: queue.map(\.id), current: currentIndex)
     }
 
     private func cleanupTemp() {
@@ -1689,7 +1696,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             // First pass: apply the file's embedded tags and start artwork resolution.
             let lookup: (artist: String?, album: String?)? = await MainActor.run {
                 guard let self,
-                      let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return nil }
+                      let idx = self.queueIndexOfPlaying(trackID) else { return nil }
                 var track = self.queue[idx]
                 if let artist { track.artist = artist }
                 if let album { track.album = album }
@@ -1740,7 +1747,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         if info.genres.isEmpty, let genre { info.genres = [genre] }
         if info.releaseDate == nil, info.yearText == nil { info.yearText = year }
         guard info.hasDisplayableDetails,
-              let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+              let idx = queueIndexOfPlaying(trackID) else { return }
         var track = queue[idx]
         var changed = false
         if track.year == nil, let y = info.year { track.year = y; changed = true }
@@ -1766,7 +1773,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             let info = await cd.awaitDiscInfo()
             guard let self, let info, !info.isEmpty else { return }
             await MainActor.run {
-                guard let idx = self.queue.firstIndex(where: { $0.id == trackID }) else { return }
+                guard let idx = self.queueIndexOfPlaying(trackID) else { return }
                 let old = self.queue[idx]
                 // Track.title is immutable, so rebuild when the lookup resolved a
                 // real title; otherwise just fill artist/album/year.
@@ -1812,7 +1819,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func updateTrackSampleRate(trackID: String, sampleRate: Double) {
         guard sampleRate > 0,
-              let idx = queue.firstIndex(where: { $0.id == trackID }) else { return }
+              let idx = queueIndexOfPlaying(trackID) else { return }
         var updated = queue
         updated[idx].sampleRate = sampleRate
         queue = updated
