@@ -459,6 +459,7 @@ struct ContentView: View {
         case .playlist(let id):
             NavigationStack {
                 PlaylistDetailView(playlistID: id, onLocate: locate)
+                    .id(id)   // each playlist starts out of Edit mode
             }
         case nil:
             NavigationStack { unavailable }
