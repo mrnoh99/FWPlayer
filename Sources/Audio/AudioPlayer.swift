@@ -127,6 +127,8 @@ final class AudioPlayer: NSObject, ObservableObject {
     private var lastStreamFailure: String?
     private var gaplessNext: GaplessNext?
     private var gaplessTask: Task<Void, Never>?
+    /// The last explicit "play this queue entry" request, to swallow double-clicks.
+    private var lastPlayRequest: (id: Track.ID, time: TimeInterval)?
     private var gaplessHandled = 0
     private var gaplessEpoch = 0
     /// Resources backing the current track: the source file (an SMB download, to
@@ -742,6 +744,15 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func loadAndPlay(index: Int) {
         guard queue.indices.contains(index) else { return }
+        // A double-click (or double-tap) sends the same request twice within a fraction of a
+        // second; restarting the track that just began only makes a second gap and a second load.
+        let now = ProcessInfo.processInfo.systemUptime
+        let id = queue[index].id
+        if let last = lastPlayRequest, last.id == id, now - last.time < 0.6 {
+            DiagnosticsLog.log("play", "ignored a repeated request for \"\(queue[index].title)\"")
+            return
+        }
+        lastPlayRequest = (id, now)
         loadTask?.cancel()
         tearDownPlayback(keepQueue: true)
         currentIndex = index
