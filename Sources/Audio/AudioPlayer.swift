@@ -984,6 +984,12 @@ final class AudioPlayer: NSObject, ObservableObject {
                 // Core Audio refused the file (e.g. an unusual WAV header it won't open):
                 // try our own FLAC / WAV / AIFF decoder on the local copy before giving up.
                 if !playable.isDoP, let backend = await makeLivePCM(fileURL: playable.url) {
+                    guard !Task.isCancelled else {
+                        backend.stop()
+                        playable.cleanup()
+                        registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+                        return
+                    }
                     beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: sourceID)
                     return
                 }
