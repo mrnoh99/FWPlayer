@@ -39,9 +39,20 @@ final class DSDLiveTests: XCTestCase {
         renderer.onUnderrun = { count in
             if count == 1 { reported.fulfill() }
         }
+        renderer.push([Float](repeating: 0.5, count: 5))
         renderer.setPaused(false)
-        _ = render(renderer, 10)            // nothing was ever pushed and the stream hasn't ended
+        _ = render(renderer, 10)            // 5 frames of sound, then the buffer runs dry mid-stream
         wait(for: [reported], timeout: 2)
+    }
+
+    func testStartingBeforeTheFirstSamplesArriveIsNotAnUnderrun() {
+        let renderer = DSDLiveRenderer(isDoP: false, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0)
+        let silent = expectation(description: "no underrun at startup")
+        silent.isInverted = true
+        renderer.onUnderrun = { _ in silent.fulfill() }
+        renderer.setPaused(false)
+        _ = render(renderer, 10)            // the engine is running, the producer hasn't pushed yet
+        wait(for: [silent], timeout: 0.5)
     }
 
     func testAFedBufferAndAFinishedStreamAreNotUnderruns() {

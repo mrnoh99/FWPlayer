@@ -137,6 +137,7 @@ final class DSDLiveRenderer {
         os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
         readFrame = 0
         buffered = 0
+        hasPlayed = false           // the refill after a seek isn't a dropout either
         endOfStream = false
         finishedSent = false
         tailRemaining = silenceFrames
@@ -193,6 +194,7 @@ final class DSDLiveRenderer {
                         musicFrames = 0         // a new track starts here
                     }
                     consumed &+= 1
+                    hasPlayed = true
                     let a = ring[2 * readFrame], b = ring[2 * readFrame + 1]
                     readFrame += 1
                     if readFrame == capacityFrames { readFrame = 0 }
@@ -207,7 +209,9 @@ final class DSDLiveRenderer {
                     }
                     silent = false
                 } else if !endOfStream {
-                    ranDry = true       // the producer didn't keep up: this stretch is silence
+                    // Not a dropout until sound has actually been playing: the engine starts a few
+                    // milliseconds before the producer's first samples arrive.
+                    if hasPlayed { ranDry = true }
                 } else if endOfStream {
                     if tailRemaining > 0 {
                         tailRemaining -= 1
@@ -240,6 +244,7 @@ final class DSDLiveRenderer {
 
     /// Render callbacks that found the buffer empty mid-track (audible as ticks or dropouts).
     private var underruns = 0
+    private var hasPlayed = false
     /// Called (off the audio thread) with the running count of such callbacks.
     var onUnderrun: ((Int) -> Void)?
 }
