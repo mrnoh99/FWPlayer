@@ -78,6 +78,29 @@ enum MacOutputDevice {
         return highest.flatMap { $0 > 0 ? $0 : nil }
     }
 
+    /// Raises the default output device's I/O buffer to `frames` (within what it offers).
+    /// A USB DAC fed through a sample-rate converter ticks when the buffer is small; playback
+    /// has no latency requirement, so a larger one is free. Returns the size now in effect.
+    @discardableResult
+    static func raiseBufferSize(to frames: UInt32 = 4096) -> UInt32? {
+        guard let device = defaultDeviceID() else { return nil }
+        var current = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var sizeAddr = address(kAudioDevicePropertyBufferFrameSize)
+        guard AudioObjectGetPropertyData(device, &sizeAddr, 0, nil, &size, &current) == noErr else { return nil }
+        var range = AudioValueRange()
+        var rangeSize = UInt32(MemoryLayout<AudioValueRange>.size)
+        var rangeAddr = address(kAudioDevicePropertyBufferFrameSizeRange)
+        guard AudioObjectGetPropertyData(device, &rangeAddr, 0, nil, &rangeSize, &range) == noErr else { return current }
+        let target = UInt32(min(Double(frames), max(range.mMaximum, 0)))
+        guard target > current else { return current }
+        var value = target
+        guard AudioObjectSetPropertyData(device, &sizeAddr, 0, nil, UInt32(MemoryLayout<UInt32>.size), &value) == noErr else {
+            return current
+        }
+        return target
+    }
+
     /// The highest sample rate the default output device offers.
     static func maxRate() -> Double? {
         guard let device = defaultDeviceID() else { return nil }

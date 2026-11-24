@@ -177,6 +177,7 @@ final class DSDLiveRenderer {
     /// for DoP) when paused or when the buffer runs dry.
     func render(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) {
         var notifyFinished = false
+        var ranDry = false
         os_unfair_lock_lock(lock)
         for i in 0..<frames {
             let marker: UInt32 = frameCounter & 1 == 0 ? 0x05 : 0xFA
@@ -205,6 +206,8 @@ final class DSDLiveRenderer {
                         r = b
                     }
                     silent = false
+                } else if !endOfStream {
+                    ranDry = true       // the producer didn't keep up: this stretch is silence
                 } else if endOfStream {
                     if tailRemaining > 0 {
                         tailRemaining -= 1
@@ -222,9 +225,23 @@ final class DSDLiveRenderer {
             right[i] = r
             frameCounter &+= 1
         }
+        var dryCount = 0
+        if ranDry {
+            underruns += 1
+            // Report the first one, then every hundredth (a callback is ~10 ms).
+            if underruns == 1 || underruns % 100 == 0 { dryCount = underruns }
+        }
         os_unfair_lock_unlock(lock)
         if notifyFinished { onFinished?() }
+        if dryCount > 0, let report = onUnderrun {
+            DispatchQueue.global(qos: .utility).async { report(dryCount) }
+        }
     }
+
+    /// Render callbacks that found the buffer empty mid-track (audible as ticks or dropouts).
+    private var underruns = 0
+    /// Called (off the audio thread) with the running count of such callbacks.
+    var onUnderrun: ((Int) -> Void)?
 }
 
 // MARK: - Live playback (AVAudioEngine)
@@ -413,6 +430,9 @@ final class DSDLivePlayback: PlaybackBackend {
         engine.mainMixerNode.outputVolume = 1
         sourceNode = node
 
+        renderer.onUnderrun = { count in
+            DiagnosticsLog.log("audio", "buffer ran dry (\(count) render callbacks so far): the decoder didn't keep up")
+        }
         renderer.onFinished = { [weak self] in
             DispatchQueue.main.async {
                 guard let self, !self.detached else { return }

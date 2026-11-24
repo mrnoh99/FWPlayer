@@ -1123,12 +1123,16 @@ final class AudioPlayer: NSObject, ObservableObject {
         #elseif targetEnvironment(macCatalyst)
         // Core Audio applies the device's new rate asynchronously and `match` polls for it,
         // so it runs off the main thread.
-        if autoSampleRate {
-            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    _ = MacOutputDevice.match(trackRate: rate)
-                    done.resume()
+        let matchRate = autoSampleRate
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                if matchRate { _ = MacOutputDevice.match(trackRate: rate) }
+                // A bigger I/O buffer keeps a USB DAC (especially behind the system's
+                // sample-rate conversion, e.g. 192 → 96 kHz) from ticking.
+                if let frames = MacOutputDevice.raiseBufferSize() {
+                    DiagnosticsLog.log("rate", "output buffer \(frames) frames")
                 }
+                done.resume()
             }
         }
         #endif

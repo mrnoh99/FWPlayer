@@ -30,6 +30,33 @@ final class DSDLiveTests: XCTestCase {
         DSDLiveRenderer(isDoP: doP, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0.1)
     }
 
+    // MARK: - Underruns
+
+    func testAnEmptyBufferMidTrackIsReportedAsAnUnderrun() {
+        let renderer = DSDLiveRenderer(isDoP: false, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0)
+        let reported = expectation(description: "underrun reported")
+        reported.assertForOverFulfill = false
+        renderer.onUnderrun = { count in
+            if count == 1 { reported.fulfill() }
+        }
+        renderer.setPaused(false)
+        _ = render(renderer, 10)            // nothing was ever pushed and the stream hasn't ended
+        wait(for: [reported], timeout: 2)
+    }
+
+    func testAFedBufferAndAFinishedStreamAreNotUnderruns() {
+        let renderer = DSDLiveRenderer(isDoP: false, sampleRate: 1000, capacitySeconds: 8, silenceSeconds: 0)
+        let silent = expectation(description: "no underrun")
+        silent.isInverted = true
+        renderer.onUnderrun = { _ in silent.fulfill() }
+        renderer.push([Float](repeating: 0.5, count: 40))
+        renderer.markEnd()
+        renderer.setPaused(false)
+        _ = render(renderer, 20)            // fed
+        _ = render(renderer, 40)            // drains, then the end of the stream (not a dropout)
+        wait(for: [silent], timeout: 0.5)
+    }
+
     // MARK: - Gapless boundaries
 
     func testBoundaryRestartsTheTrackClockWithoutAGap() {
