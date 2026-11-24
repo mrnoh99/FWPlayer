@@ -847,7 +847,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 }
                 try Task.checkCancellation()
                 if Task.isCancelled { playable.cleanup(); source.releaseTemporaryURL(sourceURL); return }
-                self.startPlayback(playable: playable, sourceURL: sourceURL, track: track, sourceID: source.id, autoPlay: true)
+                await self.startPlayback(playable: playable, sourceURL: sourceURL, track: track, sourceID: source.id, autoPlay: true)
             } catch is CancellationError {
                 // ignored
             } catch {
@@ -941,7 +941,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         updateNowPlaying()
     }
 
-    private func startPlayback(playable: PlayableAudio, sourceURL: URL, track: Track, sourceID: String, autoPlay: Bool = true) {
+    private func startPlayback(playable: PlayableAudio, sourceURL: URL, track: Track, sourceID: String, autoPlay: Bool = true) async {
         cleanupTemp()
         let isCD = registry.source(for: sourceID)?.kind == .audioCD
         // Suspend the audio-CD detection poll BEFORE we touch the disc (the
@@ -951,7 +951,16 @@ final class AudioPlayer: NSObject, ObservableObject {
         do {
             // Match the hardware (USB DAC) to the file's native sample rate so the
             // system performs no resampling — bit-perfect output for the amp.
-            applyPreferredHardwareFormat(for: playable.url)
+            // (The header read and the session calls run off the main thread: an external
+            // drive may still be waking up, and a USB DAC may be switching rate.)
+            if let format = await Self.nativeFormat(of: playable.url) {
+                await applyPreferredHardwareRateAsync(format.rate, channels: format.channels)
+            }
+            guard !Task.isCancelled else {
+                playable.cleanup()
+                registry.source(for: sourceID)?.releaseTemporaryURL(sourceURL)
+                return
+            }
 
             // DSD arrives as DoP inside 24-bit PCM: refuse to start it where the
             // system volume would corrupt the stream (loud noise).
@@ -974,7 +983,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 DiagnosticsLog.log("play", "Core Audio refused the file: \(error.localizedDescription)")
                 // Core Audio refused the file (e.g. an unusual WAV header it won't open):
                 // try our own FLAC / WAV / AIFF decoder on the local copy before giving up.
-                if !playable.isDoP, let backend = makeLivePCM(fileURL: playable.url) {
+                if !playable.isDoP, let backend = await makeLivePCM(fileURL: playable.url) {
                     beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: sourceID)
                     return
                 }
@@ -1044,14 +1053,12 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     /// Plays a local FLAC / WAV / AIFF with our own decoder on the live engine.
-    private func makeLivePCM(fileURL: URL) -> DSDLivePlayback? {
+    private func makeLivePCM(fileURL: URL) async -> DSDLivePlayback? {
         let ext = fileURL.pathExtension.lowercased()
         guard StreamedPCM.extensions.contains(ext),
               let source = try? FileByteSource(url: fileURL),
               let decoder = try? StreamedPCM.open(source: source, fileExtension: ext) else { return nil }
-        let rate = Double(decoder.sampleRate)
-        applyPreferredHardwareRate(rate, channels: 2)
-        return buildLivePCM(decoder: decoder, ext: ext)
+        return await makeLivePCM(decoder: decoder, ext: ext)
     }
 
     /// The live engine for an already-open decoder; the session's rate change happens off the main thread.
@@ -1072,49 +1079,43 @@ final class AudioPlayer: NSObject, ObservableObject {
         return backend
     }
 
-    /// Requests that the audio hardware run at `url`'s native sample rate (and
-    /// channel count), avoiding sample-rate conversion on the way to a USB DAC.
-    private func applyPreferredHardwareFormat(for url: URL) {
-        guard let file = try? AVAudioFile(forReading: url) else { return }
-        applyPreferredHardwareRate(file.fileFormat.sampleRate, channels: Int(file.fileFormat.channelCount))
+    /// A file's native sample rate and channel count, read off the main thread.
+    private nonisolated static func nativeFormat(of url: URL) async -> (rate: Double, channels: Int)? {
+        await withCheckedContinuation { (done: CheckedContinuation<(rate: Double, channels: Int)?, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let file = try? AVAudioFile(forReading: url) else { done.resume(returning: nil); return }
+                done.resume(returning: (file.fileFormat.sampleRate, Int(file.fileFormat.channelCount)))
+            }
+        }
     }
 
-    /// Asks the output hardware to run at `rate` (and `channels`), verifying that it did.
-    /// Blocks on the audio daemon on iOS: prefer `applyPreferredHardwareRateAsync` from async code.
-    private func applyPreferredHardwareRate(_ rate: Double, channels: Int) {
-        requestHardwareRate(rate, channels: channels)
-        finishHardwareRateRequest(rate)
-    }
-
-    /// Same, but the AVAudioSession calls run on the audio-session queue so the main thread
+    /// Asks the output hardware to run at `rate` (and `channels`), verifying that it did. The
+    /// AVAudioSession calls run on the audio-session queue so the main thread
     /// never waits on a USB DAC switching rate.
     private func applyPreferredHardwareRateAsync(_ rate: Double, channels: Int) async {
         #if os(iOS) && !targetEnvironment(macCatalyst)
+        // The background keep-alive is a silent 44.1 kHz stream; left running it would pin the
+        // hardware to that rate (and block re-activation). It stops on the same serial queue.
+        keepAlive.stop()
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             AudioSessionQueue.queue.async {
                 Self.setSessionRate(rate, channels: channels)
                 done.resume()
             }
         }
-        #else
-        requestHardwareRate(rate, channels: channels)
+        #elseif targetEnvironment(macCatalyst)
+        // Core Audio applies the device's new rate asynchronously and `match` polls for it,
+        // so it runs off the main thread.
+        if autoSampleRate {
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    _ = MacOutputDevice.match(trackRate: rate)
+                    done.resume()
+                }
+            }
+        }
         #endif
         finishHardwareRateRequest(rate)
-    }
-
-    private func requestHardwareRate(_ rate: Double, channels: Int) {
-        #if targetEnvironment(macCatalyst)
-        // AVAudioSession's preferred-rate API doesn't drive the Mac's output
-        // device: set its nominal rate through Core Audio instead.
-        if autoSampleRate {
-            MacOutputDevice.match(trackRate: rate)
-        }
-        #elseif os(iOS)
-        // The background keep-alive is a silent 44.1 kHz stream; left running it
-        // would pin the hardware to that rate (and block re-activation below).
-        keepAlive.stop()
-        Self.setSessionRate(rate, channels: channels)
-        #endif
     }
 
     #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -1212,6 +1213,12 @@ final class AudioPlayer: NSObject, ObservableObject {
             try backend.prepare()
         } catch {
             backend.stop()
+            // DoP needs the hardware to run at the carrier rate (e.g. 176.4 kHz for DSD64). If the
+            // output refused it, play the same file as ordinary PCM instead of giving up.
+            if mode == .dop {
+                DiagnosticsLog.log("play", "DoP not possible on this output (\(error.localizedDescription)); falling back to PCM")
+                return await makeLiveDSD(reader: reader, mode: .pcm)
+            }
             return nil
         }
         return backend

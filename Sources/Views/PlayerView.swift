@@ -522,6 +522,12 @@ struct PlayerView: View {
 
                             upcomingRowMenu(item)
 
+                            MoveUpDownButtons(
+                                canMoveUp: item.offset > (upcoming.first?.offset ?? 0),
+                                canMoveDown: item.offset < player.queue.count - 1,
+                                moveUp: { Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: item.offset), toOffset: item.offset - 1) } },
+                                moveDown: { Task { @MainActor in player.moveQueue(fromOffsets: IndexSet(integer: item.offset), toOffset: item.offset + 2) } }
+                            )
                             Image(systemName: "line.3.horizontal")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 30, height: 44)

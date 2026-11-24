@@ -100,3 +100,27 @@ extension View {
         modifier(ReorderDropTarget(index: index, dragging: dragging, move: move))
     }
 }
+
+/// A compact ▲/▼ pair for moving a row one place; disabled at the ends.
+struct MoveUpDownButtons: View {
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let moveUp: () -> Void
+    let moveDown: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: moveUp) {
+                Image(systemName: "chevron.up").frame(width: 32, height: 22).contentShape(Rectangle())
+            }
+            .disabled(!canMoveUp)
+            .accessibilityLabel("Move Up")
+            Button(action: moveDown) {
+                Image(systemName: "chevron.down").frame(width: 32, height: 22).contentShape(Rectangle())
+            }
+            .disabled(!canMoveDown)
+            .accessibilityLabel("Move Down")
+        }
+        .buttonStyle(.borderless)
+    }
+}

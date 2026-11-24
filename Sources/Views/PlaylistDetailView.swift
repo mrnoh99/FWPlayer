@@ -128,6 +128,12 @@ struct PlaylistDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if !editMode.isEditing {
+                    MoveUpDownButtons(
+                        canMoveUp: index > 0,
+                        canMoveDown: index < playlist.entries.count - 1,
+                        moveUp: { playlists.moveEntries(from: IndexSet(integer: index), to: index - 1, in: playlistID) },
+                        moveDown: { playlists.moveEntries(from: IndexSet(integer: index), to: index + 2, in: playlistID) }
+                    )
                     Image(systemName: "line.3.horizontal")
                         .foregroundStyle(.secondary)
                         .frame(width: 30, height: 44)
