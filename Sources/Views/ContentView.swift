@@ -376,7 +376,7 @@ struct ContentView: View {
         let fileText = AudioFormatReader.formatSampleRate(file)
         if let top = player.outputDeviceMaxRate, top + 1 < file {
             let name = player.outputDeviceSummary.map { String($0.split(separator: "(").first ?? "").trimmingCharacters(in: .whitespaces) }
-            return "This track is \(fileText), but \(name.flatMap { $0.isEmpty ? nil : $0 } ?? "the output device") supports up to \(AudioFormatReader.formatSampleRate(top)). The system converts it down (output \(output))."
+            return "This track is \(fileText), but \(name.flatMap { $0.isEmpty ? nil : $0 } ?? "the output device") supports up to \(AudioFormatReader.formatSampleRate(top)). It is converted down to match (output \(output))."
         }
         return "Output \(output) ≠ track \(fileText) — the system is resampling."
             + (player.outputDeviceSummary.map { " Device: \($0)." } ?? "")

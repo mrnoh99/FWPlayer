@@ -1091,7 +1091,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                             label: StreamedPCM.label(forExtension: ext),
                             next: { try decoder.nextSamples() },
                             seek: { try decoder.seek(toSeconds: $0) })
-        let backend = DSDLivePlayback(pcm: pcm)
+        let backend = DSDLivePlayback(pcm: pcm, hardwareRate: outputSampleRate)
         do { try backend.prepare() } catch { backend.stop(); return nil }
         return backend
     }
@@ -1317,7 +1317,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                             seek: { try decoder.seek(toSeconds: $0) })
         await applyPreferredHardwareRateAsync(rate, channels: 2)
         guard !Task.isCancelled else { return false }
-        let backend = DSDLivePlayback(pcm: pcm)
+        let backend = DSDLivePlayback(pcm: pcm, hardwareRate: outputSampleRate)
         do { try backend.prepare() } catch { backend.stop(); return false }
         DiagnosticsLog.log("stream", "\(StreamedPCM.label(forExtension: ext)) streaming, \(Int(rate)) Hz, \(Int(decoder.durationSeconds)) s")
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
@@ -1419,7 +1419,8 @@ final class AudioPlayer: NSObject, ObservableObject {
             Task { @MainActor in self?.errorMessage = message }
         }
         backend.volume = Float(effectiveVolume)
-        DiagnosticsLog.log("play", "live engine: \(plan.label), output \(plan.outputRate) Hz\(plan.useDoP ? ", DoP" : "")")
+        DiagnosticsLog.log("play", "live engine: \(plan.label), output \(plan.outputRate) Hz\(plan.useDoP ? ", DoP" : "")"
+                           + (backend.decimation > 1 ? " (file \(Int(backend.sourceRate)) Hz reduced ÷\(backend.decimation) to match the device)" : ""))
         player = backend
         duration = backend.duration
         currentTime = 0
@@ -1436,7 +1437,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         recordHistory(track)
         playlists.recordPlayed(track)
         refreshOutputSampleRateSoon()
-        updateTrackSampleRate(trackID: track.id, sampleRate: Double(plan.outputRate))
+        updateTrackSampleRate(trackID: track.id, sampleRate: backend.sourceRate)
         updateNowPlaying()
         if let sourceURL { loadMetadata(for: sourceURL, trackID: track.id) }   // DSD tags live in the source file
         prefetchUpcoming()
@@ -1515,7 +1516,8 @@ final class AudioPlayer: NSObject, ObservableObject {
               let index = upcomingIndices().first, queue.indices.contains(index) else { return }
         let track = queue[index]
         let ext = (track.path as NSString).pathExtension.lowercased()
-        guard track.id != current.id, StreamedPCM.extensions.contains(ext),
+        // (The same song queued twice in a row is a different entry and joins gaplessly like any other.)
+        guard index != currentIndex, StreamedPCM.extensions.contains(ext),
               let source = registry.source(for: track.sourceID),
               prefetched[track.id] == nil, recentlyPlayed[track.id] == nil else { return }
         // Where the next track's bytes come from: a share's ranged reads, or a file here.
@@ -1580,7 +1582,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                 loadStreamedMetadata(trackID: id, picture: next.picture, lyrics: next.lyrics, source: next.source,
                                      streaming: streaming, folderPath: next.track.path)
             }
-            updateTrackSampleRate(trackID: id, sampleRate: Double(backend.plan.outputRate))
+            updateTrackSampleRate(trackID: id, sampleRate: backend.sourceRate)
             recordHistory(queue[index])
             playlists.recordPlayed(queue[index])
             updateNowPlaying()

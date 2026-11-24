@@ -280,6 +280,8 @@ final class DSDLivePlayback: PlaybackBackend {
     private let reader: DSDStreamReader?
     /// Set instead of `reader` when this plays plain PCM (e.g. FLAC streamed from a share).
     private let pcm: PCMSource?
+    /// How many times the file's sample rate was reduced before the engine (1: not at all).
+    let decimation: Int
     let renderer: DSDLiveRenderer
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
@@ -309,6 +311,7 @@ final class DSDLivePlayback: PlaybackBackend {
     init(reader: DSDStreamReader, plan: DSDDoPDecoder.Plan) {
         self.reader = reader
         self.pcm = nil
+        self.decimation = 1
         self.plan = plan
         renderer = DSDLiveRenderer(isDoP: plan.useDoP, sampleRate: Double(plan.outputRate),
                                    silenceSeconds: DSDDoPDecoder.silenceSeconds)
@@ -318,7 +321,12 @@ final class DSDLivePlayback: PlaybackBackend {
     static let pcmBufferSeconds = 10.0
 
     /// Live PCM playback (no DSD): the same engine, ring buffer and seek handling.
-    init(pcm: PCMSource) {
+    init(pcm original: PCMSource, hardwareRate: Double? = nil) {
+        // An output that can't run at the file's rate but runs at a whole fraction of it (a 96 kHz
+        // DAC fed 192 kHz): reduce the rate here with a proper filter instead of leaving it to the system.
+        let factor = PCMDecimator.factor(fileRate: original.sampleRate, hardwareRate: hardwareRate)
+        let pcm = factor > 1 ? original.decimated(by: factor) : original
+        self.decimation = factor
         self.reader = nil
         self.pcm = pcm
         let rate = Int(pcm.sampleRate)
@@ -355,11 +363,15 @@ final class DSDLivePlayback: PlaybackBackend {
     /// source at the same sample rate can join the running stream.
     @discardableResult
     func queueNext(_ source: PCMSource) -> Bool {
-        guard pcm != nil, Int(source.sampleRate) == plan.outputRate else { return false }
+        guard pcm != nil, Int(source.sampleRate) == plan.outputRate * decimation else { return false }
+        let joined = decimation > 1 ? source.decimated(by: decimation) : source
         producerLock.lock(); defer { producerLock.unlock() }
-        nextSource = source
+        nextSource = joined
         return true
     }
+
+    /// The file's own sample rate (the engine runs at `plan.outputRate`, lower if it was reduced).
+    var sourceRate: Double { Double(plan.outputRate * decimation) }
 
     func clearNext() {
         producerLock.lock(); defer { producerLock.unlock() }
