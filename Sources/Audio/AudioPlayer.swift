@@ -1735,7 +1735,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// player's details panel and the remote. Fills a track's missing year / genre too.
     private func publishDetails(trackID: String, artist: String?, album: String?, genre: String?, year: String?,
                                 lyrics: @escaping () async -> String?) async {
-        async let lyricsTask = lyrics()
+        let playing = queueIndexOfPlaying(trackID).map { queue[$0] }
+        let length = playing?.duration ?? (currentTrack?.id == trackID && duration > 0 ? duration : nil)
+        async let lyricsTask = Self.resolveLyrics(embedded: lyrics, title: playing?.title,
+                                                  artist: artist ?? playing?.artist,
+                                                  album: album ?? playing?.album, duration: length)
         var catalog: MusicKitCatalog.AlbumInfo?
         if artist != nil || album != nil {
             // Apple Music (MusicKit) first; if it can't (e.g. no developer token),
@@ -1765,6 +1769,14 @@ final class AudioPlayer: NSObject, ObservableObject {
             currentCatalogInfo = info
             updateNowPlaying()
         }
+    }
+
+    /// The file's own lyrics, else LRCLIB's for the track (the details panel and the remote show them).
+    private nonisolated static func resolveLyrics(embedded: () async -> String?, title: String?, artist: String?,
+                                                  album: String?, duration: Double?) async -> String? {
+        if let own = await embedded(), !own.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return own }
+        guard let title, !title.isEmpty else { return nil }
+        return await LyricsLookup.lyrics(title: title, artist: artist, album: album, duration: duration)
     }
 
     #if targetEnvironment(macCatalyst)

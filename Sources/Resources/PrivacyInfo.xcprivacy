@@ -11,8 +11,11 @@
 
 	<!-- No data is collected from the device. Album lookups send only the
 	     track's existing artist/title text to Apple's public iTunes Search /
-	     MusicKit catalog endpoints, and (for an inserted audio CD) the disc's
-	     anonymous table-of-contents to the public MusicBrainz database; nothing
+	     MusicKit catalog endpoints, lyrics lookups send the track's title,
+	     artist, album and length to the public LRCLIB lyrics database
+	     (lrclib.net) when the file has no lyrics of its own, and (for an
+	     inserted audio CD) the disc's anonymous table-of-contents to the
+	     public MusicBrainz database; nothing
 	     is linked to the user's identity and nothing is stored off-device. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
