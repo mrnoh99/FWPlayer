@@ -67,7 +67,9 @@ Answer to match the shipped `PrivacyInfo.xcprivacy`:
 
 - **Data collection**: **No, we do not collect data from this app.** FWPlayer
   sends only the track's existing artist/title to Apple's public catalog
-  endpoints; nothing is linked to identity or stored off-device.
+  endpoints, and title/artist/album/length to the public LRCLIB lyrics
+  database (lrclib.net) for tracks without embedded lyrics; nothing is linked
+  to identity or stored off-device.
 - **Tracking**: No.
 
 ---
@@ -122,7 +124,8 @@ two-pane player, now-playing details):
 - **Sign-in**: none required (no account system).
 - **Notes for reviewer**: "FWPlayer plays lossless audio the user adds via
   Files/SMB. Album art and year/genre are fetched from Apple's catalog
-  (MusicKit, falling back to the public iTunes Search API). The optional
+  (MusicKit, falling back to the public iTunes Search API); lyrics missing
+  from a file are looked up in the public LRCLIB database. The optional
   FWPlayer Remote companion app controls playback over the local network —
   not required to review core playback. To test playback, add any FLAC/WAV/ALAC
   file through the in-app file picker. The app uses the `audio` background mode

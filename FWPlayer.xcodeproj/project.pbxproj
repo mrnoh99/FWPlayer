@@ -271,6 +271,10 @@
 			isa = PBXBuildFile;
 			fileRef = E2A6C9D14B7F4538B1D0A3E7 /* PCMDecimator.swift */;
 		};
+		6A20D1E4013949949CD5877D /* LyricsLookup.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 6882CED2EF314C2085E51E44 /* LyricsLookup.swift */;
+		};
 		1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */;
@@ -757,6 +761,12 @@
 			path = PCMDecimator.swift;
 			sourceTree = "<group>";
 		};
+		6882CED2EF314C2085E51E44 /* LyricsLookup.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = LyricsLookup.swift;
+			sourceTree = "<group>";
+		};
 		7A2C5E9B1D4F4837A6B0C3E1 /* LibrarySearchView.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -800,6 +810,7 @@
 				9B4E2A7C1D5F4863B0A2D8F4 /* LibrarySearch.swift */,
 				D6B2A9F14E8C4375A0C1E7B5 /* QueueIndex.swift */,
 				E2A6C9D14B7F4538B1D0A3E7 /* PCMDecimator.swift */,
+				6882CED2EF314C2085E51E44 /* LyricsLookup.swift */,
 				61FEFB6356924F3AA8178187 /* SACDISO.swift */,
 				2F8A6D3E19C54B07B1E4A9C5 /* MacOutputDevice.swift */,
 				8B87615A1D104B909447182C /* MusicKitCatalog.swift */,
@@ -1096,6 +1107,7 @@
 				5C3A9D1E7B2F4086A9D4C1E7 /* LibrarySearch.swift in Sources */,
 				A3F1C5E79B2D4608B1D7E4A3 /* QueueIndex.swift in Sources */,
 				B7E4D1A83C5F4962A0D3E9C1 /* PCMDecimator.swift in Sources */,
+				6A20D1E4013949949CD5877D /* LyricsLookup.swift in Sources */,
 				1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */,
 				3D8E1A6C9B2F4057A8C3E4D1 /* RowReorder.swift in Sources */,
 				21E4AA2FBD664DBFA64A69B5 /* SACDISO.swift in Sources */,
