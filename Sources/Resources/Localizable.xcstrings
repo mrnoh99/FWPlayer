@@ -1,0 +1,1326 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Add Folder to Queue": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더를 대기열에 추가"
+          }
+        }
+      }
+    },
+    "Add Folder…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 추가…"
+          }
+        }
+      }
+    },
+    "Add SMB Server": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMB 서버 추가"
+          }
+        }
+      }
+    },
+    "Add SMB Server…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMB 서버 추가…"
+          }
+        }
+      }
+    },
+    "Add to Favorites": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "즐겨찾기에 추가"
+          }
+        }
+      }
+    },
+    "Add to Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트에 추가"
+          }
+        }
+      }
+    },
+    "Add to Playlist…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트에 추가…"
+          }
+        }
+      }
+    },
+    "Add to Queue": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기열에 추가"
+          }
+        }
+      }
+    },
+    "Any device on this network can control playback and browse the library.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 네트워크의 모든 기기가 재생을 조작하고 라이브러리를 볼 수 있습니다."
+          }
+        }
+      }
+    },
+    "Are you sure?": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "계속할까요?"
+          }
+        }
+      }
+    },
+    "Authentication": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인증"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "뒤로"
+          }
+        }
+      }
+    },
+    "Bit-Perfect Mode": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비트퍼펙트 모드"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소"
+          }
+        }
+      }
+    },
+    "Cancel loading": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "불러오기 취소"
+          }
+        }
+      }
+    },
+    "Choose a folder, SMB server, or playlist to start listening.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더, SMB 서버, 플레이리스트를 선택해 감상을 시작하세요."
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지우기"
+          }
+        }
+      }
+    },
+    "Clear History": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생 기록 지우기"
+          }
+        }
+      }
+    },
+    "Clear Up Next": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 곡 목록 지우기"
+          }
+        }
+      }
+    },
+    "Clear log": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로그 지우기"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "닫기"
+          }
+        }
+      }
+    },
+    "Connect as Guest": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "게스트로 연결"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "계속"
+          }
+        }
+      }
+    },
+    "Copied (%lld events) — paste it into a message": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "복사됨 (%lld개 기록) — 메시지에 붙여 넣으세요"
+          }
+        }
+      }
+    },
+    "Copy diagnostics log (%lld events)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진단 로그 복사 (%lld개 기록)"
+          }
+        }
+      }
+    },
+    "Couldn't Load Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더를 불러올 수 없습니다"
+          }
+        }
+      }
+    },
+    "Create": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "만들기"
+          }
+        }
+      }
+    },
+    "DSD over USB (DoP)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USB로 DSD 출력 (DoP)"
+          }
+        }
+      }
+    },
+    "Delete All": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모두 삭제"
+          }
+        }
+      }
+    },
+    "Delete All Tracks…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 트랙 삭제…"
+          }
+        }
+      }
+    },
+    "Delete Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트 삭제"
+          }
+        }
+      }
+    },
+    "Delete all tracks?": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 트랙을 삭제할까요?"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진단"
+          }
+        }
+      }
+    },
+    "Discoverable": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "검색 가능"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "완료"
+          }
+        }
+      }
+    },
+    "Drag FLAC or WAV files here from a folder, or use “Add to Playlist” while browsing.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더에서 FLAC이나 WAV 파일을 여기로 끌어 놓거나, 탐색 중에 “플레이리스트에 추가”를 사용하세요."
+          }
+        }
+      }
+    },
+    "Drag to reorder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "드래그해서 순서 변경"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집"
+          }
+        }
+      }
+    },
+    "Edit SMB Server": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMB 서버 편집"
+          }
+        }
+      }
+    },
+    "Edit…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집…"
+          }
+        }
+      }
+    },
+    "Empty Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "빈 플레이리스트"
+          }
+        }
+      }
+    },
+    "Enter this PIN once in FWPlayer Remote; it is remembered after that. A new PIN makes every remote pair again.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 PIN을 FWPlayer Remote에 한 번만 입력하면 이후에는 기억됩니다. 새 PIN을 만들면 모든 리모트가 다시 연결해야 합니다."
+          }
+        }
+      }
+    },
+    "FWPlayer Remote connects automatically": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FWPlayer Remote가 자동으로 연결됩니다"
+          }
+        }
+      }
+    },
+    "Find Lyrics Online": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "온라인에서 가사 찾기"
+          }
+        }
+      }
+    },
+    "For tracks without lyrics in the file, looks them up on LRCLIB (lrclib.net) by title, artist, album and length.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일에 가사가 없는 트랙은 제목, 아티스트, 앨범, 재생 시간으로 LRCLIB(lrclib.net)에서 찾습니다."
+          }
+        }
+      }
+    },
+    "Give your playlist a name.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트 이름을 입력하세요."
+          }
+        }
+      }
+    },
+    "History": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생 기록"
+          }
+        }
+      }
+    },
+    "Host or IP (e.g. 192.168.1.10)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트 또는 IP (예: 192.168.1.10)"
+          }
+        }
+      }
+    },
+    "Instant DSD": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "즉시 DSD 재생"
+          }
+        }
+      }
+    },
+    "Keeps FWPlayer reachable by the remote with the screen off, so playback can be controlled without waking this device. Uses more battery.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화면이 꺼져 있어도 리모트에서 FWPlayer에 연결할 수 있게 해, 이 기기를 깨우지 않고 재생을 조작할 수 있습니다. 배터리를 더 사용합니다."
+          }
+        }
+      }
+    },
+    "Library": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "라이브러리"
+          }
+        }
+      }
+    },
+    "Locate File": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 위치 보기"
+          }
+        }
+      }
+    },
+    "Locks FWPlayer's volume at 100% so samples reach your DAC unaltered; remote volume changes are ignored. Set the listening level on your DAC or amp, and keep the device volume at maximum.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FWPlayer 볼륨을 100%로 고정해 샘플이 변형 없이 DAC에 전달되게 합니다. 리모트의 볼륨 변경은 무시됩니다. 듣는 음량은 DAC나 앰프에서 조절하고, 기기 볼륨은 최대로 두세요."
+          }
+        }
+      }
+    },
+    "Lyrics": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "가사"
+          }
+        }
+      }
+    },
+    "Match DAC Sample Rate": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DAC 샘플레이트 맞추기"
+          }
+        }
+      }
+    },
+    "Matches track · %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙과 일치 · %@"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "더 보기"
+          }
+        }
+      }
+    },
+    "More Info": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자세히"
+          }
+        }
+      }
+    },
+    "Move Down": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아래로 이동"
+          }
+        }
+      }
+    },
+    "Move Up": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "위로 이동"
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이름"
+          }
+        }
+      }
+    },
+    "Name (e.g. Living Room NAS)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이름 (예: 거실 NAS)"
+          }
+        }
+      }
+    },
+    "New PIN": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 PIN"
+          }
+        }
+      }
+    },
+    "New Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 플레이리스트"
+          }
+        }
+      }
+    },
+    "New Playlist…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 플레이리스트…"
+          }
+        }
+      }
+    },
+    "No History Yet": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 재생 기록이 없습니다"
+          }
+        }
+      }
+    },
+    "No Results": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "결과 없음"
+          }
+        }
+      }
+    },
+    "No audio files in this folder.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 폴더에 오디오 파일이 없습니다."
+          }
+        }
+      }
+    },
+    "No playlists yet": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 플레이리스트가 없습니다"
+          }
+        }
+      }
+    },
+    "No upcoming tracks": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 곡이 없습니다"
+          }
+        }
+      }
+    },
+    "Not advertising": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알리지 않음"
+          }
+        }
+      }
+    },
+    "Nothing in the scanned folders matches “%@”. Try fewer words.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스캔한 폴더에서 “%@”와 일치하는 항목이 없습니다. 단어를 줄여 보세요."
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "확인"
+          }
+        }
+      }
+    },
+    "Open Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 열기"
+          }
+        }
+      }
+    },
+    "Opening %@…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 여는 중…"
+          }
+        }
+      }
+    },
+    "Output": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력"
+          }
+        }
+      }
+    },
+    "Output %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력 %@"
+          }
+        }
+      }
+    },
+    "Output %@ ≠ track %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력 %@ ≠ 트랙 %@"
+          }
+        }
+      }
+    },
+    "Output matches track (%@)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력이 트랙과 일치 (%@)"
+          }
+        }
+      }
+    },
+    "Output: %@ (%@)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력: %@ (%@)"
+          }
+        }
+      }
+    },
+    "Output: %@ (%@) — runs at a fixed rate or through a codec, so it can't be bit-perfect. Connect a USB DAC.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출력: %@ (%@) — 고정 샘플레이트나 코덱을 거치므로 비트퍼펙트가 될 수 없습니다. USB DAC를 연결하세요."
+          }
+        }
+      }
+    },
+    "PIN": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PIN"
+          }
+        }
+      }
+    },
+    "Play": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생"
+          }
+        }
+      }
+    },
+    "Play Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 재생"
+          }
+        }
+      }
+    },
+    "Play Next": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음에 재생"
+          }
+        }
+      }
+    },
+    "Play Now": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지금 재생"
+          }
+        }
+      }
+    },
+    "Play Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트 재생"
+          }
+        }
+      }
+    },
+    "Play from Here": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기부터 재생"
+          }
+        }
+      }
+    },
+    "Playback": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생"
+          }
+        }
+      }
+    },
+    "Playing %@ as DoP — volume is locked at 100%%. Keep the system volume at maximum.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@를 DoP로 재생 중 — 볼륨이 100%%로 고정됩니다. 시스템 볼륨을 최대로 두세요."
+          }
+        }
+      }
+    },
+    "Playing %@ converted to PCM. DoP (bit-exact DSD) needs a USB DAC with the system volume at maximum.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@를 PCM으로 변환해 재생 중입니다. DoP(비트 단위로 정확한 DSD)는 USB DAC와 최대 시스템 볼륨이 필요합니다."
+          }
+        }
+      }
+    },
+    "Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트"
+          }
+        }
+      }
+    },
+    "Playlist Not Found": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트를 찾을 수 없습니다"
+          }
+        }
+      }
+    },
+    "Playlist name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트 이름"
+          }
+        }
+      }
+    },
+    "Playlists": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트"
+          }
+        }
+      }
+    },
+    "Plays DSD while it is being prepared instead of converting the whole file first — no wait and no temporary file. The old path is used if this can't start.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 전체를 먼저 변환하지 않고 준비하면서 바로 DSD를 재생합니다. 기다림도 임시 파일도 없습니다. 시작할 수 없으면 기존 방식을 사용합니다."
+          }
+        }
+      }
+    },
+    "Plays FLAC, WAV and AIFF with the built-in player: from a network share while they are read (no download first), and from this device or an external drive with automatic retry if the drive stalls. The normal download is used if this can't start.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLAC, WAV, AIFF를 내장 플레이어로 재생합니다. 네트워크 공유 폴더에서는 미리 내려받지 않고 읽으면서 재생하고, 이 기기나 외장 드라이브에서는 드라이브가 멈추면 자동으로 다시 시도합니다. 시작할 수 없으면 일반 다운로드를 사용합니다."
+          }
+        }
+      }
+    },
+    "Port": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포트"
+          }
+        }
+      }
+    },
+    "Queue": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기열"
+          }
+        }
+      }
+    },
+    "Queue is empty": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기열이 비어 있습니다"
+          }
+        }
+      }
+    },
+    "Records which way each track played, streams that couldn't open, retried reads and sample-rate changes, so a problem can be traced. Nothing leaves the device unless you paste it somewhere.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "각 트랙의 재생 방식, 열지 못한 스트림, 다시 시도한 읽기, 샘플레이트 변경을 기록해 문제를 추적할 수 있게 합니다. 직접 붙여 넣지 않는 한 기기 밖으로 나가지 않습니다."
+          }
+        }
+      }
+    },
+    "Remote": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "리모트"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "제거"
+          }
+        }
+      }
+    },
+    "Remove from Favorites": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "즐겨찾기에서 제거"
+          }
+        }
+      }
+    },
+    "Remove from History": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생 기록에서 제거"
+          }
+        }
+      }
+    },
+    "Remove from Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트에서 제거"
+          }
+        }
+      }
+    },
+    "Remove from Queue": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기열에서 제거"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이름 변경"
+          }
+        }
+      }
+    },
+    "Rename Playlist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이리스트 이름 변경"
+          }
+        }
+      }
+    },
+    "Require PIN": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PIN 요구"
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장"
+          }
+        }
+      }
+    },
+    "Search": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "검색"
+          }
+        }
+      }
+    },
+    "Search Your Library": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "라이브러리 검색"
+          }
+        }
+      }
+    },
+    "Select a Source": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소스 선택"
+          }
+        }
+      }
+    },
+    "Sends DSD64/128 to a USB DAC as bit-exact DoP. Turn it off for a DAC that doesn't decode DoP (it would play as loud noise): DSD is then converted to PCM instead.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DSD64/128을 비트 단위로 정확한 DoP로 USB DAC에 보냅니다. DoP를 지원하지 않는 DAC에서는 큰 잡음이 나므로 꺼 두세요. 그러면 DSD를 PCM으로 변환해 재생합니다."
+          }
+        }
+      }
+    },
+    "Server": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버"
+          }
+        }
+      }
+    },
+    "Share name (e.g. Music)": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "공유 이름 (예: Music)"
+          }
+        }
+      }
+    },
+    "Show in Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더에서 보기"
+          }
+        }
+      }
+    },
+    "Skip Unplayable Tracks": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생할 수 없는 트랙 건너뛰기"
+          }
+        }
+      }
+    },
+    "Stay on in background": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "백그라운드에서 유지"
+          }
+        }
+      }
+    },
+    "Stream FLAC / WAV / AIFF": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLAC / WAV / AIFF 스트리밍"
+          }
+        }
+      }
+    },
+    "Switches the Mac's output device to each track's sample rate automatically (a rate the DAC doesn't support falls back to a multiple of it, e.g. 44.1 → 88.2 kHz).": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac의 출력 장치를 각 트랙의 샘플레이트로 자동 전환합니다. DAC가 지원하지 않는 샘플레이트는 그 배수로 맞춥니다(예: 44.1 → 88.2 kHz)."
+          }
+        }
+      }
+    },
+    "System volume is %lld%%. A USB DAC without hardware volume is attenuated digitally, so the signal isn't bit-perfect — raise the volume to maximum.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시스템 볼륨이 %lld%%입니다. 하드웨어 볼륨이 없는 USB DAC는 디지털로 감쇠되어 비트퍼펙트가 아닙니다. 볼륨을 최대로 올리세요."
+          }
+        }
+      }
+    },
+    "Test Connection": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결 테스트"
+          }
+        }
+      }
+    },
+    "The track will be added to the new playlist.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙이 새 플레이리스트에 추가됩니다."
+          }
+        }
+      }
+    },
+    "This can't be undone.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "되돌릴 수 없습니다."
+          }
+        }
+      }
+    },
+    "Tracks you play appear here, most recent first.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재생한 트랙이 최근 순으로 여기에 표시됩니다."
+          }
+        }
+      }
+    },
+    "Type part of an artist, album or track name. It searches the folders FWPlayer has already scanned — after adding a folder or server, wait for the scan (the spinner in the sidebar) to finish.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아티스트, 앨범, 트랙 이름의 일부를 입력하세요. FWPlayer가 이미 스캔한 폴더에서 찾습니다. 폴더나 서버를 추가한 뒤에는 스캔(사이드바의 진행 표시)이 끝날 때까지 기다리세요."
+          }
+        }
+      }
+    },
+    "Up Next": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 곡"
+          }
+        }
+      }
+    },
+    "Username": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용자 이름"
+          }
+        }
+      }
+    },
+    "When a track can't be opened (its drive or server isn't there, the file moved), go on to the next one with a short note instead of stopping with an alert. If every track fails, playback stops and says why.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙을 열 수 없을 때(드라이브나 서버가 없거나 파일이 옮겨진 경우) 알림으로 멈추지 않고 짧은 메모를 남긴 뒤 다음 곡으로 넘어갑니다. 모든 트랙이 실패하면 재생을 멈추고 이유를 알려줍니다."
+          }
+        }
+      }
+    },
+    "via %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출처: %@"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
