@@ -22,4 +22,17 @@ enum QueueIndex {
         if after < ids.count, let found = ids[after...].firstIndex(of: id) { return found }
         return ids.firstIndex(of: id)
     }
+
+    /// Positions a remote sent for a list of `count` items, or nil when any is outside it.
+    /// A remote can be showing an older list; using its positions as they are would trap,
+    /// so an edit with a stale position is refused whole.
+    static func offsets(_ raw: [Int], within count: Int) -> IndexSet? {
+        guard !raw.isEmpty, raw.allSatisfy({ (0..<count).contains($0) }) else { return nil }
+        return IndexSet(raw)
+    }
+
+    /// Whether moving `offsets` to `destination` fits a list of `count` items.
+    static func canMove(_ offsets: IndexSet, to destination: Int, count: Int) -> Bool {
+        !offsets.isEmpty && offsets.allSatisfy { (0..<count).contains($0) } && (0...count).contains(destination)
+    }
 }

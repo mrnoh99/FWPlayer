@@ -150,7 +150,9 @@ final class PlaylistManager: ObservableObject {
     }
 
     func removeEntries(at offsets: IndexSet, from id: UUID) {
-        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = playlists.firstIndex(where: { $0.id == id }),
+              !offsets.isEmpty, offsets.allSatisfy({ playlists[index].entries.indices.contains($0) })
+        else { return }
         playlists[index].entries.remove(atOffsets: offsets)
         persist()
     }
@@ -164,7 +166,9 @@ final class PlaylistManager: ObservableObject {
     }
 
     func moveEntries(from offsets: IndexSet, to destination: Int, in id: UUID) {
-        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = playlists.firstIndex(where: { $0.id == id }),
+              QueueIndex.canMove(offsets, to: destination, count: playlists[index].entries.count)
+        else { return }
         playlists[index].entries.move(fromOffsets: offsets, toOffset: destination)
         persist()
     }
