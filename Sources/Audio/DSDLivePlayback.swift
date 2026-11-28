@@ -295,6 +295,11 @@ final class DSDLivePlayback: PlaybackBackend {
     private var rewinds = 0
     private var started = false
     private var detached = false
+    /// Wakes the producer early from an idle wait (seek, stop, a queued successor).
+    private let producerWake = DispatchSemaphore(value: 0)
+    /// How long the producer idles while the buffer is full or the stream has ended. Waits
+    /// are cut short by `producerWake`, so this only bounds how often an idle thread wakes.
+    static let idleWait: TimeInterval = 0.25
 
     /// Called on the main queue when the track has played to the end.
     var onFinished: (() -> Void)?
@@ -365,8 +370,10 @@ final class DSDLivePlayback: PlaybackBackend {
     func queueNext(_ source: PCMSource) -> Bool {
         guard pcm != nil, Int(source.sampleRate) == plan.outputRate * decimation else { return false }
         let joined = decimation > 1 ? source.decimated(by: decimation) : source
-        producerLock.lock(); defer { producerLock.unlock() }
+        producerLock.lock()
         nextSource = joined
+        producerLock.unlock()
+        producerWake.signal()
         return true
     }
 
@@ -476,6 +483,7 @@ final class DSDLivePlayback: PlaybackBackend {
         producerLock.lock()
         stopRequested = true
         producerLock.unlock()
+        producerWake.signal()
         renderer.setPaused(true)
         if engine.isRunning { engine.stop() }
         started = false
@@ -492,6 +500,7 @@ final class DSDLivePlayback: PlaybackBackend {
         producerLock.unlock()
         // Silence until the producer has repositioned; the position follows at once.
         renderer.flush(musicSeconds: clamped)
+        producerWake.signal()                  // after the flush, so nothing it pushes is dropped
     }
 
     // MARK: Producer
@@ -513,13 +522,14 @@ final class DSDLivePlayback: PlaybackBackend {
         var pendingSamples = [Float]()
         var readFailures = 0
 
+        func idle() { _ = producerWake.wait(timeout: .now() + Self.idleWait) }
         func waitForSeekOrStop() {
             while true {
                 producerLock.lock()
                 let done = stopRequested || pendingSeek != nil
                 producerLock.unlock()
                 if done { return }
-                Thread.sleep(forTimeInterval: 0.02)
+                idle()
             }
         }
         func reportFailure(_ error: Error) {
@@ -557,10 +567,10 @@ final class DSDLivePlayback: PlaybackBackend {
             if !pendingSamples.isEmpty {
                 let accepted = renderer.push(pendingSamples)
                 pendingSamples.removeFirst(min(accepted * 2, pendingSamples.count))
-                if !pendingSamples.isEmpty { Thread.sleep(forTimeInterval: 0.01); continue }
+                if !pendingSamples.isEmpty { idle(); continue }     // the ring is full
             }
             if renderer.bufferedFrames >= bufferTarget {
-                Thread.sleep(forTimeInterval: 0.01)
+                idle()
                 continue
             }
             if let current = source {
