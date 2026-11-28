@@ -28,6 +28,7 @@ let package = Package(
                 "Audio/DSDLivePlayback.swift", "Audio/ByteSource.swift", "Audio/FLACDecoder.swift",
                 "Audio/PCMFileDecoder.swift", "Audio/DiagnosticsLog.swift", "Audio/LibrarySearch.swift",
                 "Audio/QueueIndex.swift", "Audio/PCMDecimator.swift", "Audio/LyricsLookup.swift",
+                "Audio/LRUCache.swift", "Audio/ITunesSearch.swift", "Storage/TemporaryDownloads.swift",
                 // Playlists and the remote's pairing rules.
                 "Models/FileItem.swift", "Models/Track.swift", "Models/Playlist.swift",
                 "Storage/PlaylistStore.swift", "Sources/PlaylistManager.swift",

@@ -99,6 +99,10 @@
 			isa = PBXBuildFile;
 			fileRef = A8CF5F697D194391867D1F40 /* PlaylistStore.swift */;
 		};
+		4378736109304EEF828432C0 /* TemporaryDownloads.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = A65EDFC25E5A42329237B170 /* TemporaryDownloads.swift */;
+		};
 		67750175CAB24B8695AA05DD /* BookmarkStore.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = A25498ACB6DC4C2EB8932EC0 /* BookmarkStore.swift */;
@@ -282,6 +286,14 @@
 		A3F1C5E79B2D4608B1D7E4A3 /* QueueIndex.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = D6B2A9F14E8C4375A0C1E7B5 /* QueueIndex.swift */;
+		};
+		DA8834FE393D46CF94CA2A53 /* ITunesSearch.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 9130CF7AD4DB4EA0BDA31950 /* ITunesSearch.swift */;
+		};
+		0F67E4CDF5BF4061BD06BBEA /* LRUCache.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 1ED5D363A6AB47FCBD604FBF /* LRUCache.swift */;
 		};
 		B7E4D1A83C5F4962A0D3E9C1 /* PCMDecimator.swift in Sources */ = {
 			isa = PBXBuildFile;
@@ -549,6 +561,12 @@
 			path = PlaylistStore.swift;
 			sourceTree = "<group>";
 		};
+		A65EDFC25E5A42329237B170 /* TemporaryDownloads.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = TemporaryDownloads.swift;
+			sourceTree = "<group>";
+		};
 		AADCEEC53EE247FBB1C47955 /* FolderPicker.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -795,6 +813,18 @@
 			path = QueueIndex.swift;
 			sourceTree = "<group>";
 		};
+		9130CF7AD4DB4EA0BDA31950 /* ITunesSearch.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ITunesSearch.swift;
+			sourceTree = "<group>";
+		};
+		1ED5D363A6AB47FCBD604FBF /* LRUCache.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = LRUCache.swift;
+			sourceTree = "<group>";
+		};
 		E2A6C9D14B7F4538B1D0A3E7 /* PCMDecimator.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -851,6 +881,8 @@
 				2B8F5A1C6D3E4970B7A4D1F2 /* DiagnosticsLog.swift */,
 				9B4E2A7C1D5F4863B0A2D8F4 /* LibrarySearch.swift */,
 				D6B2A9F14E8C4375A0C1E7B5 /* QueueIndex.swift */,
+				9130CF7AD4DB4EA0BDA31950 /* ITunesSearch.swift */,
+				1ED5D363A6AB47FCBD604FBF /* LRUCache.swift */,
 				E2A6C9D14B7F4538B1D0A3E7 /* PCMDecimator.swift */,
 				6882CED2EF314C2085E51E44 /* LyricsLookup.swift */,
 				61FEFB6356924F3AA8178187 /* SACDISO.swift */,
@@ -895,6 +927,7 @@
 				F277314DE0D7470694BBC279 /* FolderListingCache.swift */,
 				9A0A08C82CB54F7A9ADC5774 /* Keychain.swift */,
 				A8CF5F697D194391867D1F40 /* PlaylistStore.swift */,
+				A65EDFC25E5A42329237B170 /* TemporaryDownloads.swift */,
 				32B2DDAF52DF43F3B4DCEB87 /* SMBServerStore.swift */,
 			);
 			name = Storage;
@@ -1154,6 +1187,8 @@
 				6E1D4C7A9B2F4835A5D0C3E8 /* DiagnosticsLog.swift in Sources */,
 				5C3A9D1E7B2F4086A9D4C1E7 /* LibrarySearch.swift in Sources */,
 				A3F1C5E79B2D4608B1D7E4A3 /* QueueIndex.swift in Sources */,
+				DA8834FE393D46CF94CA2A53 /* ITunesSearch.swift in Sources */,
+				0F67E4CDF5BF4061BD06BBEA /* LRUCache.swift in Sources */,
 				B7E4D1A83C5F4962A0D3E9C1 /* PCMDecimator.swift in Sources */,
 				6A20D1E4013949949CD5877D /* LyricsLookup.swift in Sources */,
 				1F7D3B9A5C2E4068B3E1A7D9 /* LibrarySearchView.swift in Sources */,
@@ -1189,6 +1224,7 @@
 				53AB71584177492A909FF733 /* FolderListingCache.swift in Sources */,
 				E16C527D786E4CDBA5E9585D /* Keychain.swift in Sources */,
 				6348EAD08EAD4A0BAD2C9A5F /* PlaylistStore.swift in Sources */,
+				4378736109304EEF828432C0 /* TemporaryDownloads.swift in Sources */,
 				238DC4934C15479593ABB5F7 /* SMBServerStore.swift in Sources */,
 				233CE28D09974E98AFA9A0C8 /* AddSMBServerView.swift in Sources */,
 				86048549D2FB45C6AFA776ED /* AddToPlaylistView.swift in Sources */,

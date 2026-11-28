@@ -208,9 +208,7 @@ enum ITunesCatalog {
     static func album(artist: String?, album: String?) async -> MusicKitCatalog.AlbumInfo? {
         guard let album, !album.isEmpty else { return nil }
         let term = MusicKitCatalog.searchTerm(artist: artist, album: album)
-        guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://itunes.apple.com/search?media=music&entity=album&limit=1&term=\(encoded)")
-        else { return nil }
+        guard let url = ITunesSearch.albumSearchURL(term: term) else { return nil }
 
         guard let (data, _) = try? await URLSession.shared.data(from: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

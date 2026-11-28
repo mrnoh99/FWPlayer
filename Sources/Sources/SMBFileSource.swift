@@ -33,7 +33,12 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
     private let downloadConnection: SMBConnection
     #endif
 
+    /// Downloads left behind when the app last quit mid-track are removed once, before
+    /// any source downloads anything.
+    private static let clearedLeftoverDownloads: Void = TemporaryDownloads.removeAll()
+
     init(config: SMBServerConfig, password: String) {
+        _ = Self.clearedLeftoverDownloads
         self.id = config.sourceID
         self.displayName = config.displayName
         self.config = config
@@ -213,10 +218,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
             return try await extractTrack(image: virtual.image, track: virtual.track)
         }
         let data = try await downloadConnection.download(path: path)
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fwplayer-smb", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent((path as NSString).lastPathComponent)
+        let dest = try TemporaryDownloads.newFileURL(named: (path as NSString).lastPathComponent)
         try data.write(to: dest, options: .atomic)
         return dest
         #else
@@ -235,11 +237,8 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
     }
 
     func releaseTemporaryURL(_ url: URL) {
-        // Only remove files inside our temp download directory.
-        if url.path.contains("fwplayer-smb") {
-            // (A track URL carries a "#track=N" fragment; remove by path.)
-            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path))
-        }
+        // Only files inside our download directory are ever removed.
+        TemporaryDownloads.remove(url)
     }
 
     #if canImport(SMBClient)
@@ -273,9 +272,7 @@ final class SMBFileSource: FileSource, PrewarmableFileSource {
             throw SACDError.noSuchTrack(number)
         }
 
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fwplayer-smb", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent("\(UUID().uuidString).iso")
+        let dest = try TemporaryDownloads.newFileURL(named: "track.iso")
         guard FileManager.default.createFile(atPath: dest.path, contents: nil) else { throw SACDError.readFailed }
         let handle = try FileHandle(forWritingTo: dest)
         do {

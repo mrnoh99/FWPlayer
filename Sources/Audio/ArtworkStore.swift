@@ -17,7 +17,13 @@ final class ArtworkStore: ObservableObject {
     /// Bumped whenever a new image lands in the cache, so observing views re-read.
     @Published private(set) var generation = 0
 
-    private var memory: [String: UIImage] = [:]
+    /// Decoded covers, within `memoryLimit` bytes; the least recently shown go first and
+    /// are read back from disk when shown again.
+    private var memory = LRUCache<String, UIImage>(costLimit: ArtworkStore.memoryLimit)
+    private static let memoryLimit = 64 << 20
+    /// Covers dropped from memory that are still on disk.
+    private var evicted: Set<String> = []
+    private var memoryWarning: NSObjectProtocol?
     private var inFlight: Set<String> = []
     private var missing: Set<String> = []
     private let diskDir: URL
@@ -29,7 +35,25 @@ final class ArtworkStore: ObservableObject {
             ?? FileManager.default.temporaryDirectory
         diskDir = base.appendingPathComponent("Artwork", isDirectory: true)
         try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
+        #if canImport(UIKit)
+        memoryWarning = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dropMemoryCache() }
+        }
+        #endif
     }
+
+    /// Frees the decoded covers when the system is short of memory; they come back from disk.
+    private func dropMemoryCache() {
+        DiagnosticsLog.log("artwork", "memory warning: dropping \(memory.count) cached covers")
+        evicted.formUnion(memoryKeys)
+        memoryKeys.removeAll()
+        memory.removeAll()
+        generation &+= 1
+    }
+    /// The keys in `memory`, so a memory warning knows which covers are still on disk.
+    private var memoryKeys: Set<String> = []
 
     // MARK: - Keys
 
@@ -42,13 +66,22 @@ final class ArtworkStore: ObservableObject {
         return "file:\(track.id)"
     }
 
-    // MARK: - Read (no side effects)
+    // MARK: - Read (only the cache itself changes)
 
-    func image(for track: Track) -> UIImage? { memory[Self.key(for: track)] }
+    func image(for track: Track) -> UIImage? { cachedImage(Self.key(for: track)) }
+
+    /// The cover for `key` from memory, or from disk when it was dropped from memory.
+    /// (A disk read here doesn't announce a change: the caller is already showing it.)
+    private func cachedImage(_ key: String) -> UIImage? {
+        if let image = memory.value(for: key) { return image }
+        guard evicted.contains(key), let disk = loadDisk(key) else { return nil }
+        store(key, disk)
+        return disk
+    }
 
     /// A downscaled JPEG of the track's artwork, for sending to remotes.
     func jpeg(for track: Track, maxDimension: CGFloat = 256, quality: CGFloat = 0.7) -> Data? {
-        guard let image = memory[Self.key(for: track)] else { return nil }
+        guard let image = cachedImage(Self.key(for: track)) else { return nil }
         return image.fwDownscaled(to: maxDimension).jpegData(compressionQuality: quality)
     }
 
@@ -56,7 +89,7 @@ final class ArtworkStore: ObservableObject {
 
     func resolve(track: Track, fileURL: URL, folderURL: URL?) {
         let key = Self.key(for: track)
-        guard memory[key] == nil, !inFlight.contains(key) else { return }
+        guard !memory.contains(key), !inFlight.contains(key) else { return }
         if let disk = loadDisk(key) { cache(key, disk); return }
         inFlight.insert(key)
         let allowOnline = true
@@ -80,7 +113,7 @@ final class ArtworkStore: ObservableObject {
     /// readable (local) file. Skips the network to keep browsing cheap.
     func resolveLocalThumbnail(track: Track, directURL: URL?) {
         let key = Self.key(for: track)
-        guard memory[key] == nil, !inFlight.contains(key), !missing.contains(key) else { return }
+        guard !memory.contains(key), !inFlight.contains(key), !missing.contains(key) else { return }
         if let disk = loadDisk(key) { cache(key, disk); return }
         guard let directURL else { return }
         inFlight.insert(key)
@@ -96,7 +129,7 @@ final class ArtworkStore: ObservableObject {
     /// streaming, where a second reader on the disc would disturb playback.
     func resolveOnline(track: Track) {
         let key = Self.key(for: track)
-        guard memory[key] == nil, !inFlight.contains(key) else { return }
+        guard !memory.contains(key), !inFlight.contains(key) else { return }
         if let disk = loadDisk(key) { cache(key, disk); return }
         guard track.artist != nil || track.album != nil else { return }
         inFlight.insert(key)
@@ -113,19 +146,19 @@ final class ArtworkStore: ObservableObject {
     /// Whether this track's cover is already in memory or on disk (so no lookup is needed).
     func hasCachedImage(for track: Track) -> Bool {
         let key = Self.key(for: track)
-        return memory[key] != nil || FileManager.default.fileExists(atPath: diskURL(key).path)
+        return memory.contains(key) || FileManager.default.fileExists(atPath: diskURL(key).path)
     }
 
     /// Artwork for a track streamed from a share (no local file to read): the cover
     /// embedded in the file when the stream gave one, otherwise the online lookup.
     func resolveStreamed(track: Track, embedded: Data?) {
         let key = Self.key(for: track)
-        guard memory[key] == nil, !inFlight.contains(key) else { return }
+        guard !memory.contains(key), !inFlight.contains(key) else { return }
         if let disk = loadDisk(key) { cache(key, disk); return }
         if let embedded {
             inFlight.insert(key)
             finish(key: key, data: embedded, maxDimension: 600)
-            if memory[key] != nil { return }
+            if memory.contains(key) { return }
         }
         resolveOnline(track: track)
     }
@@ -139,8 +172,19 @@ final class ArtworkStore: ObservableObject {
     }
 
     private func cache(_ key: String, _ image: UIImage) {
-        memory[key] = image
+        store(key, image)
         generation &+= 1
+    }
+
+    private func store(_ key: String, _ image: UIImage) {
+        let pixels = image.size.width * image.scale * image.size.height * image.scale
+        let dropped = memory.set(image, cost: Int(pixels) * 4, for: key)
+        memoryKeys.insert(key)
+        evicted.remove(key)
+        for old in dropped {
+            memoryKeys.remove(old)
+            evicted.insert(old)
+        }
     }
 
     // MARK: - Disk cache
@@ -239,9 +283,7 @@ enum AlbumArtwork {
         guard let album, !album.isEmpty else { return nil }
         var term = album
         if let artist, !artist.isEmpty { term += " " + artist }
-        guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://itunes.apple.com/search?media=music&entity=album&limit=1&term=\(encoded)")
-        else { return nil }
+        guard let url = ITunesSearch.albumSearchURL(term: term) else { return nil }
         guard let (data, _) = try? await session.data(from: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
