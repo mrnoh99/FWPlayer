@@ -44,9 +44,9 @@ enum RepeatMode: Int {
 /// remote (lock-screen / control-center) commands.
 @MainActor
 final class AudioPlayer: NSObject, ObservableObject {
-    @Published private(set) var queue: [Track] = []
+    @Published var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
-    @Published private(set) var isPlaying = false {
+    @Published var isPlaying = false {
         didSet { updateBackgroundKeepAlive() }
     }
     @Published private(set) var currentTime: TimeInterval = 0
@@ -59,7 +59,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Software output volume, 0.0…1.0. Defaults to unity (1.0) so the signal to
     /// a DAC/amp is untouched until the user chooses to attenuate it, e.g. from
     /// the remote. Applied to the active player and every new one.
-    @Published private(set) var volume: Double = {
+    @Published var volume: Double = {
         if UserDefaults.standard.object(forKey: "outputVolume") == nil { return 1.0 }
         return UserDefaults.standard.double(forKey: "outputVolume")
     }()
@@ -73,7 +73,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Apple Music Catalog (MusicKit) details for the current track, resolved
     /// asynchronously after it starts. Drives the player's detail panel and is
     /// forwarded to the remote. Cleared whenever the track changes.
-    @Published private(set) var currentCatalogInfo: MusicKitCatalog.AlbumInfo?
+    @Published var currentCatalogInfo: MusicKitCatalog.AlbumInfo?
 
     var currentTrack: Track? {
         guard let i = currentIndex, queue.indices.contains(i) else { return nil }
@@ -103,11 +103,11 @@ final class AudioPlayer: NSObject, ObservableObject {
         return currentTime > 3
     }
 
-    private unowned let registry: SourceRegistry
+    unowned let registry: SourceRegistry
     /// Album-artwork cache, used to enrich the playing track and feed the UI.
     let artwork: ArtworkStore
     private unowned let playlists: PlaylistManager
-    private var player: (any PlaybackBackend)?
+    var player: (any PlaybackBackend)?
     private var ticker: AnyCancellable?
 
     // Gapless: the next streamed FLAC, opened ahead and handed to the running engine.
@@ -219,9 +219,9 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Album details and online lyrics already found this run, so replaying a track doesn't
     /// repeat the network lookups. A nil lyrics value means LRCLIB has none for the track.
-    private var catalogCache: [String: MusicKitCatalog.AlbumInfo] = [:]
-    private var onlineLyricsCache: [String: LyricsLookup.Lyrics?] = [:]
-    private static let metadataCacheLimit = 500
+    var catalogCache: [String: MusicKitCatalog.AlbumInfo] = [:]
+    var onlineLyricsCache: [String: LyricsLookup.Lyrics?] = [:]
+    static let metadataCacheLimit = 500
 
     /// The hardware output rate after the last format request. On Mac Catalyst
     /// this is the default output device's nominal rate (Core Audio).
@@ -233,7 +233,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// iPhone/iPad system output volume (0…1). iOS applies it digitally to USB
     /// DACs that have no hardware volume, so anything below 1.0 alters the
     /// samples. Nil where it doesn't apply (Mac Catalyst).
-    @Published private(set) var systemVolume: Float?
+    @Published var systemVolume: Float?
     /// The current output route (iPhone/iPad). Nil on Mac Catalyst.
     @Published private(set) var outputRoute: OutputRoute?
     /// "DSD64" / "DSD128" while a DSD file is playing as DoP, else nil. DoP only
@@ -247,7 +247,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// the player's visible timeline starts after it.
     private var timeOffset: TimeInterval = 0
     #if os(iOS) && !targetEnvironment(macCatalyst)
-    private var systemVolumeObservation: NSKeyValueObservation?
+    var systemVolumeObservation: NSKeyValueObservation?
     #endif
 
     /// The gain actually applied to the signal.
@@ -262,9 +262,13 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// Tracks whether the app is currently backgrounded (screen off / another
     /// app foregrounded), so the keep-alive only runs when it's actually needed.
-    private var isInBackground = false
+    var isInBackground = false
+    /// Whether playback was interrupted by the system (a phone call, Siri,
+    /// another audio app) while it was playing, so it can be resumed when the
+    /// interruption ends — the behavior users expect from the Music app.
+    var wasPlayingBeforeInterruption = false
     #if os(iOS)
-    private let keepAlive = BackgroundAudioKeepAlive()
+    let keepAlive = BackgroundAudioKeepAlive()
     #endif
 
     init(registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
@@ -385,7 +389,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// markers, DoP is just full-scale PCM noise, so it must only go to a USB DAC
     /// (not a speaker, headphones, Bluetooth, AirPlay, …) and at unity gain —
     /// below-maximum system volume corrupts the markers too.
-    private func doPPlaybackProblem(assumingDoP: Bool = false) -> String? {
+    func doPPlaybackProblem(assumingDoP: Bool = false) -> String? {
         guard isDoPPlayback || assumingDoP else { return nil }
         if assumingDoP, !dsdOverDoP { return "DoP is turned off in Settings (DSD is converted to PCM)." }
         #if targetEnvironment(macCatalyst)
@@ -755,7 +759,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         return resolved
     }
 
-    private func loadAndPlay(index: Int) {
+    func loadAndPlay(index: Int) {
         guard queue.indices.contains(index) else { return }
         // A double-click (or double-tap) sends the same request twice within a fraction of a
         // second; restarting the track that just began only makes a second gap and a second load.
@@ -1484,7 +1488,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
     }
 
-    private func refreshOutputSampleRate() {
+    func refreshOutputSampleRate() {
         #if targetEnvironment(macCatalyst)
         outputSampleRate = MacOutputDevice.currentRate()
         outputDeviceSummary = MacOutputDevice.deviceSummary()
@@ -1618,7 +1622,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     /// The queue position of the track `id` that is playing (or being loaded): with the same song
     /// in the queue twice, the copy at the current position rather than the first one.
-    private func queueIndexOfPlaying(_ id: String) -> Int? {
+    func queueIndexOfPlaying(_ id: String) -> Int? {
         QueueIndex.ofPlaying(id: id, in: queue.map(\.id), current: currentIndex)
     }
 
@@ -1663,466 +1667,6 @@ final class AudioPlayer: NSObject, ObservableObject {
         recentlyPlayedOrder.removeAll()
     }
 
-    // MARK: - Metadata
-
-    /// Asynchronously enriches the current track with embedded title/artist/album.
-    private func loadMetadata(for url: URL, trackID: String) {
-        Task { [weak self] in
-            let asset = AVURLAsset(url: url)
-            // AVFoundation can't open every format (e.g. DSD); carry on with the
-            // tags we read ourselves below.
-            let metadata = (try? await asset.load(.commonMetadata)) ?? []
-            var artist: String?
-            var album: String?
-            var year: String?
-            var composer: String?
-            var work: String?
-            // Composer / work aren't in AVFoundation's common keys: read the ID3 / iTunes ones.
-            let allMetadata = (try? await asset.load(.metadata)) ?? []
-            for identifier in [AVMetadataIdentifier.id3MetadataComposer, .iTunesMetadataComposer] {
-                if let item = AVMetadataItem.metadataItems(from: allMetadata, filteredByIdentifier: identifier).first,
-                   let value = try? await item.load(.stringValue), !value.isEmpty {
-                    composer = value
-                    break
-                }
-            }
-            for item in metadata {
-                guard let key = item.commonKey else { continue }
-                let value = try? await item.load(.stringValue)
-                switch key {
-                case .commonKeyArtist: artist = value
-                case .commonKeyAlbumName: album = value
-                case .commonKeyCreationDate: year = Self.releaseYear(from: value)
-                default: break
-                }
-            }
-            let sampleRate = await AudioFormatReader.readSampleRate(from: url)
-            // AVFoundation doesn't expose FLAC Vorbis comments, so read them
-            // directly (this is a FLAC library). Fills artist/album/year/genre
-            // the common-metadata pass missed.
-            var genre: String?
-            let flac = FlacTags.read(from: url)
-            if !flac.isEmpty {
-                if artist == nil { artist = flac["ARTIST"] ?? flac["ALBUMARTIST"] ?? flac["ALBUM ARTIST"] }
-                if album == nil { album = flac["ALBUM"] }
-                if year == nil { year = Self.releaseYear(from: flac["DATE"] ?? flac["YEAR"] ?? flac["ORIGINALDATE"]) }
-                genre = flac["GENRE"]
-                if composer == nil { composer = flac["COMPOSER"] }
-                work = flac["WORK"]
-            }
-            // DSD (DSF/DFF) files carry ID3v2 tags.
-            let dsd = DSDTags.read(from: url)
-            if !dsd.isEmpty {
-                if artist == nil { artist = dsd["ARTIST"] ?? dsd["ALBUMARTIST"] }
-                if album == nil { album = dsd["ALBUM"] }
-                if year == nil { year = Self.releaseYear(from: dsd["DATE"]) }
-                if genre == nil { genre = dsd["GENRE"] }
-                if composer == nil { composer = dsd["COMPOSER"] }
-                if work == nil { work = dsd["WORK"] }
-            }
-            // First pass: apply the file's embedded tags and start artwork resolution.
-            let lookup: (artist: String?, album: String?)? = await MainActor.run {
-                guard let self,
-                      let idx = self.queueIndexOfPlaying(trackID) else { return nil }
-                var track = self.queue[idx]
-                if let artist { track.artist = artist }
-                if let album { track.album = album }
-                if let year { track.year = year }
-                if let genre, track.genre == nil { track.genre = genre }
-                if let composer, track.composer == nil { track.composer = composer }
-                if let work, track.work == nil { track.work = work }
-                if let sampleRate, track.sampleRate == nil { track.sampleRate = sampleRate }
-                // The file-name-derived title is kept; embedded title is only a fallback.
-                var updated = self.queue
-                updated[idx] = track
-                self.queue = updated
-                if self.currentIndex == idx { self.updateNowPlaying() }
-                // Fetch album art (embedded → folder cover → MusicKit → iTunes) for this track.
-                self.artwork.resolve(track: track, fileURL: url, folderURL: url.deletingLastPathComponent())
-                return (track.artist, track.album)
-            }
-
-            // Second pass: enrich from the Apple Music Catalog (MusicKit) and the
-            // file's embedded lyrics, in parallel. This fills release year/genre
-            // for untagged files and powers the full details panel (player) and
-            // details section (remote).
-            guard lookup != nil, let self else { return }
-            await self.publishDetails(trackID: trackID, artist: artist, album: album, genre: genre, year: year,
-                                      lyrics: { await EmbeddedLyrics.read(from: url) })
-        }
-    }
-
-    /// The one place album details are assembled, for every playback path (local file,
-    /// share stream, download): looks the album up in the Apple Music / iTunes catalog,
-    /// falls back to the file's own tags, adds the lyrics, and publishes the result for the
-    /// player's details panel and the remote. Fills a track's missing year / genre too.
-    private func publishDetails(trackID: String, artist: String?, album: String?, genre: String?, year: String?,
-                                lyrics: @escaping () async -> String?) async {
-        let playing = queueIndexOfPlaying(trackID).map { queue[$0] }
-        let length = playing?.duration ?? (currentTrack?.id == trackID && duration > 0 ? duration : nil)
-        let online = onlineLyrics
-        let cachedLyrics: LyricsLookup.Lyrics?? = online ? onlineLyricsCache[trackID] : nil
-        async let lyricsTask = Self.resolveLyrics(embedded: lyrics, cached: cachedLyrics,
-                                                  online: online, title: playing?.title,
-                                                  artist: artist ?? playing?.artist,
-                                                  album: album ?? playing?.album, duration: length)
-        var catalog: MusicKitCatalog.AlbumInfo?
-        let catalogKey = "\(artist ?? "")\u{1F}\(album ?? "")"
-        if let cached = catalogCache[catalogKey] {
-            catalog = cached
-        } else if artist != nil || album != nil {
-            // Apple Music (MusicKit) first; if it can't (e.g. no developer token),
-            // fall back to the free iTunes Search API so the details still fill.
-            catalog = MusicKitCatalog.isSupported ? await MusicKitCatalog.album(artist: artist, album: album) : nil
-            if catalog == nil { catalog = await ITunesCatalog.album(artist: artist, album: album) }
-            if let catalog {
-                if catalogCache.count >= Self.metadataCacheLimit { catalogCache.removeAll() }
-                catalogCache[catalogKey] = catalog
-            }
-        }
-        var info = catalog ?? MusicKitCatalog.AlbumInfo()
-        let resolved = await lyricsTask
-        info.lyrics = resolved.lyrics?.plain
-        info.syncedLyrics = resolved.lyrics?.synced
-        if let outcome = resolved.online, outcome != .unavailable {      // a failed request is retried next time
-            if onlineLyricsCache.count >= Self.metadataCacheLimit { onlineLyricsCache.removeAll() }
-            onlineLyricsCache.updateValue(outcome.lyrics, forKey: trackID)
-        }
-        // The file's own tags keep the panel useful when the catalog finds nothing.
-        if info.albumTitle == nil { info.albumTitle = album }
-        if info.artistName == nil { info.artistName = artist }
-        if info.genres.isEmpty, let genre { info.genres = [genre] }
-        if info.releaseDate == nil, info.yearText == nil { info.yearText = year }
-        guard info.hasDisplayableDetails,
-              let idx = queueIndexOfPlaying(trackID) else { return }
-        var track = queue[idx]
-        var changed = false
-        if track.year == nil, let y = info.year { track.year = y; changed = true }
-        if track.genre == nil, let g = info.genre { track.genre = g; changed = true }
-        if changed {
-            var updated = queue
-            updated[idx] = track
-            queue = updated
-        }
-        if currentIndex == idx {
-            currentCatalogInfo = info
-            updateNowPlaying()
-        }
-    }
-
-    /// The file's own lyrics, else LRCLIB's for the track (the details panel and the remote show them).
-    /// `online` is LRCLIB's answer when it was asked this time (for caching); `cached` is an earlier
-    /// answer for the track (a nil inside means LRCLIB has none).
-    private nonisolated static func resolveLyrics(embedded: () async -> String?, cached: LyricsLookup.Lyrics??,
-                                                  online: Bool, title: String?, artist: String?, album: String?,
-                                                  duration: Double?) async -> (lyrics: LyricsLookup.Lyrics?,
-                                                                                online: LyricsLookup.Outcome?) {
-        if let own = await embedded(), let lyrics = LyricsLookup.lyrics(fromEmbedded: own) { return (lyrics, nil) }
-        if let cached { return (cached, nil) }
-        guard online, let title, !title.isEmpty else { return (nil, nil) }
-        let outcome = await LyricsLookup.find(title: title, artist: artist, album: album, duration: duration)
-        return (outcome.lyrics, outcome)
-    }
-
-    #if targetEnvironment(macCatalyst)
-    /// Enriches a playing audio-CD track from the MusicBrainz disc lookup:
-    /// resolved track title, plus album/artist/year for the queue, the details
-    /// panel, and online (non-disc) artwork.
-    private func loadCDMetadata(trackID: String, sourceID: String) {
-        guard let cd = registry.source(for: sourceID) as? CDAudioSource else { return }
-        Task { [weak self] in
-            let info = await cd.awaitDiscInfo()
-            guard let self, let info, !info.isEmpty else { return }
-            await MainActor.run {
-                guard let idx = self.queueIndexOfPlaying(trackID) else { return }
-                let old = self.queue[idx]
-                // Track.title is immutable, so rebuild when the lookup resolved a
-                // real title; otherwise just fill artist/album/year.
-                var track: Track
-                if let title = cd.title(forPath: old.path) {
-                    track = Track(sourceID: old.sourceID, path: old.path, title: title)
-                    track.duration = old.duration
-                    track.sampleRate = old.sampleRate
-                } else {
-                    track = old
-                }
-                track.artist = info.artist
-                track.album = info.album
-                track.year = info.year
-                var updated = self.queue
-                updated[idx] = track
-                self.queue = updated
-
-                if self.currentIndex == idx {
-                    var album = MusicKitCatalog.AlbumInfo()
-                    album.albumTitle = info.album
-                    album.artistName = info.artist
-                    album.yearText = info.year
-                    album.trackCount = info.trackTitles.isEmpty ? nil : info.trackTitles.count
-                    album.source = "MusicBrainz"
-                    self.currentCatalogInfo = album
-                    self.updateNowPlaying()
-                    self.artwork.resolveOnline(track: track)
-                }
-            }
-        }
-    }
-    #endif
-
-    /// Pulls a 4-digit release year out of a metadata date string such as
-    /// "1986", "2019-05-01", or "2004-01-01T00:00:00Z".
-    static func releaseYear(from value: String?) -> String? {
-        guard let value,
-              let match = value.range(of: "(19|20)\\d{2}", options: .regularExpression)
-        else { return nil }
-        return String(value[match])
-    }
-
-    private func updateTrackSampleRate(trackID: String, sampleRate: Double) {
-        guard sampleRate > 0,
-              let idx = queueIndexOfPlaying(trackID) else { return }
-        var updated = queue
-        updated[idx].sampleRate = sampleRate
-        queue = updated
-    }
-
-    // MARK: - Audio session
-
-    private func configureAudioSession() {
-        #if os(iOS)
-        // Activating the session can block (it talks to the audio daemon, and a USB DAC may
-        // have to switch mode), so it never happens on the main thread.
-        AudioSessionQueue.queue.async {
-            let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.playback, mode: .default)
-            // Hi-res USB output is steadier with a larger I/O buffer; latency doesn't
-            // matter for playback.
-            try? session.setPreferredIOBufferDuration(0.1)
-            try? session.setActive(true)
-        }
-        #endif
-    }
-
-    /// Tracks the system output volume so bit-perfect mode can warn when it isn't
-    /// at maximum.
-    private func observeSystemVolume() {
-        #if os(iOS) && !targetEnvironment(macCatalyst)
-        systemVolumeObservation = AVAudioSession.sharedInstance()
-            .observe(\.outputVolume, options: [.initial, .new]) { [weak self] session, _ in
-                let volume = session.outputVolume
-                Self.runOnMainActor {
-                    guard let self else { return }
-                    self.systemVolume = volume
-                    // Lowering the volume mid-DSD would blast noise: stop it.
-                    if self.isPlaying, let problem = self.doPPlaybackProblem() {
-                        self.pausePlayback()
-                        self.errorMessage = problem
-                    }
-                }
-            }
-        #endif
-    }
-
-    // MARK: - Background reachability (screen off, paused)
-
-    /// Watches app foreground/background transitions so the player can stay
-    /// remote-controllable with the screen off. While playing, the `audio`
-    /// background mode already keeps the app alive; the gap this covers is
-    /// "backgrounded + paused/idle", where iOS would otherwise suspend the
-    /// process and drop the remote's network link.
-    private func observeAppLifecycle() {
-        #if os(iOS)
-        let center = NotificationCenter.default
-        center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
-                           object: nil, queue: .main) { [weak self] _ in
-            Self.runOnMainActor {
-                guard let self else { return }
-                self.isInBackground = true
-                // Re-assert the audio session so active playback keeps going
-                // with the screen off, exactly like the Music app.
-                if self.isPlaying {
-                    AudioSessionQueue.queue.async { try? AVAudioSession.sharedInstance().setActive(true) }
-                }
-                self.updateBackgroundKeepAlive()
-            }
-        }
-        center.addObserver(forName: UIApplication.willEnterForegroundNotification,
-                           object: nil, queue: .main) { [weak self] _ in
-            Self.runOnMainActor {
-                self?.isInBackground = false
-                self?.updateBackgroundKeepAlive()
-            }
-        }
-        #endif
-    }
-
-    /// Starts the inaudible keep-alive stream only when it's needed — the app is
-    /// in the background, the feature is enabled, and real audio isn't already
-    /// playing (which keeps the app alive on its own) — and stops it otherwise.
-    private func updateBackgroundKeepAlive() {
-        #if os(iOS)
-        if backgroundRemoteEnabled && isInBackground && !isPlaying {
-            keepAlive.start()
-        } else {
-            keepAlive.stop()
-        }
-        #endif
-    }
-
-    // MARK: - Audio session events (interruptions, route, reset)
-
-    /// Whether playback was interrupted by the system (a phone call, Siri,
-    /// another audio app) while it was playing, so it can be resumed when the
-    /// interruption ends — the behavior users expect from the Music app.
-    private var wasPlayingBeforeInterruption = false
-
-    private func observeAudioSessionEvents() {
-        #if os(iOS)
-        let center = NotificationCenter.default
-        let session = AVAudioSession.sharedInstance()
-        center.addObserver(forName: AVAudioSession.interruptionNotification,
-                           object: session, queue: .main) { [weak self] note in
-            Self.runOnMainActor { self?.handleInterruption(note) }
-        }
-        center.addObserver(forName: AVAudioSession.routeChangeNotification,
-                           object: session, queue: .main) { [weak self] note in
-            Self.runOnMainActor { self?.handleRouteChange(note) }
-        }
-        center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
-                           object: session, queue: .main) { [weak self] _ in
-            Self.runOnMainActor { self?.handleMediaServicesReset() }
-        }
-        #endif
-    }
-
-    #if os(iOS)
-    private func handleInterruption(_ note: Notification) {
-        guard let info = note.userInfo,
-              let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
-        switch type {
-        case .began:
-            // The system has already paused our audio; mirror that in our state
-            // and remember we should resume when the interruption ends.
-            wasPlayingBeforeInterruption = isPlaying
-            if isPlaying {
-                player?.pause()
-                isPlaying = false
-                updateNowPlaying()
-            }
-        case .ended:
-            let options: AVAudioSession.InterruptionOptions
-            if let rawOpts = info[AVAudioSessionInterruptionOptionKey] as? UInt {
-                options = AVAudioSession.InterruptionOptions(rawValue: rawOpts)
-            } else {
-                options = []
-            }
-            if options.contains(.shouldResume) && wasPlayingBeforeInterruption {
-                // Re-activate off the main thread, then resume once the session is live.
-                AudioSessionQueue.queue.async { [weak self] in
-                    try? AVAudioSession.sharedInstance().setActive(true)
-                    Task { @MainActor in self?.resumePlayback() }
-                }
-            }
-            wasPlayingBeforeInterruption = false
-        @unknown default:
-            break
-        }
-    }
-
-    private func handleRouteChange(_ note: Notification) {
-        // A DAC being plugged in or removed changes the hardware rate.
-        refreshOutputSampleRate()
-        // DSD (DoP) must never reach anything but a USB DAC.
-        if isPlaying, let problem = doPPlaybackProblem() {
-            pausePlayback()
-            errorMessage = problem
-        }
-        guard let info = note.userInfo,
-              let raw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
-        // Headphones/Bluetooth device removed: pause instead of suddenly
-        // blasting the built-in speaker — matches the Music app.
-        if reason == .oldDeviceUnavailable, isPlaying {
-            pausePlayback()
-        }
-    }
-
-    private func handleMediaServicesReset() {
-        // The audio server crashed and restarted; every audio object is now
-        // invalid. Rebuild the session and player and resume where we were.
-        let resumeIndex = currentIndex
-        let wasPlaying = isPlaying
-        player?.detach()
-        player?.stop()
-        player = nil
-        configureAudioSession()
-        if wasPlaying, let i = resumeIndex {
-            loadAndPlay(index: i)
-        }
-    }
-    #endif
-
-    // MARK: - Remote commands & Now Playing
-
-    private func configureRemoteCommands() {
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
-            Self.runOnMainActor { self?.togglePlayPause() }
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            Self.runOnMainActor { self?.togglePlayPause() }
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Self.runOnMainActor { self?.togglePlayPause() }
-            return .success
-        }
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            Self.runOnMainActor { self?.next() }
-            return .success
-        }
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            var result = MPRemoteCommandHandlerStatus.commandFailed
-            Self.runOnMainActor { [weak self] in
-                guard let self, self.canGoPrevious else { return }
-                self.previous()
-                result = .success
-            }
-            return result
-        }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            Self.runOnMainActor { self?.seek(to: event.positionTime) }
-            return .success
-        }
-    }
-
-    /// Runs work on the main actor without trapping when callbacks arrive off the main thread.
-    private nonisolated static func runOnMainActor(_ action: @escaping @MainActor () -> Void) {
-        if Thread.isMainThread {
-            MainActor.assumeIsolated { action() }
-        } else {
-            DispatchQueue.main.sync {
-                MainActor.assumeIsolated { action() }
-            }
-        }
-    }
-
-    private func updateNowPlaying() {
-        guard let track = currentTrack else { return }
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: track.title,
-            MPMediaItemPropertyPlaybackDuration: duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
-        ]
-        if let artist = track.artist { info[MPMediaItemPropertyArtist] = artist }
-        if let composer = track.composer { info[MPMediaItemPropertyComposer] = composer }
-        if let album = track.album { info[MPMediaItemPropertyAlbumTitle] = album }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-    }
 }
 
 extension AudioPlayer: AVAudioPlayerDelegate {
