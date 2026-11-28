@@ -195,6 +195,10 @@
 			isa = PBXBuildFile;
 			fileRef = 4790F90B66794326B716D200 /* PrivacyInfo.xcprivacy */;
 		};
+		C94082ACB3454F5DB70CC918 /* Localizable.xcstrings in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 0E4BE0033E694FA988992723 /* Localizable.xcstrings */;
+		};
 		F5A16958902146C2A0647AB5 /* SMBFileSource.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = D3520823EFC04FA19F3B5263 /* SMBFileSource.swift */;
@@ -381,6 +385,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = text.plist.xml;
 			path = PrivacyInfo.xcprivacy;
+			sourceTree = "<group>";
+		};
+		0E4BE0033E694FA988992723 /* Localizable.xcstrings */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.json.xcstrings;
+			path = Localizable.xcstrings;
 			sourceTree = "<group>";
 		};
 		6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */ = {
@@ -874,6 +884,7 @@
 			children = (
 				1E9FDBCF98E2475CA5018C01 /* Assets.xcassets */,
 				4790F90B66794326B716D200 /* PrivacyInfo.xcprivacy */,
+				0E4BE0033E694FA988992723 /* Localizable.xcstrings */,
 			);
 			name = Resources;
 			path = Resources;
@@ -1060,6 +1071,7 @@
 			knownRegions = (
 				en,
 				Base,
+				ko,
 			);
 			mainGroup = 64E32F15723247A9903A03E2;
 			packageReferences = (
@@ -1081,6 +1093,7 @@
 			files = (
 				52765BA23D0C45B8A27F3C1D /* Assets.xcassets in Resources */,
 				F36A3B8A4EF04E89BC86DA6C /* PrivacyInfo.xcprivacy in Resources */,
+				C94082ACB3454F5DB70CC918 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

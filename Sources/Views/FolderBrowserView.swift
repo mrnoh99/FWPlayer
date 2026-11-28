@@ -58,7 +58,7 @@ struct FolderBrowserView: View {
             } else if let loadError {
                 EmptyStateView(title: "Couldn't Load Folder",
                                systemImage: "exclamationmark.triangle",
-                               message: loadError)
+                               message: LocalizedStringKey(loadError))
             } else {
                 // Always open the folder — even with no audio — so its subfolders
                 // are browsable. An empty folder shows an inline hint in the list.

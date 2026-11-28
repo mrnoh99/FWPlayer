@@ -305,6 +305,27 @@ struct ContentView: View {
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
+                Toggle(isOn: $remoteServer.requiresPIN) {
+                    Label("Require PIN", systemImage: "lock")
+                }
+                if remoteServer.requiresPIN {
+                    HStack {
+                        Text("PIN")
+                        Text(remoteServer.displayPIN)
+                            .font(.title3.monospacedDigit().weight(.semibold))
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("New PIN") { remoteServer.newPIN() }
+                            .buttonStyle(.borderless)
+                    }
+                    Text("Enter this PIN once in FWPlayer Remote; it is remembered after that. A new PIN makes every remote pair again.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Any device on this network can control playback and browse the library.")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
                 Toggle(isOn: $player.backgroundRemoteEnabled) {
                     Label("Stay on in background", systemImage: "wifi")
                 }

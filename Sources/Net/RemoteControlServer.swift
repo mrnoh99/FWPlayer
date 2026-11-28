@@ -27,10 +27,27 @@ final class RemoteControlServer: ObservableObject {
     private let queue = DispatchQueue(label: "com.fwplayer.remote.server")
     private let deviceName: String
     private let bonjourName: String
-    private let pairingPIN: String
-
-    /// Single-digit PIN shown on the player; remotes must enter it to connect.
+    /// The 4-digit PIN a remote enters once to pair (the remote then remembers it).
+    /// Kept across launches so paired remotes keep connecting; `newPIN()` revokes them.
     @Published private(set) var displayPIN: String
+    private static let pinKey = "remotePIN"
+
+    /// When on, a remote must pair with the PIN before it can see or control anything.
+    /// On by default: anyone on the same Wi-Fi could otherwise control playback and
+    /// browse the library.
+    @Published var requiresPIN: Bool {
+        didSet {
+            UserDefaults.standard.set(requiresPIN, forKey: Self.requiresPINKey)
+            // Remotes let in without a PIN must pair now.
+            if requiresPIN && !oldValue { disconnectAll() }
+        }
+    }
+    private static let requiresPINKey = "remoteRequiresPIN"
+
+    /// Wrong PINs in the last minute; past `maxFailuresPerMinute` every attempt is refused
+    /// until the minute is up, so the PIN can't be guessed by trying them all.
+    private var recentFailures: [Date] = []
+    private static let maxFailuresPerMinute = 5
 
     /// Whether the Bonjour listener is up and advertising. Surfaced in the UI so
     /// a failure to advertise (e.g. Local Network permission not granted on
@@ -56,8 +73,28 @@ final class RemoteControlServer: ObservableObject {
         self.artwork = artwork
         self.deviceName = HostDeviceName.current
         self.bonjourName = HostDeviceName.bonjourServiceName
-        self.pairingPIN = Self.makePIN()
-        self.displayPIN = pairingPIN
+        let pin: String
+        if let saved = UserDefaults.standard.string(forKey: Self.pinKey), saved.count == 4 {
+            pin = saved
+        } else {
+            pin = Self.makePIN()
+            UserDefaults.standard.set(pin, forKey: Self.pinKey)
+        }
+        self.displayPIN = pin
+        self.requiresPIN = UserDefaults.standard.object(forKey: Self.requiresPINKey) as? Bool ?? true
+    }
+
+    /// Replaces the PIN; every remote has to pair again.
+    func newPIN() {
+        displayPIN = Self.makePIN()
+        UserDefaults.standard.set(displayPIN, forKey: Self.pinKey)
+        disconnectAll()
+    }
+
+    /// Drops every remote; they reconnect on their own and pair if a PIN is required.
+    private func disconnectAll() {
+        for client in clients.values { client.link.cancel() }
+        clients.removeAll()
     }
 
     func start() {
@@ -205,14 +242,29 @@ final class RemoteControlServer: ObservableObject {
             }
         }
 
-        // PIN-less: authenticate the client immediately and push the current
-        // state so the remote connects automatically (no pairing step).
-        clients[id] = Client(link: link, isAuthenticated: true)
         link.start()
+        if requiresPIN {
+            // The remote answers with the PIN it saved when it paired, or asks the user for it.
+            clients[id] = Client(link: link, isAuthenticated: false)
+            link.send(.pairingRequired(PairingRequired(deviceName: deviceName)))
+        } else {
+            clients[id] = Client(link: link, isAuthenticated: true)
+            welcome(link)
+        }
+    }
+
+    /// Confirms the connection and sends everything a newly connected remote shows.
+    private func welcome(_ link: RemoteLink) {
         link.send(.authResult(AuthResult(success: true, message: nil)))
         pushState(to: link)
         if let art = currentArtworkMessage() { link.send(.artwork(art)) }
         if let details = currentCatalogMessage() { link.send(.catalogInfo(details)) }
+    }
+
+    /// Whether PIN attempts are refused for now (too many wrong ones in the last minute).
+    private func pinAttemptsLocked(now: Date = Date()) -> Bool {
+        recentFailures.removeAll { now.timeIntervalSince($0) > 60 }
+        return recentFailures.count >= Self.maxFailuresPerMinute
     }
 
     // MARK: - Commands
@@ -223,15 +275,20 @@ final class RemoteControlServer: ObservableObject {
 
         switch command {
         case .authenticate(let pin):
+            guard !client.isAuthenticated else { return }
+            if pinAttemptsLocked() {
+                client.link.send(.authResult(AuthResult(success: false,
+                                                        message: "Too many wrong PINs. Try again in a minute.")))
+                return
+            }
             let normalized = pin.trimmingCharacters(in: .whitespacesAndNewlines)
-            if normalized == pairingPIN {
+            if !requiresPIN || normalized == displayPIN {
                 client.isAuthenticated = true
                 clients[clientID] = client
-                client.link.send(.authResult(AuthResult(success: true, message: nil)))
-                pushState(to: client.link)
-                if let art = currentArtworkMessage() { client.link.send(.artwork(art)) }
-                if let details = currentCatalogMessage() { client.link.send(.catalogInfo(details)) }
+                welcome(client.link)
             } else {
+                recentFailures.append(Date())
+                DiagnosticsLog.log("remote", "wrong PIN from a remote (\(recentFailures.count) in the last minute)")
                 client.link.send(.authResult(AuthResult(success: false, message: "Incorrect PIN.")))
             }
 
@@ -595,6 +652,6 @@ final class RemoteControlServer: ObservableObject {
     }
 
     private static func makePIN() -> String {
-        String(Int.random(in: 0...9))
+        String(format: "%04d", Int.random(in: 0...9999))
     }
 }
