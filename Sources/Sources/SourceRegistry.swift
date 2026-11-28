@@ -176,7 +176,7 @@ final class SourceRegistry: ObservableObject {
     private func prewarm(_ source: any FileSource, force: Bool = false) {
         #if targetEnvironment(macCatalyst)
         guard source.kind == .smb else { return }
-        guard let scannable = source as? PrewarmableFileSource else { return }
+        guard let scannable = source as? any PrewarmableFileSource else { return }
         let id = source.id
         libraryScans[id] = LibraryScanProgress(isScanning: true, foldersScanned: 0)
         Task { [weak self] in
