@@ -417,8 +417,8 @@ private actor SMBConnection {
         DiagnosticsLog.log("smb", "connection to \(config.host) dropped; it will be rebuilt")
         client = nil
         Task.detached {
-            try? await old.disconnectShare()
-            try? await old.logoff()
+            _ = try? await old.disconnectShare()
+            _ = try? await old.logoff()
         }
     }
 

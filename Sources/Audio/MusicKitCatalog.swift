@@ -93,11 +93,11 @@ enum MusicKitCatalog {
     @available(iOS 15.0, macCatalyst 15.0, *)
     private static func catalogAlbum(artist: String?, album: String?) async -> AlbumInfo? {
         guard let album, !album.isEmpty else {
-            print("[MusicKit] skip — no album tag to search")
+            DiagnosticsLog.log("catalog", "MusicKit: skip — no album tag to search")
             return nil
         }
         guard await isAuthorized() else {
-            print("[MusicKit] not authorized (status=\(MusicAuthorization.currentStatus))")
+            DiagnosticsLog.log("catalog", "MusicKit: not authorized (status=\(MusicAuthorization.currentStatus))")
             return nil
         }
 
@@ -107,10 +107,10 @@ enum MusicKitCatalog {
         do {
             let response = try await request.response()
             guard let match = response.albums.first else {
-                print("[MusicKit] no catalog match for \"\(term)\"")
+                DiagnosticsLog.log("catalog", "MusicKit: no catalog match for \"\(term)\"")
                 return nil
             }
-            print("[MusicKit] matched \"\(match.title)\" — \(match.artistName)")
+            DiagnosticsLog.log("catalog", "MusicKit: matched \"\(match.title)\" — \(match.artistName)")
             return AlbumInfo(
                 albumTitle: match.title,
                 artistName: match.artistName,
@@ -130,9 +130,9 @@ enum MusicKitCatalog {
             // even when the user has authorized. Stop trying MusicKit this session.
             if "\(error)".contains("developerToken") {
                 tokenUnavailable = true
-                print("[MusicKit] developer token unavailable — using iTunes for the rest of this session")
+                DiagnosticsLog.log("catalog", "MusicKit: developer token unavailable — using iTunes for the rest of this session")
             } else {
-                print("[MusicKit] catalog request failed for \"\(term)\": \(error)")
+                DiagnosticsLog.log("catalog", "MusicKit: catalog request failed for \"\(term)\": \(error)")
             }
             return nil
         }
@@ -214,7 +214,7 @@ enum ITunesCatalog {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
               let first = results.first else {
-            print("[iTunes] request failed for \"\(term)\"")
+            DiagnosticsLog.log("catalog", "iTunes: request failed for \"\(term)\"")
             return nil
         }
 
@@ -233,10 +233,10 @@ enum ITunesCatalog {
         info.source = "iTunes"
 
         guard info.hasDisplayableDetails else {
-            print("[iTunes] no usable fields for \"\(term)\"")
+            DiagnosticsLog.log("catalog", "iTunes: no usable fields for \"\(term)\"")
             return nil
         }
-        print("[iTunes] matched \"\(info.albumTitle ?? term)\"")
+        DiagnosticsLog.log("catalog", "iTunes: matched \"\(info.albumTitle ?? term)\"")
         return info
     }
 }

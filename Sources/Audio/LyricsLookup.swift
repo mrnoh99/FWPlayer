@@ -20,26 +20,28 @@ enum LyricsLookup {
         case lyrics(String)
         case instrumental
         case notFound
+        /// The request failed (offline, server error): worth trying again later.
+        case unavailable
+
+        var text: String? {
+            if case .lyrics(let text) = self { return text }
+            return nil
+        }
     }
 
     /// LRCLIB asks clients to identify themselves.
     static let userAgent = "FWPlayer (https://github.com/mrnoh99/FWPlayer)"
 
-    /// The lyrics for a track, or nil if LRCLIB has none (or the track is instrumental,
-    /// or the request failed).
-    static func lyrics(title: String, artist: String?, album: String?, duration: Double?) async -> String? {
+    /// Looks the track up and logs what was found.
+    static func find(title: String, artist: String?, album: String?, duration: Double?) async -> Outcome {
         let outcome = await lookUp(title: title, artist: artist, album: album, duration: duration)
         switch outcome {
-        case .lyrics(let text):
-            DiagnosticsLog.log("lyrics", "LRCLIB: found lyrics for \"\(title)\"")
-            return text
-        case .instrumental:
-            DiagnosticsLog.log("lyrics", "LRCLIB: \"\(title)\" is an instrumental")
-            return nil
-        case .notFound:
-            DiagnosticsLog.log("lyrics", "LRCLIB: no lyrics for \"\(title)\"")
-            return nil
+        case .lyrics: DiagnosticsLog.log("lyrics", "LRCLIB: found lyrics for \"\(title)\"")
+        case .instrumental: DiagnosticsLog.log("lyrics", "LRCLIB: \"\(title)\" is an instrumental")
+        case .notFound: DiagnosticsLog.log("lyrics", "LRCLIB: no lyrics for \"\(title)\"")
+        case .unavailable: DiagnosticsLog.log("lyrics", "LRCLIB: couldn't be reached for \"\(title)\"")
         }
+        return outcome
     }
 
     static func lookUp(title: String, artist: String?, album: String?, duration: Double?) async -> Outcome {
@@ -49,11 +51,13 @@ enum LyricsLookup {
         var titles = [searchTitle(title, artist: artist)]
         let original = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !titles.contains(original) { titles.append(original) }
+        var failed = false
         for candidate in titles where !candidate.isEmpty {
-            guard let entries = await search(title: candidate, artist: artist), !entries.isEmpty else { continue }
+            guard let entries = await search(title: candidate, artist: artist) else { failed = true; continue }
+            guard !entries.isEmpty else { continue }
             return outcome(of: best(entries, duration: duration))
         }
-        return .notFound
+        return failed ? .unavailable : .notFound
     }
 
     // MARK: Network

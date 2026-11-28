@@ -302,8 +302,6 @@ enum SACDISO {
         let frameFormat = Int(data[21] & 0x0F)
         let channels = Int(data[32])
         let trackCount = Int(data[69])
-        let charset = Int(data[88 + 2])                              // languages[0].character_set
-        let enc = encoding(forCharacterSet: charset)
         guard trackCount > 0, trackCount <= 255, channels > 0 else { return nil }
 
         var starts = [Int](repeating: 0, count: trackCount)
