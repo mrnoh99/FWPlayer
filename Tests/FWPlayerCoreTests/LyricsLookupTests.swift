@@ -54,6 +54,13 @@ final class LyricsLookupTests: XCTestCase {
                        .lyrics("One\nTwo"))
     }
 
+    func testOutcomeTextIsOnlyForFoundLyrics() {
+        XCTAssertEqual(LyricsLookup.Outcome.lyrics("words").text, "words")
+        XCTAssertNil(LyricsLookup.Outcome.instrumental.text)
+        XCTAssertNil(LyricsLookup.Outcome.notFound.text)
+        XCTAssertNil(LyricsLookup.Outcome.unavailable.text)
+    }
+
     func testPlainTextFromSyncedLyrics() {
         let synced = """
         [ar:Artist]

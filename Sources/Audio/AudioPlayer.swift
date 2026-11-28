@@ -211,6 +211,18 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
     private static let autoSampleRateKey = "autoSampleRate"
 
+    /// Look up lyrics on LRCLIB for tracks whose files carry none. On by default.
+    @Published var onlineLyrics: Bool {
+        didSet { UserDefaults.standard.set(onlineLyrics, forKey: Self.onlineLyricsKey) }
+    }
+    private static let onlineLyricsKey = "onlineLyrics"
+
+    /// Album details and online lyrics already found this run, so replaying a track doesn't
+    /// repeat the network lookups. A nil lyrics value means LRCLIB has none for the track.
+    private var catalogCache: [String: MusicKitCatalog.AlbumInfo] = [:]
+    private var onlineLyricsCache: [String: String?] = [:]
+    private static let metadataCacheLimit = 500
+
     /// The hardware output rate after the last format request. On Mac Catalyst
     /// this is the default output device's nominal rate (Core Audio).
     @Published private(set) var outputSampleRate: Double?
@@ -266,6 +278,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         self.bitPerfectMode = UserDefaults.standard.bool(forKey: Self.bitPerfectKey)
         self.autoSampleRate = UserDefaults.standard.object(forKey: Self.autoSampleRateKey) as? Bool ?? true
+        self.onlineLyrics = UserDefaults.standard.object(forKey: Self.onlineLyricsKey) as? Bool ?? true
         // On unless the user has switched it off.
         self.liveDSD = UserDefaults.standard.object(forKey: Self.liveDSDKey) as? Bool ?? true
         self.skipUnplayable = UserDefaults.standard.object(forKey: Self.skipUnplayableKey) as? Bool ?? true
@@ -1747,18 +1760,33 @@ final class AudioPlayer: NSObject, ObservableObject {
                                 lyrics: @escaping () async -> String?) async {
         let playing = queueIndexOfPlaying(trackID).map { queue[$0] }
         let length = playing?.duration ?? (currentTrack?.id == trackID && duration > 0 ? duration : nil)
-        async let lyricsTask = Self.resolveLyrics(embedded: lyrics, title: playing?.title,
+        let online = onlineLyrics
+        let cachedLyrics: String?? = online ? onlineLyricsCache[trackID] : nil
+        async let lyricsTask = Self.resolveLyrics(embedded: lyrics, cached: cachedLyrics,
+                                                  online: online, title: playing?.title,
                                                   artist: artist ?? playing?.artist,
                                                   album: album ?? playing?.album, duration: length)
         var catalog: MusicKitCatalog.AlbumInfo?
-        if artist != nil || album != nil {
+        let catalogKey = "\(artist ?? "")\u{1F}\(album ?? "")"
+        if let cached = catalogCache[catalogKey] {
+            catalog = cached
+        } else if artist != nil || album != nil {
             // Apple Music (MusicKit) first; if it can't (e.g. no developer token),
             // fall back to the free iTunes Search API so the details still fill.
             catalog = MusicKitCatalog.isSupported ? await MusicKitCatalog.album(artist: artist, album: album) : nil
             if catalog == nil { catalog = await ITunesCatalog.album(artist: artist, album: album) }
+            if let catalog {
+                if catalogCache.count >= Self.metadataCacheLimit { catalogCache.removeAll() }
+                catalogCache[catalogKey] = catalog
+            }
         }
         var info = catalog ?? MusicKitCatalog.AlbumInfo()
-        info.lyrics = await lyricsTask
+        let resolved = await lyricsTask
+        info.lyrics = resolved.text
+        if let outcome = resolved.online, outcome != .unavailable {      // a failed request is retried next time
+            if onlineLyricsCache.count >= Self.metadataCacheLimit { onlineLyricsCache.removeAll() }
+            onlineLyricsCache.updateValue(outcome.text, forKey: trackID)
+        }
         // The file's own tags keep the panel useful when the catalog finds nothing.
         if info.albumTitle == nil { info.albumTitle = album }
         if info.artistName == nil { info.artistName = artist }
@@ -1782,11 +1810,16 @@ final class AudioPlayer: NSObject, ObservableObject {
     }
 
     /// The file's own lyrics, else LRCLIB's for the track (the details panel and the remote show them).
-    private nonisolated static func resolveLyrics(embedded: () async -> String?, title: String?, artist: String?,
-                                                  album: String?, duration: Double?) async -> String? {
-        if let own = await embedded(), !own.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return own }
-        guard let title, !title.isEmpty else { return nil }
-        return await LyricsLookup.lyrics(title: title, artist: artist, album: album, duration: duration)
+    /// `online` is LRCLIB's answer when it was asked this time (for caching); `cached` is an earlier
+    /// answer for the track (a nil inside means LRCLIB has none).
+    private nonisolated static func resolveLyrics(embedded: () async -> String?, cached: String??, online: Bool,
+                                                  title: String?, artist: String?, album: String?,
+                                                  duration: Double?) async -> (text: String?, online: LyricsLookup.Outcome?) {
+        if let own = await embedded(), !own.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return (own, nil) }
+        if let cached { return (cached, nil) }
+        guard online, let title, !title.isEmpty else { return (nil, nil) }
+        let outcome = await LyricsLookup.find(title: title, artist: artist, album: album, duration: duration)
+        return (outcome.text, outcome)
     }
 
     #if targetEnvironment(macCatalyst)

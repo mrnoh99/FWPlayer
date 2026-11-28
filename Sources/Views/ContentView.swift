@@ -313,6 +313,15 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Lyrics") {
+                Toggle(isOn: $player.onlineLyrics) {
+                    Label("Find Lyrics Online", systemImage: "quote.bubble")
+                }
+                Text("For tracks without lyrics in the file, looks them up on LRCLIB (lrclib.net) by title, artist, album and length.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Diagnostics") {
                 Button {
                     #if canImport(UIKit)
