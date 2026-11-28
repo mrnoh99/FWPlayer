@@ -34,6 +34,8 @@ enum MusicKitCatalog {
         /// Lyrics embedded in the audio file (MusicKit doesn't expose catalog
         /// lyrics publicly), shown in the details when present.
         var lyrics: String? = nil
+        /// The same lyrics line by line with start times, when known (shown following playback).
+        var syncedLyrics: [LyricsLookup.Line]? = nil
         /// Where the metadata came from: "Apple Music", "iTunes", or "file tags".
         var source: String = "file tags"
 

@@ -36,6 +36,7 @@ struct PlayerView: View {
     @State private var isWide = false
     /// Whether the Apple Music Catalog details panel is expanded.
     @State private var detailsExpanded = false
+    @State private var lyricsExpanded = true
 
     var body: some View {
         GeometryReader { geo in
@@ -112,6 +113,7 @@ struct PlayerView: View {
                 transportControls
                 outputRow
                 catalogSummary
+                lyricsPanel
                 catalogDetails
             }
             .frame(maxWidth: 480)
@@ -148,7 +150,37 @@ struct PlayerView: View {
         }
     }
 
-    /// The longer fields (rating, copyright, description, lyrics), tucked into a
+    /// The track's lyrics. Time-synced lyrics follow playback (tap a line to play from
+    /// there); plain lyrics are shown as text.
+    @ViewBuilder
+    private var lyricsPanel: some View {
+        if let info = player.currentCatalogInfo, let plain = info.lyrics, !plain.isEmpty {
+            DisclosureGroup(isExpanded: $lyricsExpanded) {
+                Group {
+                    if let lines = info.syncedLyrics, !lines.isEmpty {
+                        SyncedLyricsView(lines: lines, time: currentTime) { time in
+                            Task { @MainActor in player.seek(to: time) }
+                        }
+                        .frame(height: 260)
+                    } else {
+                        Text(plain)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 6)
+            } label: {
+                Label("Lyrics", systemImage: "quote.bubble")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .tint(.secondary)
+            .padding(.horizontal, 4)
+        }
+    }
+
+    /// The longer fields (rating, copyright, description), tucked into a
     /// collapsible panel so they don't crowd the screen.
     @ViewBuilder
     private var catalogDetails: some View {
@@ -158,7 +190,6 @@ struct PlayerView: View {
                     detailRow("Rating", info.contentRating)
                     detailRow("Copyright", info.copyright)
                     detailParagraph("About", info.editorialNotes)
-                    detailParagraph("Lyrics", info.lyrics)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 6)
@@ -174,11 +205,11 @@ struct PlayerView: View {
     /// Whether the collapsible panel has anything beyond the always-shown summary.
     private static func hasExtended(_ info: MusicKitCatalog.AlbumInfo) -> Bool {
         info.contentRating != nil || info.copyright != nil
-            || info.editorialNotes != nil || info.lyrics != nil
+            || info.editorialNotes != nil
     }
 
     @ViewBuilder
-    private func detailRow(_ label: String, _ value: String?) -> some View {
+    private func detailRow(_ label: LocalizedStringKey, _ value: String?) -> some View {
         if let value, !value.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(label)
@@ -193,7 +224,7 @@ struct PlayerView: View {
     }
 
     @ViewBuilder
-    private func detailParagraph(_ label: String, _ value: String?) -> some View {
+    private func detailParagraph(_ label: LocalizedStringKey, _ value: String?) -> some View {
         if let value, !value.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text(label)
@@ -646,5 +677,40 @@ struct PlayerView: View {
         guard time.isFinite, time >= 0 else { return "0:00" }
         let total = Int(time)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Lyrics that follow playback: the line being sung is highlighted and kept in view,
+/// and tapping a line plays from there.
+private struct SyncedLyricsView: View {
+    let lines: [LyricsLookup.Line]
+    let time: TimeInterval
+    let onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        let current = LyricsLookup.lineIndex(in: lines, at: time)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        Text(line.text.isEmpty ? "♪" : line.text)
+                            .font(index == current ? .body.weight(.semibold) : .body)
+                            .foregroundStyle(index == current ? Color.primary : Color.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onSeek(line.time) }
+                            .id(index)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .onChange(of: current) { _, new in
+                guard let new else { return }
+                withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(new, anchor: .center) }
+            }
+            .onAppear {
+                if let current { proxy.scrollTo(current, anchor: .center) }
+            }
+        }
     }
 }

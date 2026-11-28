@@ -220,7 +220,7 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Album details and online lyrics already found this run, so replaying a track doesn't
     /// repeat the network lookups. A nil lyrics value means LRCLIB has none for the track.
     private var catalogCache: [String: MusicKitCatalog.AlbumInfo] = [:]
-    private var onlineLyricsCache: [String: String?] = [:]
+    private var onlineLyricsCache: [String: LyricsLookup.Lyrics?] = [:]
     private static let metadataCacheLimit = 500
 
     /// The hardware output rate after the last format request. On Mac Catalyst
@@ -1761,7 +1761,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         let playing = queueIndexOfPlaying(trackID).map { queue[$0] }
         let length = playing?.duration ?? (currentTrack?.id == trackID && duration > 0 ? duration : nil)
         let online = onlineLyrics
-        let cachedLyrics: String?? = online ? onlineLyricsCache[trackID] : nil
+        let cachedLyrics: LyricsLookup.Lyrics?? = online ? onlineLyricsCache[trackID] : nil
         async let lyricsTask = Self.resolveLyrics(embedded: lyrics, cached: cachedLyrics,
                                                   online: online, title: playing?.title,
                                                   artist: artist ?? playing?.artist,
@@ -1782,10 +1782,11 @@ final class AudioPlayer: NSObject, ObservableObject {
         }
         var info = catalog ?? MusicKitCatalog.AlbumInfo()
         let resolved = await lyricsTask
-        info.lyrics = resolved.text
+        info.lyrics = resolved.lyrics?.plain
+        info.syncedLyrics = resolved.lyrics?.synced
         if let outcome = resolved.online, outcome != .unavailable {      // a failed request is retried next time
             if onlineLyricsCache.count >= Self.metadataCacheLimit { onlineLyricsCache.removeAll() }
-            onlineLyricsCache.updateValue(outcome.text, forKey: trackID)
+            onlineLyricsCache.updateValue(outcome.lyrics, forKey: trackID)
         }
         // The file's own tags keep the panel useful when the catalog finds nothing.
         if info.albumTitle == nil { info.albumTitle = album }
@@ -1812,14 +1813,15 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// The file's own lyrics, else LRCLIB's for the track (the details panel and the remote show them).
     /// `online` is LRCLIB's answer when it was asked this time (for caching); `cached` is an earlier
     /// answer for the track (a nil inside means LRCLIB has none).
-    private nonisolated static func resolveLyrics(embedded: () async -> String?, cached: String??, online: Bool,
-                                                  title: String?, artist: String?, album: String?,
-                                                  duration: Double?) async -> (text: String?, online: LyricsLookup.Outcome?) {
-        if let own = await embedded(), !own.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return (own, nil) }
+    private nonisolated static func resolveLyrics(embedded: () async -> String?, cached: LyricsLookup.Lyrics??,
+                                                  online: Bool, title: String?, artist: String?, album: String?,
+                                                  duration: Double?) async -> (lyrics: LyricsLookup.Lyrics?,
+                                                                                online: LyricsLookup.Outcome?) {
+        if let own = await embedded(), let lyrics = LyricsLookup.lyrics(fromEmbedded: own) { return (lyrics, nil) }
         if let cached { return (cached, nil) }
         guard online, let title, !title.isEmpty else { return (nil, nil) }
         let outcome = await LyricsLookup.find(title: title, artist: artist, album: album, duration: duration)
-        return (outcome.text, outcome)
+        return (outcome.lyrics, outcome)
     }
 
     #if targetEnvironment(macCatalyst)

@@ -15,18 +15,50 @@ enum LyricsLookup {
         var syncedLyrics: String?
     }
 
+    /// One line of time-synced lyrics: `text` starts `time` seconds into the track.
+    struct Line: Equatable {
+        var time: TimeInterval
+        var text: String
+    }
+
+    /// A track's lyrics: always as plain text, and line by line with times when known.
+    struct Lyrics: Equatable {
+        var plain: String
+        var synced: [Line]?
+    }
+
     /// What a lookup found.
     enum Outcome: Equatable {
-        case lyrics(String)
+        case lyrics(Lyrics)
         case instrumental
         case notFound
         /// The request failed (offline, server error): worth trying again later.
         case unavailable
 
-        var text: String? {
-            if case .lyrics(let text) = self { return text }
+        var lyrics: Lyrics? {
+            if case .lyrics(let lyrics) = self { return lyrics }
             return nil
         }
+    }
+
+    /// Lyrics from a file's own tag, which is sometimes LRC text with timestamps.
+    static func lyrics(fromEmbedded text: String) -> Lyrics? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let synced = lines(fromSynced: trimmed), synced.count >= 2, let plain = plainText(fromSynced: trimmed) {
+            return Lyrics(plain: plain, synced: synced)
+        }
+        return Lyrics(plain: trimmed, synced: nil)
+    }
+
+    /// The line being sung at `time`: the last one starting at or before it.
+    static func lineIndex(in lines: [Line], at time: TimeInterval) -> Int? {
+        var low = 0, high = lines.count
+        while low < high {
+            let mid = (low + high) / 2
+            if lines[mid].time <= time { low = mid + 1 } else { high = mid }
+        }
+        return low == 0 ? nil : low - 1
     }
 
     /// LRCLIB asks clients to identify themselves.
@@ -126,13 +158,45 @@ enum LyricsLookup {
     static func outcome(of entry: Entry?) -> Outcome {
         guard let entry else { return .notFound }
         if entry.instrumental == true { return .instrumental }
+        let synced = entry.syncedLyrics.flatMap { lines(fromSynced: $0) }
         if let plain = entry.plainLyrics?.trimmingCharacters(in: .whitespacesAndNewlines), !plain.isEmpty {
-            return .lyrics(plain)
+            return .lyrics(Lyrics(plain: plain, synced: synced))
         }
-        if let synced = entry.syncedLyrics, let plain = plainText(fromSynced: synced) {
-            return .lyrics(plain)
+        if let text = entry.syncedLyrics, let plain = plainText(fromSynced: text) {
+            return .lyrics(Lyrics(plain: plain, synced: synced))
         }
         return .notFound
+    }
+
+    /// "[mm:ss]", "[mm:ss.xx]" or "[mm:ss:xx]" at the start of a line.
+    private static let timestampPattern = try! NSRegularExpression(pattern: #"^\[(\d+):(\d+)(?:([.:])(\d+))?\]"#)
+
+    /// The timed lines of LRC-style lyrics, in order; a line with several timestamps
+    /// (a repeated chorus) appears once per timestamp. Nil when there are no timed lines.
+    static func lines(fromSynced synced: String) -> [Line]? {
+        let stamp = timestampPattern
+        var result: [Line] = []
+        for raw in synced.components(separatedBy: .newlines) {
+            var rest = raw.trimmingCharacters(in: .whitespaces)
+            var times: [TimeInterval] = []
+            while let match = stamp.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)) {
+                func group(_ i: Int) -> String? {
+                    Range(match.range(at: i), in: rest).map { String(rest[$0]) }
+                }
+                let minutes = Double(group(1) ?? "") ?? 0
+                let seconds = Double(group(2) ?? "") ?? 0
+                var fraction = 0.0
+                if let digits = group(4), let value = Double(digits) {
+                    fraction = value / pow(10, Double(digits.count))      // ".5" → 0.5, ".34" → 0.34
+                }
+                times.append(minutes * 60 + seconds + fraction)
+                rest = String(rest[Range(match.range, in: rest)!.upperBound...])
+            }
+            let text = rest.trimmingCharacters(in: .whitespaces)
+            result += times.map { Line(time: $0, text: text) }
+        }
+        guard !result.isEmpty else { return nil }
+        return result.sorted { $0.time < $1.time }
     }
 
     /// Plain text from LRC-style synced lyrics: timestamps and "[ar:…]"-style tags removed.
