@@ -823,6 +823,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                        try StreamedPCM.open(source: try FileByteSource(url: sourceURL), fileExtension: ext)
                    }),
                    let backend = await self.makeLivePCM(decoder: decoder, ext: ext) {
+                    if Task.isCancelled { backend.stop() }
                     try Task.checkCancellation()
                     self.beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: source.id)
                     return
@@ -833,6 +834,7 @@ final class AudioPlayer: NSObject, ObservableObject {
                    DSDDoPDecoder.supportedExtensions.contains(ext) || ext == SACDVirtualPath.trackExtension {
                     let mode: DSDOutputMode = self.doPPlaybackProblem(assumingDoP: true) == nil ? .dop : .pcm
                     if let backend = await self.makeLiveDSD(sourceURL: sourceURL, mode: mode) {
+                        if Task.isCancelled { backend.stop() }
                         try Task.checkCancellation()
                         self.beginLiveDSD(backend, sourceURL: sourceURL, track: track, sourceID: source.id)
                         return
@@ -1276,6 +1278,8 @@ final class AudioPlayer: NSObject, ObservableObject {
             return false
         }
         guard !Task.isCancelled, let backend = await makeLiveDSD(reader: reader, mode: mode) else { return false }
+        // Preparing the engine waits on the DAC's rate change; the user may have moved on meanwhile.
+        guard !Task.isCancelled else { backend.stop(); return false }
         beginLiveDSD(backend, sourceURL: nil, track: track, sourceID: source.id)
         if !tags.isEmpty { applyStreamedTags(tags, trackID: track.id) }
         loadStreamedMetadata(trackID: track.id, picture: nil, lyrics: nil, source: source, streaming: streaming,
@@ -1397,6 +1401,12 @@ final class AudioPlayer: NSObject, ObservableObject {
     /// Makes `backend` the current playback and updates the player state like
     /// `startPlayback` does for a converted file.
     private func beginLiveDSD(_ backend: DSDLivePlayback, sourceURL: URL?, track: Track, sourceID: String) {
+        // Normally torn down before the load; a start that raced a skip must not leave two playing.
+        if let previous = player, previous !== backend {
+            previous.detach()
+            previous.stop()
+            player = nil
+        }
         cleanupTemp()
         let plan = backend.plan
         let isDSD = plan.dsdRate > 0
