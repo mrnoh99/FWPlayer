@@ -15,6 +15,11 @@ final class RemoteLink {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "com.fwplayer.remote.link")
     private var buffer = Data()
+    /// The largest frame accepted; a bigger length closes the connection, so a peer can't
+    /// make us buffer without bound. Touched only on `queue`.
+    private var maxFrameLength = RemoteLink.defaultMaxFrameLength
+    /// Room for a large library, listing or queue.
+    static let defaultMaxFrameLength = 64 << 20
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -42,6 +47,11 @@ final class RemoteLink {
         connection.cancel()
     }
 
+    /// Changes the largest frame accepted from the peer (e.g. small until it has paired).
+    func setMaxFrameLength(_ length: Int) {
+        queue.async { self.maxFrameLength = length }
+    }
+
     /// Encodes and sends a message as a single length-prefixed frame.
     func send(_ message: RemoteMessage) {
         guard let payload = try? encoder.encode(message) else { return }
@@ -62,7 +72,11 @@ final class RemoteLink {
             guard let self else { return }
             if let data, !data.isEmpty {
                 self.buffer.append(data)
-                self.drain()
+                guard self.drain() else {
+                    self.buffer.removeAll()
+                    self.connection.cancel()
+                    return
+                }
             }
             if isComplete || error != nil {
                 self.connection.cancel()
@@ -72,18 +86,39 @@ final class RemoteLink {
         }
     }
 
-    /// Pulls every complete frame out of `buffer` and dispatches it.
-    private func drain() {
-        while buffer.count >= 4 {
-            let bytes = [UInt8](buffer.prefix(4))
-            let length = (UInt32(bytes[0]) << 24)
-                | (UInt32(bytes[1]) << 16)
-                | (UInt32(bytes[2]) << 8)
-                | UInt32(bytes[3])
-            let total = 4 + Int(length)
-            guard buffer.count >= total else { break }
-            let payload = buffer.subdata(in: 4..<total)
-            buffer.removeSubrange(0..<total)
+    /// What the start of the receive buffer holds.
+    enum FrameStatus: Equatable {
+        /// Not a whole frame yet.
+        case incomplete
+        /// A whole frame whose JSON is this many bytes, after the 4-byte length.
+        case frame(length: Int)
+        /// A frame longer than allowed.
+        case tooLarge
+    }
+
+    static func frameStatus(of buffer: Data, maxLength: Int) -> FrameStatus {
+        guard buffer.count >= 4 else { return .incomplete }
+        let bytes = [UInt8](buffer.prefix(4))
+        let length = Int(bytes[0]) << 24 | Int(bytes[1]) << 16 | Int(bytes[2]) << 8 | Int(bytes[3])
+        guard length <= maxLength else { return .tooLarge }
+        return buffer.count >= 4 + length ? .frame(length: length) : .incomplete
+    }
+
+    /// Pulls every complete frame out of `buffer` and dispatches it. False when the
+    /// peer broke the protocol (an oversized frame) and the connection should close.
+    private func drain() -> Bool {
+        while true {
+            let length: Int
+            switch Self.frameStatus(of: buffer, maxLength: maxFrameLength) {
+            case .incomplete: return true
+            case .tooLarge:
+                NSLog("[RemoteLink] frame over \(maxFrameLength) bytes; closing the connection")
+                return false
+            case .frame(let frameLength): length = frameLength
+            }
+            let start = buffer.startIndex
+            let payload = buffer.subdata(in: start + 4 ..< start + 4 + length)
+            buffer.removeSubrange(start ..< start + 4 + length)
             let message: RemoteMessage
             do {
                 message = try decoder.decode(RemoteMessage.self, from: payload)

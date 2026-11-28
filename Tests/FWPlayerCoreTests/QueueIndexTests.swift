@@ -30,4 +30,21 @@ final class QueueIndexTests: XCTestCase {
         XCTAssertEqual(QueueIndex.ofGaplessNext(id: "a", queuedAt: 9, in: ids, current: 4), 0)   // none after: first copy
         XCTAssertNil(QueueIndex.ofGaplessNext(id: "q", queuedAt: 1, in: ids, current: 0))
     }
+
+    func testRemoteOffsetsMustAllBeInTheList() {
+        XCTAssertEqual(QueueIndex.offsets([0, 2], within: 3), IndexSet([0, 2]))
+        XCTAssertNil(QueueIndex.offsets([0, 3], within: 3))     // the list got shorter meanwhile
+        XCTAssertNil(QueueIndex.offsets([-1], within: 3))
+        XCTAssertNil(QueueIndex.offsets([], within: 3))
+        XCTAssertNil(QueueIndex.offsets([0], within: 0))
+    }
+
+    func testMovesMustFitTheList() {
+        XCTAssertTrue(QueueIndex.canMove(IndexSet([0]), to: 3, count: 3))     // to the end
+        XCTAssertTrue(QueueIndex.canMove(IndexSet([2]), to: 0, count: 3))
+        XCTAssertFalse(QueueIndex.canMove(IndexSet([3]), to: 0, count: 3))
+        XCTAssertFalse(QueueIndex.canMove(IndexSet([0]), to: 4, count: 3))
+        XCTAssertFalse(QueueIndex.canMove(IndexSet([0]), to: -1, count: 3))
+        XCTAssertFalse(QueueIndex.canMove(IndexSet(), to: 0, count: 3))
+    }
 }

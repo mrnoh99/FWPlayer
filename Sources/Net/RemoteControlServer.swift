@@ -64,7 +64,14 @@ final class RemoteControlServer: ObservableObject {
     private struct Client {
         let link: RemoteLink
         var isAuthenticated = false
+        var connectedAt = Date()
     }
+
+    /// Until a remote pairs it can only send its PIN, so its frames stay small, at most a
+    /// few wait at once (the oldest is dropped for a new one), and each gets a while to pair.
+    private static let unpairedMaxFrameLength = 64 << 10
+    private static let maxUnpairedClients = 4
+    private static let pairingTimeout: UInt64 = 120
 
     init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
         self.player = player
@@ -242,14 +249,35 @@ final class RemoteControlServer: ObservableObject {
             }
         }
 
+        if requiresPIN { link.setMaxFrameLength(Self.unpairedMaxFrameLength) }
         link.start()
         if requiresPIN {
+            dropOldestUnpaired(keeping: Self.maxUnpairedClients - 1)
             // The remote answers with the PIN it saved when it paired, or asks the user for it.
-            clients[id] = Client(link: link, isAuthenticated: false)
+            let opened = Date()
+            clients[id] = Client(link: link, isAuthenticated: false, connectedAt: opened)
             link.send(.pairingRequired(PairingRequired(deviceName: deviceName)))
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: Self.pairingTimeout * 1_000_000_000)
+                guard let self, let client = self.clients[id],
+                      client.connectedAt == opened, !client.isAuthenticated else { return }
+                DiagnosticsLog.log("remote", "a remote didn't pair in time; disconnected")
+                client.link.cancel()
+                self.clients.removeValue(forKey: id)
+            }
         } else {
             clients[id] = Client(link: link, isAuthenticated: true)
             welcome(link)
+        }
+    }
+
+    /// Disconnects the longest-waiting unpaired remotes until at most `limit` remain.
+    private func dropOldestUnpaired(keeping limit: Int) {
+        let waiting = clients.filter { !$0.value.isAuthenticated }
+            .sorted { $0.value.connectedAt < $1.value.connectedAt }
+        for (id, client) in waiting.dropLast(max(0, limit)) {
+            client.link.cancel()
+            clients.removeValue(forKey: id)
         }
     }
 
@@ -285,6 +313,7 @@ final class RemoteControlServer: ObservableObject {
             if !requiresPIN || normalized == displayPIN {
                 client.isAuthenticated = true
                 clients[clientID] = client
+                client.link.setMaxFrameLength(RemoteLink.defaultMaxFrameLength)
                 welcome(client.link)
             } else {
                 recentFailures.append(Date())
@@ -378,13 +407,15 @@ final class RemoteControlServer: ObservableObject {
             }
 
         case .removeFromQueue(let indices):
-            player.removeFromQueue(at: IndexSet(indices))
+            guard let offsets = QueueIndex.offsets(indices, within: player.queue.count) else { return }
+            player.removeFromQueue(at: offsets)
 
         case .clearQueue:
             player.clearQueue()
 
         case .moveQueue(let from, let to):
-            player.moveQueue(fromOffsets: IndexSet(from), toOffset: to)
+            guard let offsets = QueueIndex.offsets(from, within: player.queue.count) else { return }
+            player.moveQueue(fromOffsets: offsets, toOffset: to)
 
         case .playFolder(let sourceID, let path, let recursive):
             Task {
@@ -416,12 +447,16 @@ final class RemoteControlServer: ObservableObject {
             }
 
         case .movePlaylistEntry(let playlistID, let from, let to):
-            guard let uuid = UUID(uuidString: playlistID) else { return }
-            playlists.moveEntries(from: IndexSet(from), to: to, in: uuid)
+            guard let uuid = UUID(uuidString: playlistID),
+                  let offsets = QueueIndex.offsets(from, within: playlists.playlist(for: uuid)?.entries.count ?? 0)
+            else { return }
+            playlists.moveEntries(from: offsets, to: to, in: uuid)
 
         case .removePlaylistEntry(let playlistID, let indices):
-            guard let uuid = UUID(uuidString: playlistID) else { return }
-            playlists.removeEntries(at: IndexSet(indices), from: uuid)
+            guard let uuid = UUID(uuidString: playlistID),
+                  let offsets = QueueIndex.offsets(indices, within: playlists.playlist(for: uuid)?.entries.count ?? 0)
+            else { return }
+            playlists.removeEntries(at: offsets, from: uuid)
 
         case .toggleFavorite(let remote):
             playlists.toggleFavorite(Track(sourceID: remote.sourceID, path: remote.path, title: remote.title))
