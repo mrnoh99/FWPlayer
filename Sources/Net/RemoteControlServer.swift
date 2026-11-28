@@ -44,10 +44,8 @@ final class RemoteControlServer: ObservableObject {
     }
     private static let requiresPINKey = "remoteRequiresPIN"
 
-    /// Wrong PINs in the last minute; past `maxFailuresPerMinute` every attempt is refused
-    /// until the minute is up, so the PIN can't be guessed by trying them all.
-    private var recentFailures: [Date] = []
-    private static let maxFailuresPerMinute = 5
+    /// Wrong-PIN lockout and the limit on remotes waiting to pair.
+    private var pairingGuard = RemotePairingGuard()
 
     /// Whether the Bonjour listener is up and advertising. Surfaced in the UI so
     /// a failure to advertise (e.g. Local Network permission not granted on
@@ -70,7 +68,6 @@ final class RemoteControlServer: ObservableObject {
     /// Until a remote pairs it can only send its PIN, so its frames stay small, at most a
     /// few wait at once (the oldest is dropped for a new one), and each gets a while to pair.
     private static let unpairedMaxFrameLength = 64 << 10
-    private static let maxUnpairedClients = 4
     private static let pairingTimeout: UInt64 = 120
 
     init(player: AudioPlayer, registry: SourceRegistry, playlists: PlaylistManager, artwork: ArtworkStore) {
@@ -252,7 +249,7 @@ final class RemoteControlServer: ObservableObject {
         if requiresPIN { link.setMaxFrameLength(Self.unpairedMaxFrameLength) }
         link.start()
         if requiresPIN {
-            dropOldestUnpaired(keeping: Self.maxUnpairedClients - 1)
+            dropOldestUnpaired()
             // The remote answers with the PIN it saved when it paired, or asks the user for it.
             let opened = Date()
             clients[id] = Client(link: link, isAuthenticated: false, connectedAt: opened)
@@ -271,12 +268,11 @@ final class RemoteControlServer: ObservableObject {
         }
     }
 
-    /// Disconnects the longest-waiting unpaired remotes until at most `limit` remain.
-    private func dropOldestUnpaired(keeping limit: Int) {
-        let waiting = clients.filter { !$0.value.isAuthenticated }
-            .sorted { $0.value.connectedAt < $1.value.connectedAt }
-        for (id, client) in waiting.dropLast(max(0, limit)) {
-            client.link.cancel()
+    /// Disconnects the longest-waiting unpaired remotes so a new one fits.
+    private func dropOldestUnpaired() {
+        let waiting = clients.filter { !$0.value.isAuthenticated }.map { (id: $0.key, since: $0.value.connectedAt) }
+        for id in RemotePairingGuard.toDrop(waiting: waiting) {
+            clients[id]?.link.cancel()
             clients.removeValue(forKey: id)
         }
     }
@@ -289,12 +285,6 @@ final class RemoteControlServer: ObservableObject {
         if let details = currentCatalogMessage() { link.send(.catalogInfo(details)) }
     }
 
-    /// Whether PIN attempts are refused for now (too many wrong ones in the last minute).
-    private func pinAttemptsLocked(now: Date = Date()) -> Bool {
-        recentFailures.removeAll { now.timeIntervalSince($0) > 60 }
-        return recentFailures.count >= Self.maxFailuresPerMinute
-    }
-
     // MARK: - Commands
 
     private func handle(_ message: RemoteMessage, from clientID: ObjectIdentifier) {
@@ -304,7 +294,7 @@ final class RemoteControlServer: ObservableObject {
         switch command {
         case .authenticate(let pin):
             guard !client.isAuthenticated else { return }
-            if pinAttemptsLocked() {
+            if pairingGuard.isLocked() {
                 client.link.send(.authResult(AuthResult(success: false,
                                                         message: "Too many wrong PINs. Try again in a minute.")))
                 return
@@ -316,8 +306,8 @@ final class RemoteControlServer: ObservableObject {
                 client.link.setMaxFrameLength(RemoteLink.defaultMaxFrameLength)
                 welcome(client.link)
             } else {
-                recentFailures.append(Date())
-                DiagnosticsLog.log("remote", "wrong PIN from a remote (\(recentFailures.count) in the last minute)")
+                let failures = pairingGuard.recordFailure()
+                DiagnosticsLog.log("remote", "wrong PIN from a remote (\(failures) in the last minute)")
                 client.link.send(.authResult(AuthResult(success: false, message: "Incorrect PIN.")))
             }
 

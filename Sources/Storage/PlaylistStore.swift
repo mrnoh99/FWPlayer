@@ -3,7 +3,11 @@ import Foundation
 /// Persists user playlists as JSON in UserDefaults.
 struct PlaylistStore {
     private let defaultsKey = "fwplayer.playlists"
-    private var defaults: UserDefaults { .standard }
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func load() -> [Playlist] {
         guard let data = defaults.data(forKey: defaultsKey),

@@ -69,7 +69,7 @@ Package.swift              Test-only SwiftPM package (`swift test`) over the pur
 Tests/                     Unit tests (DSD / DoP conversion, tags, SACD image parsing)
 Sources/DST/               C DST decoder (SACD Ripper, GPL v2) + small wrapper
 scripts/bump-build.sh      Bumps the build number in project.yml and the Xcode project
-project.yml                 XcodeGen project definition (single Catalyst target)
+project.yml                 Settings summary (XcodeGen format; not used to build)
 Support/
   Info.plist                Generated from project.yml `info.properties`
   FWPlayer.entitlements      Network client + Catalyst sandbox entitlements
@@ -93,19 +93,13 @@ The generated Xcode project (`FWPlayer.xcodeproj`) is committed, so you can clon
 open FWPlayer.xcodeproj
 ```
 
-`project.yml` ([XcodeGen](https://github.com/yonaskolb/XcodeGen)) remains the
-source of truth. Only when you add/remove source files or change Info.plist,
-entitlements, or build settings, regenerate and commit the project:
-
-```bash
-brew install xcodegen          # one-time
-xcodegen generate
-```
+The committed Xcode project is what the app is built from; add new files to it in
+Xcode and commit `project.pbxproj`. `project.yml` is only a summary of the
+settings — don't regenerate the project from it (see [BUILD.md](BUILD.md)).
 
 Then select the **FWPlayer** scheme and run on an iPhone/iPad simulator or
 device, or choose **My Mac (Mac Catalyst)** for the desktop app. Set your
-signing team in Xcode (or `DEVELOPMENT_TEAM` in `project.yml`) before running
-on a device.
+signing team in `Config/Local.xcconfig` before running on a device.
 
 ## Tests
 
