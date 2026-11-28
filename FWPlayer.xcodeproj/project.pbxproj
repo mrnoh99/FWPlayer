@@ -11,6 +11,10 @@
 			isa = PBXBuildFile;
 			fileRef = 4E1710C8E5154718AFC2BA08 /* RemoteControlServer.swift */;
 		};
+		45E921FF6AD44ECDAF268C39 /* RemotePairingGuard.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = C48BB3ABC095419494307930 /* RemotePairingGuard.swift */;
+		};
 		06FA9C92EA5C433BAB442F85 /* CDDiscLookup.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = B6CADD713AA54A11A25FFB9E /* CDDiscLookup.swift */;
@@ -441,6 +445,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = RemoteControlServer.swift;
+			sourceTree = "<group>";
+		};
+		C48BB3ABC095419494307930 /* RemotePairingGuard.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = RemotePairingGuard.swift;
 			sourceTree = "<group>";
 		};
 		4F7DA76417A04D049E358FF9 /* ArtworkStore.swift */ = {
@@ -985,6 +995,7 @@
 			children = (
 				2A3D42A6780F4BAE944EA466 /* HostDeviceName.swift */,
 				4E1710C8E5154718AFC2BA08 /* RemoteControlServer.swift */,
+				C48BB3ABC095419494307930 /* RemotePairingGuard.swift */,
 			);
 			name = Net;
 			path = Net;
@@ -1164,6 +1175,7 @@
 				4CC365A897A3440D800A2773 /* Track.swift in Sources */,
 				2C341FD2A90F45EEBEB97266 /* HostDeviceName.swift in Sources */,
 				03EEDF6D282F4E6FA882AD4A /* RemoteControlServer.swift in Sources */,
+				45E921FF6AD44ECDAF268C39 /* RemotePairingGuard.swift in Sources */,
 				E178B7890AEB49B8BFAA8406 /* RemoteLink.swift in Sources */,
 				23B6A023487A4EB88D4E5405 /* RemoteProtocol.swift in Sources */,
 				A090EAD0ADC54103B3FC523C /* CDAudioSource.swift in Sources */,

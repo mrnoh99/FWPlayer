@@ -1,5 +1,10 @@
 # FWPlayer — App Store submission guide
 
+> **Not in use:** FWPlayer is a personal-use app and isn't submitted to the App
+> Store. It also compiles in the GPL v2 DST decoder (`Sources/DST/NOTICE.txt`),
+> which would have to be removed before any distribution. This guide is kept for
+> reference only; its `xcodegen` steps are out of date (see `BUILD.md`).
+
 This is the checklist for shipping **FWPlayer** (iPhone / iPad / Mac Catalyst)
 to the App Store. Everything that can live in the repo is already in place; the
 rest is account/portal work that must be done in Apple's web consoles and Xcode.

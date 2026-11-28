@@ -22,8 +22,17 @@ let package = Package(
         .target(
             name: "FWPlayerCore",
             dependencies: ["CDST"],
-            path: "Sources/Audio",
-            sources: ["AudioDecoder.swift", "DSDDoPDecoder.swift", "SACDISO.swift", "DSDLivePlayback.swift", "ByteSource.swift", "FLACDecoder.swift", "PCMFileDecoder.swift", "DiagnosticsLog.swift", "LibrarySearch.swift", "QueueIndex.swift", "PCMDecimator.swift", "LyricsLookup.swift"]
+            path: "Sources",
+            sources: [
+                "Audio/AudioDecoder.swift", "Audio/DSDDoPDecoder.swift", "Audio/SACDISO.swift",
+                "Audio/DSDLivePlayback.swift", "Audio/ByteSource.swift", "Audio/FLACDecoder.swift",
+                "Audio/PCMFileDecoder.swift", "Audio/DiagnosticsLog.swift", "Audio/LibrarySearch.swift",
+                "Audio/QueueIndex.swift", "Audio/PCMDecimator.swift", "Audio/LyricsLookup.swift",
+                // Playlists and the remote's pairing rules.
+                "Models/FileItem.swift", "Models/Track.swift", "Models/Playlist.swift",
+                "Storage/PlaylistStore.swift", "Sources/PlaylistManager.swift",
+                "Net/RemotePairingGuard.swift",
+            ]
         ),
         .testTarget(
             name: "FWPlayerCoreTests",

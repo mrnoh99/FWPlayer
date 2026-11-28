@@ -39,37 +39,20 @@ needs to be installed.
 swift test        # DSD / DoP / SACD image unit tests, no simulator needed
 ```
 
----
+## Adding or removing files
 
-## One-time: commit the Xcode project (do this on a Mac that has xcodegen)
+`FWPlayer.xcodeproj` is the project the app is built from, and it is edited
+directly. Add a new file in Xcode (**File → Add Files to "FWPlayer"…**, target
+**FWPlayer** ticked) and commit the changed `project.pbxproj` with it. CI builds
+the committed project, so a file that was left out shows up as a red build.
 
-The project is generated from `project.yml` by
-[XcodeGen](https://github.com/yonaskolb/XcodeGen). It only needs to be generated
-**once** and committed; after that nobody needs xcodegen to build.
+`project.yml` is kept only as a readable summary of the settings. **Don't run
+`xcodegen generate`**: the committed project has changes that aren't in
+`project.yml` (e.g. the Korean localization region), and regenerating would drop
+them.
 
-```bash
-brew install xcodegen        # if you don't have it
-cd FWPlayer
-xcodegen generate            # creates FWPlayer.xcodeproj
-git add -A
-git commit -m "Commit generated Xcode project (clone-and-build)"
-git push origin main
-```
-
-`.gitignore` is already set up to track `FWPlayer.xcodeproj` while ignoring
-user-specific state inside it.
-
----
-
-## When do I need xcodegen again?
-
-Only when the **project structure** changes:
-
-- you add or remove a source file, or
-- you change Info.plist keys, entitlements, or build settings in `project.yml`.
-
-Then re-run `xcodegen generate` and commit the updated `FWPlayer.xcodeproj`.
-Everyday code edits to existing files need **no** regeneration.
+`.gitignore` already tracks `FWPlayer.xcodeproj` while ignoring user-specific
+state inside it.
 
 ## Version / build number
 
@@ -88,4 +71,4 @@ settings:
 ```
 
 The Info.plist references these via `$(MARKETING_VERSION)` /
-`$(CURRENT_PROJECT_VERSION)`, so bump the value here, regenerate, and rebuild.
+`$(CURRENT_PROJECT_VERSION)`, so `scripts/bump-build.sh` (which edits both) is all a new build number needs.

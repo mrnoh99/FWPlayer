@@ -7,7 +7,12 @@ import SwiftUI
 final class PlaylistManager: ObservableObject {
     @Published private(set) var playlists: [Playlist] = []
 
-    private let store = PlaylistStore()
+    private let store: PlaylistStore
+
+    /// `defaults` is where playlists are saved (tests pass their own).
+    init(defaults: UserDefaults = .standard) {
+        store = PlaylistStore(defaults: defaults)
+    }
 
     /// The built-in Favorites playlist: always kept first and never deletable.
     static let favoritesID = UUID(uuidString: "FA000000-0000-0000-0000-000000000001")!
@@ -34,8 +39,8 @@ final class PlaylistManager: ObservableObject {
     /// Played used to be stored oldest first; it is now newest first. Flip a list saved the
     /// old way, once.
     private func migratePlayedToNewestFirst() {
-        guard !UserDefaults.standard.bool(forKey: Self.playedNewestFirstKey) else { return }
-        UserDefaults.standard.set(true, forKey: Self.playedNewestFirstKey)
+        guard !store.defaults.bool(forKey: Self.playedNewestFirstKey) else { return }
+        store.defaults.set(true, forKey: Self.playedNewestFirstKey)
         guard let index = playlists.firstIndex(where: { $0.id == Self.playedID }),
               playlists[index].entries.count > 1 else { return }
         playlists[index].entries.reverse()
