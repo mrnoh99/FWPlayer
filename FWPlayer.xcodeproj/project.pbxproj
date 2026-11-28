@@ -155,6 +155,14 @@
 			isa = PBXBuildFile;
 			fileRef = 3AD6BA6D364B4A64942FD697 /* AudioPlayer.swift */;
 		};
+		3C03363B7E8E42A2B7C2FF6A /* AudioPlayer+System.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 75D8EA44018F475498FF54AC /* AudioPlayer+System.swift */;
+		};
+		F0F409C3A715483D9194BBFD /* AudioPlayer+Metadata.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = F58C488197BE4E4B8FB5491D /* AudioPlayer+Metadata.swift */;
+		};
 		AEC36D378A89474590536AB7 /* EmbeddedLyrics.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 05E108B0C2B5425B852E8B7A /* EmbeddedLyrics.swift */;
@@ -379,6 +387,18 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = AudioPlayer.swift;
+			sourceTree = "<group>";
+		};
+		75D8EA44018F475498FF54AC /* AudioPlayer+System.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "AudioPlayer+System.swift";
+			sourceTree = "<group>";
+		};
+		F58C488197BE4E4B8FB5491D /* AudioPlayer+Metadata.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "AudioPlayer+Metadata.swift";
 			sourceTree = "<group>";
 		};
 		4790F90B66794326B716D200 /* PrivacyInfo.xcprivacy */ = {
@@ -810,6 +830,8 @@
 				10173643A8244EC7AA5F1234 /* AudioDecoder.swift */,
 				955532C972634AB6A1E8A3C0 /* AudioFormatReader.swift */,
 				3AD6BA6D364B4A64942FD697 /* AudioPlayer.swift */,
+				75D8EA44018F475498FF54AC /* AudioPlayer+System.swift */,
+				F58C488197BE4E4B8FB5491D /* AudioPlayer+Metadata.swift */,
 				05E108B0C2B5425B852E8B7A /* EmbeddedLyrics.swift */,
 				6E04B8F1D3A94C27A5F2B9D3 /* DSDDoPDecoder.swift */,
 				5DEA9FC666DB44AFA4A9DF2A /* DSDLivePlayback.swift */,
@@ -1109,6 +1131,8 @@
 				5995B8B868D0479CAC3648DB /* AudioDecoder.swift in Sources */,
 				7EC03534B201496B909F2930 /* AudioFormatReader.swift in Sources */,
 				AE96820B09C84C8D8BAD0D36 /* AudioPlayer.swift in Sources */,
+				3C03363B7E8E42A2B7C2FF6A /* AudioPlayer+System.swift in Sources */,
+				F0F409C3A715483D9194BBFD /* AudioPlayer+Metadata.swift in Sources */,
 				AEC36D378A89474590536AB7 /* EmbeddedLyrics.swift in Sources */,
 				22D20CC3C5434891ACE40F0A /* MusicKitCatalog.swift in Sources */,
 				3D91C7E5A2B84F60C8E1D7A2 /* DSDDoPDecoder.swift in Sources */,
