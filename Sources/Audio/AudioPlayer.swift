@@ -103,7 +103,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         return currentTime > 3
     }
 
-    private unowned let registry: SourceRegistry
+    unowned let registry: SourceRegistry
     /// Album-artwork cache, used to enrich the playing track and feed the UI.
     let artwork: ArtworkStore
     private unowned let playlists: PlaylistManager
