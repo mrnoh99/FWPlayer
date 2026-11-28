@@ -84,6 +84,28 @@ struct PlaybackState: Codable, Hashable {
     var volume: Double = 1.0
 }
 
+extension PlaybackState {
+    /// Fields added after the first release take their defaults when an older player
+    /// leaves them out, instead of failing the whole state.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        protocolVersion = try c.decodeIfPresent(Int.self, forKey: .protocolVersion) ?? 0
+        deviceName = try c.decode(String.self, forKey: .deviceName)
+        isPlaying = try c.decode(Bool.self, forKey: .isPlaying)
+        isLoading = try c.decode(Bool.self, forKey: .isLoading)
+        currentTime = try c.decode(TimeInterval.self, forKey: .currentTime)
+        duration = try c.decode(TimeInterval.self, forKey: .duration)
+        currentIndex = try c.decodeIfPresent(Int.self, forKey: .currentIndex)
+        queue = try c.decode([RemoteTrack].self, forKey: .queue)
+        history = try c.decodeIfPresent([RemoteTrack].self, forKey: .history) ?? []
+        errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
+        audioFormat = try c.decodeIfPresent(String.self, forKey: .audioFormat)
+        isShuffled = try c.decodeIfPresent(Bool.self, forKey: .isShuffled) ?? false
+        repeatMode = try c.decodeIfPresent(Int.self, forKey: .repeatMode) ?? 0
+        volume = try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1.0
+    }
+}
+
 /// Sent immediately after TCP connect; the remote must authenticate with the
 /// PIN shown on the player before any other command is accepted.
 struct PairingRequired: Codable, Hashable {
@@ -255,6 +277,27 @@ struct RemoteCatalogInfo: Codable, Hashable {
     var lyrics: String?
     /// Where the metadata came from: "Apple Music", "iTunes", or "file tags".
     var source: String?
+    /// The lyrics line by line with start times, when known, so the remote can follow
+    /// playback. Optional: older players don't send it and older remotes ignore it.
+    var syncedLyrics: [RemoteLyricLine]?
+}
+
+/// One line of time-synced lyrics: `text` starts `time` seconds into the track.
+struct RemoteLyricLine: Codable, Hashable {
+    var time: TimeInterval
+    var text: String
+}
+
+extension Array where Element == RemoteLyricLine {
+    /// The line being sung at `time`: the last one starting at or before it.
+    func lineIndex(at time: TimeInterval) -> Int? {
+        var low = 0, high = count
+        while low < high {
+            let mid = (low + high) / 2
+            if self[mid].time <= time { low = mid + 1 } else { high = mid }
+        }
+        return low == 0 ? nil : low - 1
+    }
 }
 
 /// The envelope exchanged over the wire. Commands flow remote → player; state,

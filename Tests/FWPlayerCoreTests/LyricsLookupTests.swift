@@ -46,19 +46,62 @@ final class LyricsLookupTests: XCTestCase {
     }
 
     func testOutcome() {
-        XCTAssertEqual(LyricsLookup.outcome(of: entry(300, lyrics: "  hello \n")), .lyrics("hello"))
+        XCTAssertEqual(LyricsLookup.outcome(of: entry(300, lyrics: "  hello \n")), .lyrics(.init(plain: "hello", synced: nil)))
         XCTAssertEqual(LyricsLookup.outcome(of: entry(300, lyrics: nil, instrumental: true)), .instrumental)
         XCTAssertEqual(LyricsLookup.outcome(of: entry(300, lyrics: nil)), .notFound)
         XCTAssertEqual(LyricsLookup.outcome(of: nil), .notFound)
         XCTAssertEqual(LyricsLookup.outcome(of: entry(300, lyrics: nil, synced: "[00:01.00] One\n[00:02.50] Two")),
-                       .lyrics("One\nTwo"))
+                       .lyrics(.init(plain: "One\nTwo", synced: [.init(time: 1, text: "One"), .init(time: 2.5, text: "Two")])))
     }
 
     func testOutcomeTextIsOnlyForFoundLyrics() {
-        XCTAssertEqual(LyricsLookup.Outcome.lyrics("words").text, "words")
-        XCTAssertNil(LyricsLookup.Outcome.instrumental.text)
-        XCTAssertNil(LyricsLookup.Outcome.notFound.text)
-        XCTAssertNil(LyricsLookup.Outcome.unavailable.text)
+        let words = LyricsLookup.Lyrics(plain: "words", synced: nil)
+        XCTAssertEqual(LyricsLookup.Outcome.lyrics(words).lyrics, words)
+        XCTAssertNil(LyricsLookup.Outcome.instrumental.lyrics)
+        XCTAssertNil(LyricsLookup.Outcome.notFound.lyrics)
+        XCTAssertNil(LyricsLookup.Outcome.unavailable.lyrics)
+    }
+
+    func testOutcomeKeepsSyncedLinesAlongsidePlainLyrics() {
+        let found = LyricsLookup.outcome(of: entry(300, lyrics: "One\nTwo", synced: "[00:01.00] One\n[00:02.00] Two"))
+        XCTAssertEqual(found.lyrics?.plain, "One\nTwo")
+        XCTAssertEqual(found.lyrics?.synced?.map(\.time), [1, 2])
+    }
+
+    func testSyncedLinesAreParsedInOrder() {
+        let lines = LyricsLookup.lines(fromSynced: """
+        [ar:Artist]
+        [00:12.34] First line
+        [00:15.00][01:15.5] Chorus
+        [00:20:50]
+        [00:05] Intro
+        """)
+        XCTAssertEqual(lines, [
+            .init(time: 5, text: "Intro"),
+            .init(time: 12.34, text: "First line"),
+            .init(time: 15, text: "Chorus"),
+            .init(time: 20.5, text: ""),
+            .init(time: 75.5, text: "Chorus"),
+        ])
+        XCTAssertNil(LyricsLookup.lines(fromSynced: "Just words\nno times"))
+    }
+
+    func testLineIndexFollowsTime() {
+        let lines: [LyricsLookup.Line] = [.init(time: 5, text: "a"), .init(time: 10, text: "b"), .init(time: 20, text: "c")]
+        XCTAssertNil(LyricsLookup.lineIndex(in: lines, at: 4.9))
+        XCTAssertEqual(LyricsLookup.lineIndex(in: lines, at: 5), 0)
+        XCTAssertEqual(LyricsLookup.lineIndex(in: lines, at: 19.9), 1)
+        XCTAssertEqual(LyricsLookup.lineIndex(in: lines, at: 300), 2)
+        XCTAssertNil(LyricsLookup.lineIndex(in: [], at: 1))
+    }
+
+    func testEmbeddedLyricsMayBeLRC() {
+        let lrc = LyricsLookup.lyrics(fromEmbedded: "[00:01.00] One\n[00:02.00] Two")
+        XCTAssertEqual(lrc?.plain, "One\nTwo")
+        XCTAssertEqual(lrc?.synced?.count, 2)
+        let plain = LyricsLookup.lyrics(fromEmbedded: "  Just words \n")
+        XCTAssertEqual(plain, .init(plain: "Just words", synced: nil))
+        XCTAssertNil(LyricsLookup.lyrics(fromEmbedded: "   "))
     }
 
     func testPlainTextFromSyncedLyrics() {

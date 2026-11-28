@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "About": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소개"
+          }
+        }
+      }
+    },
     "Add Folder to Queue": {
       "localizations": {
         "ko": {
@@ -81,6 +91,16 @@
         }
       }
     },
+    "Album": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "앨범"
+          }
+        }
+      }
+    },
     "Any device on this network can control playback and browse the library.": {
       "localizations": {
         "ko": {
@@ -97,6 +117,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "계속할까요?"
+          }
+        }
+      }
+    },
+    "Artist": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아티스트"
           }
         }
       }
@@ -247,6 +277,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "진단 로그 복사 (%lld개 기록)"
+          }
+        }
+      }
+    },
+    "Copyright": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저작권"
           }
         }
       }
@@ -451,6 +491,16 @@
         }
       }
     },
+    "Genre": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "장르"
+          }
+        }
+      }
+    },
     "Give your playlist a name.": {
       "localizations": {
         "ko": {
@@ -497,6 +547,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "화면이 꺼져 있어도 리모트에서 FWPlayer에 연결할 수 있게 해, 이 기기를 깨우지 않고 재생을 조작할 수 있습니다. 배터리를 더 사용합니다."
+          }
+        }
+      }
+    },
+    "Label": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "레이블"
           }
         }
       }
@@ -1001,12 +1061,32 @@
         }
       }
     },
+    "Rating": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "등급"
+          }
+        }
+      }
+    },
     "Records which way each track played, streams that couldn't open, retried reads and sample-rate changes, so a problem can be traced. Nothing leaves the device unless you paste it somewhere.": {
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
             "value": "각 트랙의 재생 방식, 열지 못한 스트림, 다시 시도한 읽기, 샘플레이트 변경을 기록해 문제를 추적할 수 있게 합니다. 직접 붙여 넣지 않는 한 기기 밖으로 나가지 않습니다."
+          }
+        }
+      }
+    },
+    "Released": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발매"
           }
         }
       }
@@ -1257,6 +1337,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "되돌릴 수 없습니다."
+          }
+        }
+      }
+    },
+    "Tracks": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙 수"
           }
         }
       }

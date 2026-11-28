@@ -514,7 +514,8 @@ final class RemoteControlServer: ObservableObject {
             editorialNotes: info.editorialNotes,
             copyright: info.copyright,
             lyrics: info.lyrics,
-            source: info.source
+            source: info.source,
+            syncedLyrics: info.syncedLyrics?.map { RemoteLyricLine(time: $0.time, text: $0.text) }
         )
     }
 
